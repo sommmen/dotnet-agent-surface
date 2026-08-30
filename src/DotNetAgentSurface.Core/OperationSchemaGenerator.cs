@@ -13,8 +13,8 @@ public sealed class OperationSchemaGenerator
 
         foreach (var parameter in operation.Parameters.Where(static parameter => !parameter.IsCancellationToken))
         {
-            properties.Add(parameter.Name, CreateSchema(parameter.ParameterType));
-            if (!parameter.IsOptional && !IsNullable(parameter.ParameterType))
+            properties.Add(parameter.Name, CreateSchema(parameter.ParameterType, parameter.IsNullable));
+            if (!parameter.IsOptional && !parameter.IsNullable)
             {
                 required.Add(parameter.Name);
             }
@@ -29,7 +29,7 @@ public sealed class OperationSchemaGenerator
         });
     }
 
-    private static object CreateSchema(Type type)
+    private static object CreateSchema(Type type, bool isNullable = false)
     {
         var nullableType = Nullable.GetUnderlyingType(type);
         var effectiveType = nullableType ?? type;
@@ -41,16 +41,15 @@ public sealed class OperationSchemaGenerator
             var value when value == typeof(float) || value == typeof(double) || value == typeof(decimal) => new Dictionary<string, object?> { ["type"] = "number" },
             var value when value.IsEnum => new Dictionary<string, object?> { ["type"] = "string", ["enum"] = Enum.GetNames(value) },
             var value when value.IsArray => new Dictionary<string, object?> { ["type"] = "array", ["items"] = CreateSchema(value.GetElementType()!) },
+            var value when value.IsGenericType && value.GetGenericTypeDefinition() == typeof(IEnumerable<>) => new Dictionary<string, object?> { ["type"] = "array", ["items"] = CreateSchema(value.GetGenericArguments()[0]) },
             _ => new Dictionary<string, object?> { ["type"] = "object" }
         };
 
-        if (nullableType is not null)
+        if (nullableType is not null || isNullable)
         {
             ((Dictionary<string, object?>)schema)["nullable"] = true;
         }
 
         return schema;
     }
-
-    private static bool IsNullable(Type type) => !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 }

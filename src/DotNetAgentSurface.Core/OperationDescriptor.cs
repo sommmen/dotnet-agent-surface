@@ -36,6 +36,8 @@ public sealed class OperationDescriptor
 
 public sealed class OperationParameterDescriptor
 {
+    private static readonly NullabilityInfoContext NullabilityContext = new();
+
     internal OperationParameterDescriptor(ParameterInfo parameter)
     {
         Name = parameter.Name ?? throw new ArgumentException("Operation parameters must have names.", nameof(parameter));
@@ -43,6 +45,8 @@ public sealed class OperationParameterDescriptor
         IsOptional = parameter.IsOptional;
         DefaultValue = parameter.IsOptional ? parameter.DefaultValue : null;
         IsCancellationToken = parameter.ParameterType == typeof(CancellationToken);
+        IsNullable = Nullable.GetUnderlyingType(parameter.ParameterType) is not null ||
+            (!parameter.ParameterType.IsValueType && NullabilityContext.Create(parameter).ReadState != NullabilityState.NotNull);
     }
 
     public string Name { get; }
@@ -54,4 +58,6 @@ public sealed class OperationParameterDescriptor
     public object? DefaultValue { get; }
 
     public bool IsCancellationToken { get; }
+
+    public bool IsNullable { get; }
 }

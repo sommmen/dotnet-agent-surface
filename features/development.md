@@ -223,7 +223,7 @@ Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f9
 | Shared invocation | Coordinator | Core catalog | Completed | Binding and sync/async invocation tests passed (`3` tests) |
 | Schema generation | Coordinator | Core catalog | Completed | Stable supported-parameter schema test passed |
 | CLI adapter | Coordinator | Shared invocation, schema generation | Completed | CLI help, binding, and malformed-input tests passed |
-| MCP adapter | Coordinator | Shared invocation, schema generation | Blocked | Official SDK integration is deferred until the target-framework and package compatibility decision is made |
+| MCP adapter | Coordinator | Shared invocation, schema generation | Completed | Official `ModelContextProtocol` 2.2.0 adapter and stdio host implemented; tool discovery and invocation tests passed. Package compatibility verified for `net10.0`; stdio transport reserves stdout for protocol traffic. |
 | Skill generator | Coordinator | Core catalog, schema generation | Completed | Deterministic output and stale-file check tests passed |
 | Samples and packaging | Coordinator | Adapters and skill generator | Planned | Pending sample and target-framework validation |
 

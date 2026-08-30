@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DotNetAgentSurface.Core\DotNetAgentSurface.Core.csproj" />
     <ProjectReference Include="..\..\src\DotNetAgentSurface.CommandLine\DotNetAgentSurface.CommandLine.csproj" />
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.Mcp\DotNetAgentSurface.Mcp.csproj" />
   </ItemGroup>
 
 </Project>

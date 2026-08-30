@@ -228,7 +228,9 @@ Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f9
 | Skill generator | Coordinator | Core catalog, schema generation | Completed | Deterministic output and stale-file check tests passed |
 | Adapter policy equivalence | Coordinator | Shared policy pipeline, CLI adapter, MCP adapter | Completed | Same denying `IOperationInvocationPolicy` proven to block invocation identically (denial message propagated, underlying operation never executed) across direct Core invocation, the CLI adapter, and the MCP adapter (`23` tests total) |
 | MCP adapter error/annotation coverage | Coordinator | MCP adapter | Completed | Added focused tests for cancellation, missing required (non-nullable) arguments, reflected-operation exceptions, and `ReadOnlyHint`/`DestructiveHint` tool annotations |
-| Samples and packaging | Coordinator | Adapters and skill generator | Planned | Pending sample and target-framework validation |
+| Sample hosts | Coordinator | CLI adapter, MCP adapter | Completed | Added `samples/` with a shared `TaskTrackerService` (list/add/complete/remove-task, one `Dangerous` op) plus thin `tasktracker-cli` and `tasktracker-mcp` hosts that discover the same catalog. Smoke-tested: CLI `--help`/`add-task`/`list-tasks`/error path; MCP stdio `initialize` and `tools/list` round trips (clean stdout, correct schemas and safety annotations). Full suite still 23/23 passing. |
+| Framework compatibility | Coordinator | Core catalog | Planned | Everything currently targets `net10.0` only; roadmap's .NET Framework 4.6.2+ goal not yet investigated |
+| Packaging and docs | Coordinator | Sample hosts | Planned | NuGet packaging/versioning and a desktop/legacy .NET Framework integration example remain outstanding |
 
 > Orchestration note: this environment does not expose VS Code session-creation controls, so the coordinator is implementing and tracking the single-repository dependency chain directly in the current repository worktree. The intended final integration branch is `feature/initial-agent-surface`; no worker branches have been created.
 
@@ -276,9 +278,9 @@ Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f9
 
 ### 7. Samples and packaging
 
-- Add a small service shared by MCP and CLI sample hosts.
-- Add a desktop or legacy .NET Framework integration example.
-- Publish versioned packages with compatibility documentation.
+- [x] Add a small service shared by MCP and CLI sample hosts — see `samples/DotNetAgentSurface.Samples.TaskTracker` plus the `tasktracker-cli` and `tasktracker-mcp` hosts.
+- [ ] Add a desktop or legacy .NET Framework integration example.
+- [ ] Publish versioned packages with compatibility documentation.
 
 ## Testing strategy
 

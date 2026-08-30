@@ -4,6 +4,11 @@
     <Project Path="src/DotNetAgentSurface.Core/DotNetAgentSurface.Core.csproj" />
     <Project Path="src/DotNetAgentSurface.Mcp/DotNetAgentSurface.Mcp.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/DotNetAgentSurface.Samples.TaskTracker/DotNetAgentSurface.Samples.TaskTracker.csproj" />
+    <Project Path="samples/DotNetAgentSurface.Samples.Cli/DotNetAgentSurface.Samples.Cli.csproj" />
+    <Project Path="samples/DotNetAgentSurface.Samples.Mcp/DotNetAgentSurface.Samples.Mcp.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DotNetAgentSurface.Core.Tests/DotNetAgentSurface.Core.Tests.csproj" />
   </Folder>

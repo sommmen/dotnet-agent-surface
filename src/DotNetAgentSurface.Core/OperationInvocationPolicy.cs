@@ -17,7 +17,7 @@ public sealed record OperationPolicyResult(bool IsAllowed, string? Error)
 
     public static OperationPolicyResult Deny(string error)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(error);
+        Guard.ThrowIfNullOrWhiteSpace(error);
         return new(false, error);
     }
 }
@@ -28,7 +28,7 @@ public sealed class DangerousOperationConfirmationPolicy : IOperationInvocationP
     private readonly Func<OperationDescriptor, IReadOnlyDictionary<string, JsonElement>?, CancellationToken, ValueTask<bool>> _isConfirmed;
 
     public DangerousOperationConfirmationPolicy()
-        : this(static (_, _, _) => ValueTask.FromResult(false))
+        : this(static (_, _, _) => new ValueTask<bool>(false))
     {
     }
 

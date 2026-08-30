@@ -30,7 +30,10 @@ public sealed class McpOperationAdapter
         IReadOnlyDictionary<string, JsonElement>? arguments = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(name));
+        }
 
         var operation = _catalog.Operations.FirstOrDefault(
             operation => string.Equals(operation.Name, name, StringComparison.OrdinalIgnoreCase));

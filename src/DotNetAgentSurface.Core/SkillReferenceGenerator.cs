@@ -9,8 +9,8 @@ public sealed class SkillReferenceGenerator
 
     public void Generate(OperationCatalog catalog, string outputDirectory)
     {
-        ArgumentNullException.ThrowIfNull(catalog);
-        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        Guard.ThrowIfNull(catalog);
+        Guard.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         Directory.CreateDirectory(outputDirectory);
         File.WriteAllText(Path.Combine(outputDirectory, "SKILL.md"), RenderSkill(catalog), new UTF8Encoding(false));
@@ -20,8 +20,8 @@ public sealed class SkillReferenceGenerator
 
     public bool IsCurrent(OperationCatalog catalog, string outputDirectory)
     {
-        ArgumentNullException.ThrowIfNull(catalog);
-        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        Guard.ThrowIfNull(catalog);
+        Guard.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         return File.Exists(Path.Combine(outputDirectory, "SKILL.md"))
             && File.Exists(Path.Combine(outputDirectory, "commands.md"))

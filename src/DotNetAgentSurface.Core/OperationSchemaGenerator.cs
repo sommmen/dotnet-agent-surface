@@ -7,7 +7,7 @@ public sealed class OperationSchemaGenerator
 {
     public JsonDocument GenerateInputSchema(OperationDescriptor operation)
     {
-        ArgumentNullException.ThrowIfNull(operation);
+        Guard.ThrowIfNull(operation);
 
         var properties = new SortedDictionary<string, object?>(StringComparer.Ordinal);
         var required = new List<string>();
@@ -64,14 +64,12 @@ public sealed class OperationSchemaGenerator
         var nestedAncestors = new HashSet<Type>(ancestors ?? new HashSet<Type>()) { type };
         var properties = new SortedDictionary<string, object?>(StringComparer.Ordinal);
         var required = new List<string>();
-        var nullabilityContext = new NullabilityInfoContext();
 
         foreach (var property in type.GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
                      .Where(static property => property.CanRead && property.GetIndexParameters().Length == 0)
                      .OrderBy(static property => property.Name, StringComparer.Ordinal))
         {
-            var isNullable = Nullable.GetUnderlyingType(property.PropertyType) is not null ||
-                (!property.PropertyType.IsValueType && nullabilityContext.Create(property).ReadState != NullabilityState.NotNull);
+            var isNullable = NullabilityReader.IsNullable(property);
             properties.Add(property.Name, CreateSchema(property.PropertyType, isNullable, nestedAncestors));
             if (!isNullable)
             {

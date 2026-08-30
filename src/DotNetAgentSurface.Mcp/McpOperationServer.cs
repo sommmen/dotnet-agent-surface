@@ -17,7 +17,7 @@ public sealed class McpOperationServer
     {
         Handlers = new McpServerHandlers
         {
-            ListToolsHandler = (context, cancellationToken) => ValueTask.FromResult(new ListToolsResult
+            ListToolsHandler = (context, cancellationToken) => new ValueTask<ListToolsResult>(new ListToolsResult
             {
                 Tools = [.. _adapter.GetTools()]
             }),

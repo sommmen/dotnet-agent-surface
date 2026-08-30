@@ -43,9 +43,7 @@ public sealed class OperationParameterDescriptor
         IsOptional = parameter.IsOptional;
         DefaultValue = parameter.IsOptional ? parameter.DefaultValue : null;
         IsCancellationToken = parameter.ParameterType == typeof(CancellationToken);
-        var nullabilityContext = new NullabilityInfoContext();
-        IsNullable = Nullable.GetUnderlyingType(parameter.ParameterType) is not null ||
-            (!parameter.ParameterType.IsValueType && nullabilityContext.Create(parameter).ReadState != NullabilityState.NotNull);
+        IsNullable = NullabilityReader.IsNullable(parameter);
     }
 
     public string Name { get; }

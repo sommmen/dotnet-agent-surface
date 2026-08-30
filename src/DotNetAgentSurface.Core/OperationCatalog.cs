@@ -13,7 +13,7 @@ public sealed class OperationCatalog
 
     public static OperationCatalog Discover(params Type[] serviceTypes)
     {
-        ArgumentNullException.ThrowIfNull(serviceTypes);
+        Guard.ThrowIfNull(serviceTypes);
 
         var operations = serviceTypes
             .SelectMany(DiscoverOperations)
@@ -26,7 +26,7 @@ public sealed class OperationCatalog
 
     private static IEnumerable<OperationDescriptor> DiscoverOperations(Type serviceType)
     {
-        ArgumentNullException.ThrowIfNull(serviceType);
+        Guard.ThrowIfNull(serviceType);
 
         const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         return serviceType

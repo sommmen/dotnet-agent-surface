@@ -24,7 +24,7 @@ public sealed class OperationInvoker
         IReadOnlyDictionary<string, JsonElement>? inputs = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(operation);
+        Guard.ThrowIfNull(operation);
 
         try
         {

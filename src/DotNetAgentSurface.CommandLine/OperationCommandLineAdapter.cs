@@ -47,9 +47,9 @@ public sealed class OperationCommandLineAdapter
         }
     }
 
-    private string RenderHelp() => "Available operations:\n" + string.Join('\n', _catalog.Operations.Select(operation => $"  {operation.Name,-20} {operation.Description}"));
+    private string RenderHelp() => "Available operations:\n" + string.Join("\n", _catalog.Operations.Select(operation => $"  {operation.Name,-20} {operation.Description}"));
 
-    private static string RenderOperationHelp(OperationDescriptor operation) => $"{operation.Name}: {operation.Description}\n" + string.Join('\n', operation.Parameters.Where(parameter => !parameter.IsCancellationToken).Select(parameter => $"  --{parameter.Name} <{parameter.ParameterType.Name}>{(parameter.IsOptional ? " (optional)" : string.Empty)}"));
+    private static string RenderOperationHelp(OperationDescriptor operation) => $"{operation.Name}: {operation.Description}\n" + string.Join("\n", operation.Parameters.Where(parameter => !parameter.IsCancellationToken).Select(parameter => $"  --{parameter.Name} <{parameter.ParameterType.Name}>{(parameter.IsOptional ? " (optional)" : string.Empty)}"));
 
     private static IReadOnlyDictionary<string, JsonElement> ParseInputs(string[] arguments)
     {

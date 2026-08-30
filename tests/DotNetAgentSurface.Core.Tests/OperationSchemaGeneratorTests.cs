@@ -14,10 +14,16 @@ public sealed class OperationSchemaGeneratorTests
         Assert.Equal("string", schema.RootElement.GetProperty("properties").GetProperty("name").GetProperty("type").GetString());
         Assert.True(schema.RootElement.GetProperty("properties").GetProperty("name").GetProperty("nullable").GetBoolean());
         Assert.Equal("array", schema.RootElement.GetProperty("properties").GetProperty("tags").GetProperty("type").GetString());
+        var settings = schema.RootElement.GetProperty("properties").GetProperty("settings");
+        Assert.Equal("object", settings.GetProperty("type").GetString());
+        Assert.Equal("string", settings.GetProperty("properties").GetProperty("Label").GetProperty("type").GetString());
+        Assert.True(settings.GetProperty("properties").GetProperty("Notes").GetProperty("nullable").GetBoolean());
+        Assert.Equal("Label", settings.GetProperty("required")[0].GetString());
         Assert.False(schema.RootElement.GetProperty("properties").TryGetProperty("cancellationToken", out _));
         Assert.Collection(
             schema.RootElement.GetProperty("required").EnumerateArray(),
             item => Assert.Equal("count", item.GetString()),
+            item => Assert.Equal("settings", item.GetString()),
             item => Assert.Equal("tags", item.GetString()),
             item => Assert.Equal("title", item.GetString()));
     }
@@ -25,8 +31,10 @@ public sealed class OperationSchemaGeneratorTests
     private sealed class SchemaOperations
     {
         [AgentOperation("schema", "Creates a schema")]
-        public void Schema(int count, string title, string? name, IEnumerable<string> tags, CancellationToken cancellationToken)
+        public void Schema(int count, string title, string? name, IEnumerable<string> tags, SchemaSettings settings, CancellationToken cancellationToken)
         {
         }
     }
+
+    private sealed record SchemaSettings(string Label, string? Notes);
 }

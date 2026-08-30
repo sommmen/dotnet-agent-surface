@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DotNetAgentSurface.CommandLine/DotNetAgentSurface.CommandLine.csproj" />
+    <Project Path="src/DotNetAgentSurface.Core/DotNetAgentSurface.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DotNetAgentSurface.Core.Tests/DotNetAgentSurface.Core.Tests.csproj" />
+  </Folder>
+</Solution>

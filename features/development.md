@@ -213,6 +213,22 @@ Names remain provisional.
 
 ## Delivery milestones
 
+## Implementation tracking
+
+Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f969cad4f7c8f`.
+
+| Milestone | Owner | Dependency | Status | Validation / handoff |
+|---|---|---|---|---|
+| Core catalog | Coordinator | None | Completed | Catalog discovery and diagnostics tests passed (`4` tests) |
+| Shared invocation | Coordinator | Core catalog | Completed | Binding and sync/async invocation tests passed (`3` tests) |
+| Schema generation | Coordinator | Core catalog | Completed | Stable supported-parameter schema test passed |
+| CLI adapter | Coordinator | Shared invocation, schema generation | Completed | CLI help, binding, and malformed-input tests passed |
+| MCP adapter | Coordinator | Shared invocation, schema generation | Planned | Pending stdio, schema, and invocation tests |
+| Skill generator | Coordinator | Core catalog, schema generation | Completed | Deterministic output and stale-file check tests passed |
+| Samples and packaging | Coordinator | Adapters and skill generator | Planned | Pending sample and target-framework validation |
+
+> Orchestration note: this environment does not expose VS Code session-creation controls, so the coordinator is implementing and tracking the single-repository dependency chain directly in the current repository worktree. The intended final integration branch is `feature/initial-agent-surface`; no worker branches have been created.
+
 ### 1. Core catalog
 
 - Define operation attributes and descriptor models.

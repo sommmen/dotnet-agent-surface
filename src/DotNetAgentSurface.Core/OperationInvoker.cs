@@ -7,11 +7,16 @@ public sealed class OperationInvoker
 {
     private readonly IServiceProvider _services;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly IReadOnlyList<IOperationInvocationPolicy> _policies;
 
-    public OperationInvoker(IServiceProvider services, JsonSerializerOptions? jsonOptions = null)
+    public OperationInvoker(
+        IServiceProvider services,
+        JsonSerializerOptions? jsonOptions = null,
+        IEnumerable<IOperationInvocationPolicy>? policies = null)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _jsonOptions = jsonOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        _policies = (policies ?? []).ToArray();
     }
 
     public async ValueTask<OperationInvocationResult> InvokeAsync(
@@ -23,6 +28,15 @@ public sealed class OperationInvoker
 
         try
         {
+            foreach (var policy in _policies)
+            {
+                var decision = await policy.EvaluateAsync(operation, inputs, cancellationToken).ConfigureAwait(false);
+                if (!decision.IsAllowed)
+                {
+                    return OperationInvocationResult.Failure(decision.Error ?? $"Operation '{operation.Name}' was denied by policy.");
+                }
+            }
+
             var arguments = Bind(operation, inputs, cancellationToken);
             var target = ResolveTarget(operation);
             var rawResult = operation.Method.Invoke(target, arguments);

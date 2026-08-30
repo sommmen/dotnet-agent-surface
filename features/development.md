@@ -220,7 +220,8 @@ Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f9
 | Milestone | Owner | Dependency | Status | Validation / handoff |
 |---|---|---|---|---|
 | Core catalog | Coordinator | None | Completed | Catalog discovery and diagnostics tests passed (`4` tests) |
-| Shared invocation | Coordinator | Core catalog | Completed | Binding and sync/async invocation tests passed (`3` tests) |
+| Shared invocation | Coordinator | Core catalog | Completed | Binding, sync/async invocation, and shared policy pipeline tests passed |
+| Shared policy pipeline | Coordinator | Shared invocation | Completed | `IOperationInvocationPolicy` runs before binding and invocation; dangerous operations can require explicit confirmation |
 | Schema generation | Coordinator | Core catalog | Completed | Stable supported-parameter schema test passed |
 | CLI adapter | Coordinator | Shared invocation, schema generation | Completed | CLI help, binding, and malformed-input tests passed |
 | MCP adapter | Coordinator | Shared invocation, schema generation | Completed | Official `ModelContextProtocol` 2.2.0 adapter and stdio host implemented; tool discovery and invocation tests passed. Package compatibility verified for `net10.0`; stdio transport reserves stdout for protocol traffic. |

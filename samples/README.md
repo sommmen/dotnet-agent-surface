@@ -15,6 +15,11 @@ DotNetAgentSurface, without duplicating any operation definitions.
   process invocation via `OperationCommandLineAdapter`.
 - **DotNetAgentSurface.Samples.Mcp** (`tasktracker-mcp`) — discovers the same
   catalog and exposes it as an MCP server over stdio via `McpOperationServer`.
+- **DotNetAgentSurface.Samples.LegacyDesktop** (`legacy-desktop-cli`) — a
+  separate, self-contained sample that targets `net472` instead of `net10.0`
+  to demonstrate `DotNetAgentSurface.Core` and `DotNetAgentSurface.CommandLine`
+  running on real .NET Framework, consuming their `netstandard2.0` build. See
+  the "Legacy .NET Framework sample" section below.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI
@@ -52,3 +57,25 @@ directly into any MCP-compatible client. For example, after sending an
 `initialize` request and an `initialized` notification, a `tools/list` request
 returns the four operations above with their generated JSON schemas and safety
 annotations.
+
+## Legacy .NET Framework sample
+
+`DotNetAgentSurface.Samples.LegacyDesktop` targets `net472` and hosts a
+different, minimal `GreeterService` (rather than reusing `TaskTrackerService`,
+which targets `net10.0` and would not compile for `net472`). It exercises the
+same `OperationCatalog` discovery and `OperationCommandLineAdapter` execution
+path as the other CLI sample, but against the `netstandard2.0` build of
+`DotNetAgentSurface.Core`/`DotNetAgentSurface.CommandLine` — the same binaries
+a WinForms, WPF, or console .NET Framework 4.6.1+ application would reference.
+
+```powershell
+dotnet run --project samples\DotNetAgentSurface.Samples.LegacyDesktop -- --help
+dotnet run --project samples\DotNetAgentSurface.Samples.LegacyDesktop -- greet --name "Ada" --honorific "Dr."
+dotnet run --project samples\DotNetAgentSurface.Samples.LegacyDesktop -- count-letters --name "banana" --letter a
+```
+
+On Windows with the .NET Framework installed, `dotnet run` builds and launches
+`net472` executables directly. The build also produces a standalone
+`legacy-desktop-cli.exe` under `bin\Debug\net472\` that can be run without the
+`dotnet` host, or launched from a WinForms/WPF `net472`/`net48` host
+application the same way.

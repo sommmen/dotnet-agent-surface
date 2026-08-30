@@ -119,4 +119,4 @@ No packages are available yet. The first milestone is a minimal catalog and invo
 
 ## License
 
-A license has not yet been selected.
+[MIT](LICENSE).

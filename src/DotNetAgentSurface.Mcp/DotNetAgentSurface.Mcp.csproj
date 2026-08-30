@@ -13,7 +13,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <PackageId>DotNetAgentSurface.Mcp</PackageId>
+    <Description>Hosts a DotNetAgentSurface operation catalog as a Model Context Protocol (MCP) server, deriving tool definitions, JSON schemas, and error handling from the same shared metadata as the CLI adapter.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="PolySharp" Version="1.14.1">

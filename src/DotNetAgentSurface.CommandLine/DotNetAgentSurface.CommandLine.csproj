@@ -10,7 +10,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <PackageId>DotNetAgentSurface.CommandLine</PackageId>
+    <Description>Generates a token-efficient, AXI-style command-line adapter over a DotNetAgentSurface operation catalog, including TOON output, JSON mode, and confirmation-policy enforcement.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="PolySharp" Version="1.14.1">

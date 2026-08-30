@@ -5,7 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <PackageId>DotNetAgentSurface.Core</PackageId>
+    <Description>Attribute-driven operation catalog, invocation pipeline, policy enforcement, and schema generation shared by all DotNetAgentSurface protocol adapters.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Polyfills compiler "magic types" (IsExternalInit, CallerArgumentExpressionAttribute, etc.) so that

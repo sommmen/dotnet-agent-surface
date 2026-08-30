@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Demonstrates that DotNetAgentSurface.Core and DotNetAgentSurface.CommandLine are consumable from a real
+    .NET Framework host (not just netstandard2.0 in the abstract). This project intentionally targets net472
+    rather than net10.0: it exercises the netstandard2.0 build of the referenced libraries, the same one a
+    WinForms/WPF/console .NET Framework 4.7.2+ application would use.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.Core\DotNetAgentSurface.Core.csproj" />
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.CommandLine\DotNetAgentSurface.CommandLine.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>legacy-desktop-cli</AssemblyName>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

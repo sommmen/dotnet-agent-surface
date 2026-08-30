@@ -8,6 +8,7 @@
     <Project Path="samples/DotNetAgentSurface.Samples.TaskTracker/DotNetAgentSurface.Samples.TaskTracker.csproj" />
     <Project Path="samples/DotNetAgentSurface.Samples.Cli/DotNetAgentSurface.Samples.Cli.csproj" />
     <Project Path="samples/DotNetAgentSurface.Samples.Mcp/DotNetAgentSurface.Samples.Mcp.csproj" />
+    <Project Path="samples/DotNetAgentSurface.Samples.LegacyDesktop/DotNetAgentSurface.Samples.LegacyDesktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DotNetAgentSurface.Core.Tests/DotNetAgentSurface.Core.Tests.csproj" />

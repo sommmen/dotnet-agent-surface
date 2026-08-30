@@ -8,10 +8,10 @@ namespace DotNetAgentSurface.Core;
 /// <see cref="CustomAttributeData"/>.
 /// </summary>
 /// <remarks>
-/// <see cref="System.Reflection.NullabilityInfoContext"/> is unavailable on <c>netstandard2.0</c>. The C# compiler
+/// <c>System.Reflection.NullabilityInfoContext</c> is unavailable on <c>netstandard2.0</c>. The C# compiler
 /// emits these two attributes into IL metadata identically regardless of target framework, so reading them
-/// directly reproduces <see cref="System.Reflection.NullabilityInfoContext"/>'s top-level nullability detection
-/// uniformly across every target framework this library supports, with no conditional compilation required.
+/// directly reproduces <c>NullabilityInfoContext</c>'s top-level nullability detection uniformly across every
+/// target framework this library supports, with no conditional compilation required.
 /// </remarks>
 internal static class NullabilityReader
 {

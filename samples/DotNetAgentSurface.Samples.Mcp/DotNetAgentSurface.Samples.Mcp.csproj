@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.Core\DotNetAgentSurface.Core.csproj" />
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.Mcp\DotNetAgentSurface.Mcp.csproj" />
+    <ProjectReference Include="..\DotNetAgentSurface.Samples.TaskTracker\DotNetAgentSurface.Samples.TaskTracker.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>tasktracker-mcp</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

@@ -192,13 +192,22 @@ Unsupported patterns should fail during catalog construction, not during the fir
 
 ## Target frameworks and dependencies
 
-The intended compatibility baseline is .NET Framework 4.6.2 or later plus modern .NET. Before project files are finalized, each dependency and transitive dependency must be tested against all selected target frameworks.
+The intended compatibility baseline is .NET Framework 4.6.2 or later plus modern .NET. In practice this is implemented as `net10.0;netstandard2.0` multi-targeting for `DotNetAgentSurface.Core`, `DotNetAgentSurface.CommandLine`, and `DotNetAgentSurface.Mcp`: `netstandard2.0` is consumable from .NET Framework 4.6.1+ (a superset of the 4.6.2+ goal) and avoids juggling several raw `net46x` TFMs individually. `ModelContextProtocol` 2.2.0 was confirmed to already target `netstandard2.0` alongside `net8.0`/`net9.0`/`net10.0`, so it was not a blocker.
 
-Candidate dependencies:
+Dependencies actually used:
 
 - `ModelContextProtocol` for the MCP adapter;
-- `System.CommandLine` for the CLI adapter;
-- `NJsonSchema` for JSON Schema generation.
+- `System.Text.Json` for JSON Schema generation and (de)serialization (referenced explicitly on `netstandard2.0`, where it isn't part of the shared framework; picked up transitively via `ModelContextProtocol` on `Mcp`);
+- `PolySharp` (source-generator, build-time only) to polyfill C# language features (`init`, `record`, `CallerArgumentExpression`) on `netstandard2.0`.
+
+The CLI adapter is hand-rolled directly on top of `System.CommandLine`-style parsing conventions rather than taking a package dependency; JSON Schema generation is done directly against `System.Text.Json.Nodes` rather than via `NJsonSchema`.
+
+Two modern-only BCL APIs had no netstandard2.0 equivalent and were replaced with small hand-written, TFM-uniform helpers (no `#if`, so the exact same source compiles and behaves identically everywhere):
+
+- `ArgumentNullException.ThrowIfNull` / `ArgumentException.ThrowIfNullOrWhiteSpace` → internal `Guard.ThrowIfNull` / `Guard.ThrowIfNullOrWhiteSpace` (using `CallerArgumentExpression` for the parameter name), in `DotNetAgentSurface.Core/Guard.cs`. The single call site living in the separate `Mcp` assembly was inlined instead of exposing `Guard` via `InternalsVisibleTo`.
+- `NullabilityInfoContext` (unavailable on `netstandard2.0`) → internal `NullabilityReader.IsNullable(ParameterInfo | PropertyInfo)`, in `DotNetAgentSurface.Core/NullabilityReader.cs`, which reads the compiler-emitted `NullableAttribute`/`NullableContextAttribute` metadata directly via `CustomAttributeData`. This metadata is present in IL regardless of target framework, so the algorithm produces identical results on every TFM. Validated against real `NullabilityInfoContext` output across 12 hand-picked cases (value types, reference types, generics, oblivious code) before adoption, and indirectly covered in CI by the existing schema-generator tests (nullable/required property and parameter detection).
+
+A couple of other modern-only members were swapped for their down-level equivalents in the same spirit: `ValueTask.FromResult(x)` → `new ValueTask<T>(x)`, and the `char`-overload of `string.Join('\n', ...)` → the `string`-overload `string.Join("\n", ...)`.
 
 The core package should keep adapter dependencies isolated so consumers pay only for the surfaces they use. A likely package/project split is:
 
@@ -212,6 +221,27 @@ DotNetAgentSurface.Skills
 Names remain provisional.
 
 ## Delivery milestones
+
+## Implementation tracking
+
+Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f969cad4f7c8f`.
+
+| Milestone | Owner | Dependency | Status | Validation / handoff |
+|---|---|---|---|---|
+| Core catalog | Coordinator | None | Completed | Catalog discovery and diagnostics tests passed (`4` tests) |
+| Shared invocation | Coordinator | Core catalog | Completed | Binding, sync/async invocation, and shared policy pipeline tests passed |
+| Shared policy pipeline | Coordinator | Shared invocation | Completed | `IOperationInvocationPolicy` runs before binding and invocation; dangerous operations can require explicit confirmation |
+| Schema generation | Coordinator | Core catalog | Completed | Stable schemas include nullable reference-type metadata, `IEnumerable<T>` array support, and nested DTO/record object schemas (property-level `required`/`nullable`, cycle-safe recursion, `additionalProperties: false`); focused tests passed |
+| CLI adapter | Coordinator | Shared invocation, schema generation | Completed | CLI help, binding, and malformed-input tests passed |
+| MCP adapter | Coordinator | Shared invocation, schema generation | Completed | Official `ModelContextProtocol` 2.2.0 adapter and stdio host implemented; tool discovery and invocation tests passed. Package compatibility verified for `net10.0`; stdio transport reserves stdout for protocol traffic. |
+| Skill generator | Coordinator | Core catalog, schema generation | Completed | Deterministic output and stale-file check tests passed |
+| Adapter policy equivalence | Coordinator | Shared policy pipeline, CLI adapter, MCP adapter | Completed | Same denying `IOperationInvocationPolicy` proven to block invocation identically (denial message propagated, underlying operation never executed) across direct Core invocation, the CLI adapter, and the MCP adapter (`23` tests total) |
+| MCP adapter error/annotation coverage | Coordinator | MCP adapter | Completed | Added focused tests for cancellation, missing required (non-nullable) arguments, reflected-operation exceptions, and `ReadOnlyHint`/`DestructiveHint` tool annotations |
+| Sample hosts | Coordinator | CLI adapter, MCP adapter | Completed | Added `samples/` with a shared `TaskTrackerService` (list/add/complete/remove-task, one `Dangerous` op) plus thin `tasktracker-cli` and `tasktracker-mcp` hosts that discover the same catalog. Smoke-tested: CLI `--help`/`add-task`/`list-tasks`/error path; MCP stdio `initialize` and `tools/list` round trips (clean stdout, correct schemas and safety annotations). Full suite still 23/23 passing. |
+| Framework compatibility | Coordinator | Core catalog | Completed | `Core`, `CommandLine`, and `Mcp` now multi-target `net10.0;netstandard2.0` (covers .NET Framework 4.6.1+, superset of the 4.6.2+ goal). Added `PolySharp` for language-feature polyfills, plus hand-written TFM-uniform `Guard` (replaces `ArgumentNullException.ThrowIfNull`/`ArgumentException.ThrowIfNullOrWhiteSpace`) and `NullabilityReader` (replaces `NullabilityInfoContext`, reading `NullableAttribute`/`NullableContextAttribute` metadata directly). Zero `#if` conditionals needed anywhere. Full solution builds clean (0 warnings/errors) across both TFMs; all 23 tests still pass; both sample hosts re-smoke-tested (CLI `--help`/`add-task`/`list-tasks`, MCP build) and still work correctly, including nullable-vs-required parameter distinction. |
+| Packaging and docs | Coordinator | Sample hosts, Framework compatibility | Completed | Added `samples/DotNetAgentSurface.Samples.LegacyDesktop` (`legacy-desktop-cli`, `net472`), a self-contained `GreeterService` exercised through `OperationCatalog`/`OperationCommandLineAdapter` against the `netstandard2.0` build of Core/CommandLine; built and run successfully against the real .NET Framework 4.7.2 runtime installed on this machine (`greet`, `count-letters`, and the required-parameter error path all verified). Added `src/Directory.Build.props` with shared NuGet metadata (`Version=0.1.0-preview.1`, MIT `PackageLicenseExpression`, `PackageReadmeFile`, source-linked repository info, symbol packages, `GenerateDocumentationFile`) applied to `Core`/`CommandLine`/`Mcp`; added per-project `PackageId`/`Description`; added a root [LICENSE](../LICENSE) (MIT) and updated `README.md`'s license section. Verified `dotnet pack` end-to-end (correct nuspec, embedded README, per-TFM dependency groups, XML docs). Packages remain `IsPackable=false` by default pending an actual decision to publish to a feed. Full solution builds clean with 0 warnings/errors and all 23 tests pass. |
+
+> Orchestration note: this environment does not expose VS Code session-creation controls, so the coordinator is implementing and tracking the single-repository dependency chain directly in the current repository worktree. The intended final integration branch is `feature/initial-agent-surface`; no worker branches have been created.
 
 ### 1. Core catalog
 
@@ -257,9 +287,9 @@ Names remain provisional.
 
 ### 7. Samples and packaging
 
-- Add a small service shared by MCP and CLI sample hosts.
-- Add a desktop or legacy .NET Framework integration example.
-- Publish versioned packages with compatibility documentation.
+- [x] Add a small service shared by MCP and CLI sample hosts — see `samples/DotNetAgentSurface.Samples.TaskTracker` plus the `tasktracker-cli` and `tasktracker-mcp` hosts.
+- [x] Add a desktop or legacy .NET Framework integration example — see `samples/DotNetAgentSurface.Samples.LegacyDesktop` (`legacy-desktop-cli`, targets `net472`, consumes the `netstandard2.0` build of Core/CommandLine, built and run successfully against the real .NET Framework 4.7.2 runtime).
+- [x] Publish versioned packages with compatibility documentation — `Core`, `CommandLine`, and `Mcp` now carry full NuGet metadata (`PackageId`, `Description`, MIT `PackageLicenseExpression`, `PackageReadmeFile`, source-linked `RepositoryUrl`, symbol packages) via a shared `src/Directory.Build.props`; versioning starts at `0.1.0-preview.1` to signal pre-release/exploratory status. `dotnet pack` verified end-to-end (nuspec, README, XML docs, and per-TFM dependency groups all correct in the produced `.nupkg`/`.snupkg`). Packages are intentionally left `IsPackable=false` by default (flip to `true`, or drop an explicit `-p:IsPackable=true`, when actual publishing to a feed is decided) since no package has been published yet and no feed/CI publish step exists. The repository root [LICENSE](../LICENSE) now contains the MIT text and `README.md`'s license section links to it.
 
 ## Testing strategy
 

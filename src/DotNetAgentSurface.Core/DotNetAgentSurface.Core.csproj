@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;netstandard2.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>DotNetAgentSurface.Core</PackageId>
+    <Description>Attribute-driven operation catalog, invocation pipeline, policy enforcement, and schema generation shared by all DotNetAgentSurface protocol adapters.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Polyfills compiler "magic types" (IsExternalInit, CallerArgumentExpressionAttribute, etc.) so that
+         records, init-only setters, and CallerArgumentExpression compile on netstandard2.0. Source-generated,
+         no runtime dependency is added to consumers. -->
+    <PackageReference Include="PolySharp" Version="1.14.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <!-- System.Text.Json is part of the shared framework on net10.0, but is a separate package on netstandard2.0. -->
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>

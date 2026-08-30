@@ -1,0 +1,40 @@
+<Project>
+
+  <!--
+    Shared packaging metadata for every publishable library under src/. Kept out of the individual
+    csproj files so version bumps and metadata changes happen in one place. Samples and tests live
+    outside src/ and are unaffected (each already sets <IsPackable>false</IsPackable> explicitly, and
+    MSBuild only walks up from a project's own directory to find Directory.Build.props, so this file
+    is never picked up by samples/ or tests/).
+  -->
+  <PropertyGroup>
+    <Version>0.1.0-preview.1</Version>
+    <Authors>dotnet-agent-surface contributors</Authors>
+    <Company>dotnet-agent-surface contributors</Company>
+    <PackageProjectUrl>https://github.com/sommmen/dotnet-agent-surface</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sommmen/dotnet-agent-surface</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>agent;mcp;model-context-protocol;cli;ai;llm</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      CS1591 (missing XML doc comment) is intentionally suppressed for now: GenerateDocumentationFile
+      is still worth enabling (it produces the .xml IntelliSense file shipped in the package), but the
+      public surface doesn't have full XML doc coverage yet. Revisit once docs are written.
+    -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!--
+      This project is pre-release, exploratory, and not yet published to any feed. Setting
+      IsPackable false keeps `dotnet pack`/CI from producing packages that could be mistaken for a
+      real release until a deliberate decision is made to publish. Flip to true (or remove this
+      line, since it defaults to true for library projects) when publishing is intended.
+    -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

@@ -323,6 +323,8 @@ The following should be resolved with prototypes before the public API is stabil
 - build-time generation versus an explicit generator command;
 - package names and namespace conventions.
 
+The initial implementation resolved most of these pragmatically rather than through separate prototypes: the target framework matrix landed on `net10.0;netstandard2.0` (with a real `net472` legacy sample validating downlevel compatibility); discovery uses attribute-based annotation; the shared policy pipeline covers safety-level vocabulary and non-interactive confirmation; schema representation lives in the core catalog model; dependency injection is left to the consumer's container via constructor injection rather than a bespoke abstraction; generation is build-time via the source generator/skill tooling; and package names/namespaces follow the `DotnetAgentSurface.*` convention established across the solution's projects. Two items remain genuinely unresolved and are **not** addressed by the current implementation: support for overloaded methods and operation aliases, and command hierarchy/collision rules for categories beyond the simple flat structure already in place.
+
 ## Definition of an initial usable release
 
 The first usable release should let a consumer annotate a simple service method, build a validated catalog, expose it through both an MCP stdio host and a CLI, and generate a complete skill directory. A test must demonstrate that all outputs originate from the same descriptor and invoke the same service through the same policy pipeline.

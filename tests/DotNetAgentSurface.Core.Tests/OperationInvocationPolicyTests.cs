@@ -21,6 +21,21 @@ public sealed class OperationInvocationPolicyTests
     }
 
     [Fact]
+    public async Task InvokeAsync_allows_dangerous_operation_when_confirmation_policy_approves_it()
+    {
+        var operations = new DangerousOperations();
+        var operation = OperationCatalog.Discover(typeof(DangerousOperations)).Operations.Single();
+        var invoker = new OperationInvoker(
+            new SingleServiceProvider(operations),
+            policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
+
+        var result = await invoker.InvokeAsync(operation);
+
+        Assert.True(result.Succeeded);
+        Assert.True(operations.WasInvoked);
+    }
+
+    [Fact]
     public async Task InvokeAsync_runs_custom_policy_before_binding_and_invocation()
     {
         var operations = new DangerousOperations();

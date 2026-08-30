@@ -25,11 +25,31 @@ public sealed record OperationPolicyResult(bool IsAllowed, string? Error)
 /// <summary>Requires a registered policy to explicitly approve dangerous operations.</summary>
 public sealed class DangerousOperationConfirmationPolicy : IOperationInvocationPolicy
 {
-    public ValueTask<OperationPolicyResult> EvaluateAsync(
+    private readonly Func<OperationDescriptor, IReadOnlyDictionary<string, JsonElement>?, CancellationToken, ValueTask<bool>> _isConfirmed;
+
+    public DangerousOperationConfirmationPolicy()
+        : this(static (_, _, _) => ValueTask.FromResult(false))
+    {
+    }
+
+    public DangerousOperationConfirmationPolicy(
+        Func<OperationDescriptor, IReadOnlyDictionary<string, JsonElement>?, CancellationToken, ValueTask<bool>> isConfirmed)
+    {
+        _isConfirmed = isConfirmed ?? throw new ArgumentNullException(nameof(isConfirmed));
+    }
+
+    public async ValueTask<OperationPolicyResult> EvaluateAsync(
         OperationDescriptor operation,
         IReadOnlyDictionary<string, JsonElement>? inputs,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(operation.SafetyLevel == AgentSafetyLevel.Dangerous
-            ? OperationPolicyResult.Deny($"Operation '{operation.Name}' requires explicit confirmation.")
-            : OperationPolicyResult.Allow());
+        CancellationToken cancellationToken = default)
+    {
+        if (operation.SafetyLevel != AgentSafetyLevel.Dangerous)
+        {
+            return OperationPolicyResult.Allow();
+        }
+
+        return await _isConfirmed(operation, inputs, cancellationToken).ConfigureAwait(false)
+            ? OperationPolicyResult.Allow()
+            : OperationPolicyResult.Deny($"Operation '{operation.Name}' requires explicit confirmation.");
+    }
 }

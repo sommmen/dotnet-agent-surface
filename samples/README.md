@@ -20,11 +20,37 @@ DotNetAgentSurface, without duplicating any operation definitions.
   to demonstrate `DotNetAgentSurface.Core` and `DotNetAgentSurface.CommandLine`
   running on real .NET Framework, consuming their `netstandard2.0` build. See
   the "Legacy .NET Framework sample" section below.
+- **DotNetAgentSurface.Samples.AspNetCore** — a modern minimal API host that
+  exposes the same `TaskTrackerService` catalog through HTTP. It uses ASP.NET
+  Core dependency injection and delegates discovery and invocation to
+  `OperationCatalog` and `OperationInvoker`.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI
 invocations. Run multiple operations in the same process (e.g. through the
 MCP host, which stays alive) to see state changes reflected.
+
+## Running the ASP.NET Core sample
+
+```powershell
+dotnet run --project samples\DotNetAgentSurface.Samples.AspNetCore
+```
+
+The app listens on the URLs printed at startup. Its HTTP surface includes:
+
+- `GET /operations` — lists the catalog's operation metadata.
+- `GET /operations/{name}` — gets metadata for one operation, such as
+  `/operations/add-task`.
+- `POST /operations/{name}` — invokes an operation with a JSON object whose
+  properties map to its parameters.
+
+For example, once the app is running:
+
+```powershell
+Invoke-RestMethod http://localhost:5000/operations
+Invoke-RestMethod http://localhost:5000/operations/add-task -Method Post -ContentType 'application/json' -Body '{"title":"Write docs"}'
+Invoke-RestMethod http://localhost:5000/operations/list-tasks -Method Post -ContentType 'application/json' -Body '{}'
+```
 
 ## Running the CLI sample
 

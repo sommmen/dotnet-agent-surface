@@ -4,6 +4,7 @@
     <Project Path="src/DotNetAgentSurface.Core/DotNetAgentSurface.Core.csproj" />
     <Project Path="src/DotNetAgentSurface.AspNetCore/DotNetAgentSurface.AspNetCore.csproj" />
     <Project Path="src/DotNetAgentSurface.Mcp/DotNetAgentSurface.Mcp.csproj" />
+    <Project Path="src/DotNetAgentSurface.Hangfire/DotNetAgentSurface.Hangfire.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/DotNetAgentSurface.Samples.TaskTracker/DotNetAgentSurface.Samples.TaskTracker.csproj" />
@@ -17,5 +18,6 @@
     <Project Path="tests/DotNetAgentSurface.CommandLine.Tests/DotNetAgentSurface.CommandLine.Tests.csproj" />
     <Project Path="tests/DotNetAgentSurface.Core.Tests/DotNetAgentSurface.Core.Tests.csproj" />
     <Project Path="tests/DotNetAgentSurface.AspNetCore.Tests/DotNetAgentSurface.AspNetCore.Tests.csproj" />
+    <Project Path="tests/DotNetAgentSurface.Hangfire.Tests/DotNetAgentSurface.Hangfire.Tests.csproj" />
   </Folder>
 </Solution>

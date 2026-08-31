@@ -39,7 +39,7 @@ and calls it out here rather than guessing silently:
 > pipeline — such a job would fail if invoked directly.
 >
 > The design below resolves this by **never invoking Hangfire job methods directly**. Discovered jobs are
-> invoked through `IRecurringJobManager.TriggerJob(id)`, Hangfire's own public API for firing a job
+> invoked through `IRecurringJobManager.Trigger(id)`, Hangfire's own public API for firing a job
 > on-demand. This re-enters Hangfire's normal activation/execution pipeline (queueing, `JobActivator`,
 > `PerformContext`, retries, logging) exactly as a scheduled firing would. If the real concern was
 > something else (for example, duplicate/overlapping execution, long-running jobs blocking a
@@ -316,7 +316,7 @@ Following the numbered-milestone convention already used in
 | Milestone | Dependency | Scope |
 |---|---|---|
 | MCP tool ingestion | MCP adapter (existing) | `AddMcpServerTools(Assembly)` reflecting `[McpServerToolType]`/`[McpServerTool]` into `OperationCatalogBuilder`; mapping table above; tests proving a `[McpServerTool]`-only method appears correctly in CLI/skill output, not just MCP |
-| Hangfire recurring job discovery | Shared invocation, shared policy pipeline (existing) | `DotNetAgentSurface.Hangfire` package; `AddHangfireRecurringJobs(...)`; `TriggerJob`-based invocation; default `Confirm` safety level; optional enrichment attribute; tests against `Hangfire.InMemory` storage |
+| Hangfire recurring job discovery | Shared invocation, shared policy pipeline (existing) | `DotNetAgentSurface.Hangfire` package; `AddHangfireRecurringJobs(...)`; `Trigger`-based invocation; default `Confirm` safety level; optional enrichment callback; tests against `Hangfire.InMemory` storage |
 | ASP.NET Core endpoint discovery | Shared invocation, shared policy pipeline (existing) | `DotNetAgentSurface.AspNetCore` package; `ApiExplorer`-based discovery; in-process invocation via synthesized `HttpContext`/`TestHost`-style execution; tests covering both MVC and Minimal API endpoints |
 | Endpoint authorization policy | ASP.NET Core endpoint discovery | `AspNetCoreEndpointAuthorizationPolicy` implementing `IOperationInvocationPolicy`; default-deny for `[Authorize]`-protected endpoints without supplied credentials; explicit opt-in path documented; tests proving an authorized endpoint is denied without credentials and allowed with a valid supplied principal |
 | Sample hosts | All three above | Small samples demonstrating each discovery source feeding one catalog, following the existing `samples/` pattern |

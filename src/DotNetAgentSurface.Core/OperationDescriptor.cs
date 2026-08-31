@@ -12,6 +12,7 @@ public sealed class OperationDescriptor
         Category = operation.Category;
         SafetyLevel = operation.SafetyLevel;
         Examples = Array.AsReadOnly(operation.Examples);
+        Aliases = Array.AsReadOnly(operation.Aliases);
         Parameters = Array.AsReadOnly(method.GetParameters().Select(static parameter => new OperationParameterDescriptor(parameter)).ToArray());
     }
 
@@ -24,6 +25,8 @@ public sealed class OperationDescriptor
     public AgentSafetyLevel SafetyLevel { get; }
 
     public IReadOnlyList<string> Examples { get; }
+
+    public IReadOnlyList<string> Aliases { get; }
 
     public MethodInfo Method { get; }
 

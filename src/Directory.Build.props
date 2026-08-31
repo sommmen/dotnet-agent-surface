@@ -8,7 +8,6 @@
     is never picked up by samples/ or tests/).
   -->
   <PropertyGroup>
-    <Version>0.1.0-preview.1</Version>
     <Authors>dotnet-agent-surface contributors</Authors>
     <Company>dotnet-agent-surface contributors</Company>
     <PackageProjectUrl>https://github.com/sommmen/dotnet-agent-surface</PackageProjectUrl>
@@ -17,6 +16,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>agent;mcp;model-context-protocol;cli;ai;llm</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
@@ -28,13 +28,21 @@
       public surface doesn't have full XML doc coverage yet. Revisit once docs are written.
     -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <!--
-      This project is pre-release, exploratory, and not yet published to any feed. Setting
-      IsPackable false keeps `dotnet pack`/CI from producing packages that could be mistaken for a
-      real release until a deliberate decision is made to publish. Flip to true (or remove this
-      line, since it defaults to true for library projects) when publishing is intended.
-    -->
-    <IsPackable>false</IsPackable>
   </PropertyGroup>
+
+  <!--
+    Automated, git-height-based semantic versioning (see ../version.json) plus deterministic,
+    reproducible builds with normalized source paths and GitHub-flavored SourceLink. These flow to
+    every packable project under src/ so no individual csproj needs to reference them directly.
+  -->
+  <PropertyGroup>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' OR '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94" PrivateAssets="all" />
+    <PackageReference Include="DotNet.ReproducibleBuilds" Version="2.0.5" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.400" PrivateAssets="all" />
+  </ItemGroup>
 
 </Project>

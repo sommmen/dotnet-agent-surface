@@ -27,6 +27,15 @@ public sealed class OperationCommandLineAdapterTests
         Assert.Contains("--name JSON-value", result.Error);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_resolves_operation_by_alias()
+    {
+        var invocation = await CreateAdapter().ExecuteAsync(["say", "--value", "hello"]);
+
+        Assert.Equal(0, invocation.ExitCode);
+        Assert.Equal("\"hello\"", invocation.Output);
+    }
+
     private static OperationCommandLineAdapter CreateAdapter()
     {
         var catalog = OperationCatalog.Discover(typeof(CliOperations));
@@ -35,7 +44,7 @@ public sealed class OperationCommandLineAdapterTests
 
     private sealed class CliOperations
     {
-        [AgentOperation("echo", "Returns the supplied value")]
+        [AgentOperation("echo", "Returns the supplied value", Aliases = ["say"])]
         public string Echo(string value) => value;
     }
 

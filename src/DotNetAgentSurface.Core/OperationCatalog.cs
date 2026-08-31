@@ -15,16 +15,25 @@ public sealed class OperationCatalog
     {
         Guard.ThrowIfNull(serviceTypes);
 
-        var operations = serviceTypes
-            .SelectMany(DiscoverOperations)
+        return CreateCatalog(serviceTypes.SelectMany(DiscoverOperations));
+    }
+
+    /// <summary>
+    /// Sorts, validates, and finalizes a set of operation descriptors into an <see cref="OperationCatalog"/>.
+    /// Shared by <see cref="Discover"/> and <see cref="OperationCatalogBuilder"/> so both registration paths
+    /// enforce the same ordering and uniqueness guarantees.
+    /// </summary>
+    internal static OperationCatalog CreateCatalog(IEnumerable<OperationDescriptor> operations)
+    {
+        var sorted = operations
             .OrderBy(static operation => operation.Name, StringComparer.Ordinal)
             .ToArray();
 
-        ValidateUniqueNames(operations);
-        return new OperationCatalog(Array.AsReadOnly(operations));
+        ValidateUniqueNames(sorted);
+        return new OperationCatalog(Array.AsReadOnly(sorted));
     }
 
-    private static IEnumerable<OperationDescriptor> DiscoverOperations(Type serviceType)
+    internal static IEnumerable<OperationDescriptor> DiscoverOperations(Type serviceType)
     {
         Guard.ThrowIfNull(serviceType);
 
@@ -36,7 +45,7 @@ public sealed class OperationCatalog
             .Select(static item => CreateDescriptor(item.Method, item.Attribute!));
     }
 
-    private static OperationDescriptor CreateDescriptor(MethodInfo method, AgentOperationAttribute attribute)
+    internal static OperationDescriptor CreateDescriptor(MethodInfo method, AgentOperationAttribute attribute)
     {
         if (string.IsNullOrWhiteSpace(attribute.Name))
         {
@@ -61,10 +70,29 @@ public sealed class OperationCatalog
             }
         }
 
+        var aliasSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var alias in attribute.Aliases)
+        {
+            if (string.IsNullOrWhiteSpace(alias))
+            {
+                throw new OperationCatalogException($"Operation '{attribute.Name}' has an empty alias.");
+            }
+
+            if (string.Equals(alias, attribute.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new OperationCatalogException($"Operation '{attribute.Name}' cannot alias its own name '{alias}'.");
+            }
+
+            if (!aliasSet.Add(alias))
+            {
+                throw new OperationCatalogException($"Operation '{attribute.Name}' has a duplicate alias '{alias}'.");
+            }
+        }
+
         return new OperationDescriptor(method, attribute);
     }
 
-    private static void ValidateUniqueNames(IEnumerable<OperationDescriptor> operations)
+    private static void ValidateUniqueNames(IReadOnlyList<OperationDescriptor> operations)
     {
         var duplicate = operations
             .GroupBy(static operation => operation.Name, StringComparer.OrdinalIgnoreCase)
@@ -74,6 +102,43 @@ public sealed class OperationCatalog
         {
             throw new OperationCatalogException($"Operation name '{duplicate.Key}' is duplicated.");
         }
+
+        ValidateAliasCollisions(operations);
+    }
+
+    /// <summary>
+    /// Ensures every canonical name and alias across the catalog is unique, case-insensitively. Plain
+    /// name-to-name duplicates are already rejected by <see cref="ValidateUniqueNames"/> above, so this only
+    /// needs to catch collisions that involve at least one alias.
+    /// </summary>
+    private static void ValidateAliasCollisions(IReadOnlyList<OperationDescriptor> operations)
+    {
+        var registrations = new Dictionary<string, (OperationDescriptor Operation, string Keyword)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var operation in operations)
+        {
+            RegisterKey(registrations, operation, operation.Name, "name");
+
+            foreach (var alias in operation.Aliases)
+            {
+                RegisterKey(registrations, operation, alias, "alias");
+            }
+        }
+    }
+
+    private static void RegisterKey(
+        Dictionary<string, (OperationDescriptor Operation, string Keyword)> registrations,
+        OperationDescriptor operation,
+        string key,
+        string keyword)
+    {
+        if (registrations.TryGetValue(key, out var existing))
+        {
+            throw new OperationCatalogException(
+                $"Operation '{operation.Name}' {keyword} '{key}' collides with operation '{existing.Operation.Name}' {existing.Keyword} '{key}'.");
+        }
+
+        registrations[key] = (operation, keyword);
     }
 }
 

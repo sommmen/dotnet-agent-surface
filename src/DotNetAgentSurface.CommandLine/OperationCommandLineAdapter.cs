@@ -22,7 +22,9 @@ public sealed class OperationCommandLineAdapter
             return CommandLineExecutionResult.Success(RenderHelp());
         }
 
-        var operation = _catalog.Operations.SingleOrDefault(candidate => string.Equals(candidate.Name, args[0], StringComparison.OrdinalIgnoreCase));
+        var operation = _catalog.Operations.SingleOrDefault(candidate =>
+            string.Equals(candidate.Name, args[0], StringComparison.OrdinalIgnoreCase)
+            || candidate.Aliases.Any(alias => string.Equals(alias, args[0], StringComparison.OrdinalIgnoreCase)));
         if (operation is null)
         {
             return CommandLineExecutionResult.Failure($"Unknown operation '{args[0]}'.\n\n{RenderHelp()}");

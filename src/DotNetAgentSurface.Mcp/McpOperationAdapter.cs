@@ -36,7 +36,8 @@ public sealed class McpOperationAdapter
         }
 
         var operation = _catalog.Operations.FirstOrDefault(
-            operation => string.Equals(operation.Name, name, StringComparison.OrdinalIgnoreCase));
+            operation => string.Equals(operation.Name, name, StringComparison.OrdinalIgnoreCase)
+                || operation.Aliases.Any(alias => string.Equals(alias, name, StringComparison.OrdinalIgnoreCase)));
         if (operation is null)
         {
             return Error($"Unknown operation '{name}'.");

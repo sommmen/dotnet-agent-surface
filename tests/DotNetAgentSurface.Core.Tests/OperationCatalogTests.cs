@@ -81,6 +81,35 @@ public sealed class OperationCatalogTests
         Assert.Contains("second", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Discover_rejects_same_category_and_name_collision_naming_both_operations()
+    {
+        var exception = Assert.Throws<OperationCatalogException>(() => OperationCatalog.Discover(typeof(SameCategoryAndNameOperations)));
+
+        Assert.Contains("duplicated", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("customers list", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Discover_rejects_same_category_and_alias_collision()
+    {
+        var exception = Assert.Throws<OperationCatalogException>(() => OperationCatalog.Discover(typeof(SameCategoryAliasCollisionOperations)));
+
+        Assert.Contains("collides", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("retrieve", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("store", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Discover_allows_same_leaf_name_in_different_categories()
+    {
+        var catalog = OperationCatalog.Discover(typeof(DifferentCategorySameNameOperations));
+
+        Assert.Equal(2, catalog.Operations.Count);
+        Assert.All(catalog.Operations, operation => Assert.Equal("list", operation.Name));
+        Assert.Equal(["customers", "projects"], catalog.Operations.Select(operation => operation.Category).OrderBy(category => category, StringComparer.Ordinal));
+    }
+
     private sealed class OrderedOperations
     {
         [AgentOperation("zeta", "Zeta operation")]
@@ -165,6 +194,45 @@ public sealed class OperationCatalogTests
 
         [AgentOperation("second", "Second operation", Aliases = ["SHARED"])]
         public static void Second()
+        {
+        }
+    }
+
+    private sealed class SameCategoryAndNameOperations
+    {
+        [AgentOperation("list", "First operation", Category = "customers")]
+        public static void First()
+        {
+        }
+
+        [AgentOperation("LIST", "Second operation", Category = "CUSTOMERS")]
+        public static void Second()
+        {
+        }
+    }
+
+    private sealed class SameCategoryAliasCollisionOperations
+    {
+        [AgentOperation("retrieve", "Retrieves a value", Category = "customers", Aliases = ["store"])]
+        public static void Retrieve()
+        {
+        }
+
+        [AgentOperation("store", "Stores a value", Category = "customers")]
+        public static void Store()
+        {
+        }
+    }
+
+    private sealed class DifferentCategorySameNameOperations
+    {
+        [AgentOperation("list", "Lists customers", Category = "customers")]
+        public static void ListCustomers()
+        {
+        }
+
+        [AgentOperation("list", "Lists projects", Category = "projects")]
+        public static void ListProjects()
         {
         }
     }

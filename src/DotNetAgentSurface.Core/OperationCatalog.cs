@@ -92,53 +92,74 @@ public sealed class OperationCatalog
         return new OperationDescriptor(method, attribute);
     }
 
-    private static void ValidateUniqueNames(IReadOnlyList<OperationDescriptor> operations)
+    /// <summary>
+    /// Splits an operation's <see cref="OperationDescriptor.Category"/> into command-path segments. A category
+    /// is treated as a whitespace-separated path, so <c>"projects archived"</c> becomes the two-level command
+    /// group <c>projects archived</c> (invoked as <c>projects archived &lt;operation&gt;</c>); a null or blank
+    /// category produces no segments, leaving the operation at the command-line root. This is the single source
+    /// of truth for category-path splitting, shared by catalog collision validation here and by
+    /// <c>OperationCommandLineAdapter</c>'s routing/help rendering so both always agree on category boundaries.
+    /// </summary>
+    public static string[] GetCategorySegments(string? category)
     {
-        var duplicate = operations
-            .GroupBy(static operation => operation.Name, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(static group => group.Count() > 1);
-
-        if (duplicate is not null)
+        if (string.IsNullOrWhiteSpace(category))
         {
-            throw new OperationCatalogException($"Operation name '{duplicate.Key}' is duplicated.");
+            return [];
         }
 
-        ValidateAliasCollisions(operations);
+        return category!.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
     }
 
     /// <summary>
-    /// Ensures every canonical name and alias across the catalog is unique, case-insensitively. Plain
-    /// name-to-name duplicates are already rejected by <see cref="ValidateUniqueNames"/> above, so this only
-    /// needs to catch collisions that involve at least one alias.
+    /// Formats an operation's full command path — its category segments (see <see cref="GetCategorySegments"/>)
+    /// followed by <paramref name="leaf"/> (its name or an alias) — as a single space-separated string, used as
+    /// the collision-detection key below.
     /// </summary>
-    private static void ValidateAliasCollisions(IReadOnlyList<OperationDescriptor> operations)
+    private static string FormatCommandPath(string? category, string leaf)
+    {
+        var segments = GetCategorySegments(category);
+        return segments.Length == 0 ? leaf : string.Join(" ", segments) + " " + leaf;
+    }
+
+    /// <summary>
+    /// Ensures every operation's full command path is unique across the catalog, case-insensitively. The full
+    /// path is the operation's category chain (see <see cref="GetCategorySegments"/>) followed by its name, and
+    /// separately followed by each alias. Operations in different categories may freely reuse the same leaf name
+    /// or alias — only identical full paths collide, since categories are distinct command groups.
+    /// </summary>
+    private static void ValidateUniqueNames(IReadOnlyList<OperationDescriptor> operations)
     {
         var registrations = new Dictionary<string, (OperationDescriptor Operation, string Keyword)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var operation in operations)
         {
-            RegisterKey(registrations, operation, operation.Name, "name");
+            RegisterCommandPath(registrations, operation, operation.Name, "name");
 
             foreach (var alias in operation.Aliases)
             {
-                RegisterKey(registrations, operation, alias, "alias");
+                RegisterCommandPath(registrations, operation, alias, "alias");
             }
         }
     }
 
-    private static void RegisterKey(
+    private static void RegisterCommandPath(
         Dictionary<string, (OperationDescriptor Operation, string Keyword)> registrations,
         OperationDescriptor operation,
-        string key,
+        string leaf,
         string keyword)
     {
-        if (registrations.TryGetValue(key, out var existing))
+        var path = FormatCommandPath(operation.Category, leaf);
+
+        if (registrations.TryGetValue(path, out var existing))
         {
-            throw new OperationCatalogException(
-                $"Operation '{operation.Name}' {keyword} '{key}' collides with operation '{existing.Operation.Name}' {existing.Keyword} '{key}'.");
+            var message = keyword == "name" && existing.Keyword == "name"
+                ? $"Operation name '{path}' is duplicated by operations '{existing.Operation.Name}' and '{operation.Name}'."
+                : $"Operation '{operation.Name}' {keyword} '{path}' collides with operation '{existing.Operation.Name}' {existing.Keyword} '{path}'.";
+
+            throw new OperationCatalogException(message);
         }
 
-        registrations[key] = (operation, keyword);
+        registrations[path] = (operation, keyword);
     }
 }
 

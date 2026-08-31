@@ -20,6 +20,8 @@ public sealed class AgentOperationAttribute : Attribute
     public string[] Examples { get; init; } = [];
 
     public string[] Aliases { get; init; } = [];
+
+    public bool IsIdempotent { get; init; }
 }
 
 public enum AgentSafetyLevel

@@ -28,12 +28,54 @@ public sealed class OperationCommandLineAdapterTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_rejects_unknown_operation_flag_with_valid_flags()
+    {
+        var result = await CreateAdapter().ExecuteAsync(["echo", "--unknown", "value"]);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("Unknown flag '--unknown'", result.Error);
+        Assert.Contains("--value", result.Error);
+        Assert.Contains("--output", result.Error);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_operation_help_lists_global_flags_without_invoking()
+    {
+        var result = await CreateAdapter().ExecuteAsync(["echo", "--help"]);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--value", result.Output);
+        Assert.Contains("--output <toon|json>", result.Output);
+        Assert.Contains("--help, -h", result.Output);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_resolves_operation_by_alias()
     {
         var invocation = await CreateAdapter().ExecuteAsync(["say", "--value", "hello"]);
 
         Assert.Equal(0, invocation.ExitCode);
         Assert.Equal("\"hello\"", invocation.Output);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_returns_cancellation_exit_code()
+    {
+        var result = await CreateAdapter().ExecuteAsync(["cancel"]);
+
+        Assert.Equal(130, result.ExitCode);
+        Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.True(string.IsNullOrEmpty(result.Output));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_returns_successful_acknowledgement_for_explicit_idempotent_no_op()
+    {
+        var result = await CreateAdapter().ExecuteAsync(["ensure-state"]);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("State already applied.", result.Output);
+        Assert.True(string.IsNullOrEmpty(result.Error));
     }
 
     [Fact]
@@ -88,7 +130,7 @@ public sealed class OperationCommandLineAdapterTests
 
         var invocation = await adapter.ExecuteAsync(["bogus-category", "leaf"]);
 
-        Assert.Equal(1, invocation.ExitCode);
+        Assert.Equal(2, invocation.ExitCode);
         Assert.Contains("Unknown operation 'bogus-category'", invocation.Error);
     }
 
@@ -99,7 +141,7 @@ public sealed class OperationCommandLineAdapterTests
 
         var invocation = await adapter.ExecuteAsync(["customers", "bogus-op"]);
 
-        Assert.Equal(1, invocation.ExitCode);
+        Assert.Equal(2, invocation.ExitCode);
         Assert.Contains("Unknown operation 'bogus-op'", invocation.Error);
     }
 
@@ -146,6 +188,12 @@ public sealed class OperationCommandLineAdapterTests
     {
         [AgentOperation("echo", "Returns the supplied value", Aliases = ["say"])]
         public string Echo(string value) => value;
+
+        [AgentOperation("ensure-state", "Ensures state", IsIdempotent = true)]
+        public OperationNoOp EnsureState() => OperationNoOp.AlreadyApplied("State already applied.");
+
+        [AgentOperation("cancel", "Cancels execution")]
+        public string Cancel() => throw new OperationCanceledException();
     }
 
     private sealed class CategoryOperations

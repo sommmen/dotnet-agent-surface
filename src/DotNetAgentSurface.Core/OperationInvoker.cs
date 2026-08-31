@@ -43,7 +43,11 @@ public sealed class OperationInvoker
             var result = await UnwrapResultAsync(rawResult).ConfigureAwait(false);
             return OperationInvocationResult.Success(result);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+        {
+            return OperationInvocationResult.Cancelled();
+        }
+        catch (TargetInvocationException exception) when (exception.InnerException is OperationCanceledException)
         {
             return OperationInvocationResult.Cancelled();
         }
@@ -171,6 +175,15 @@ public sealed class OperationInvoker
         await task.ConfigureAwait(false);
         return GetTaskResult(task);
     }
+}
+
+/// <summary>
+/// Explicitly marks an idempotent operation's already-applied result. Operations return this marker instead of
+/// relying on error-message text; the CLI adapter then emits its concise acknowledgement as a successful no-op.
+/// </summary>
+public sealed record OperationNoOp(string Message)
+{
+    public static OperationNoOp AlreadyApplied(string message = "Already applied.") => new(message);
 }
 
 public sealed record OperationInvocationResult(bool Succeeded, bool IsCancelled, object? Value, string? Error)

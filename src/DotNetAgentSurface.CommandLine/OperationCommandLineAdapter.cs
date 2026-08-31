@@ -55,6 +55,10 @@ public sealed class OperationCommandLineAdapter
         {
             return CommandLineExecutionResult.Failure(exception.Message, 2);
         }
+        catch (OperationCanceledException)
+        {
+            return CommandLineExecutionResult.Failure("Operation was cancelled.", 130);
+        }
     }
 
     private async ValueTask<CommandLineExecutionResult> ExecuteCommandAsync(
@@ -85,7 +89,8 @@ public sealed class OperationCommandLineAdapter
             }
 
             return CommandLineExecutionResult.Failure(
-                $"Unknown operation '{token}'.\n\n{RenderNodeHelp(node, pathSegments)}");
+                $"Unknown operation '{token}'.\n\n{RenderNodeHelp(node, pathSegments)}",
+                2);
         }
 
         // Ran out of tokens (or hit --help/-h) while still inside a category: show category-scoped (or root) help.
@@ -108,12 +113,17 @@ public sealed class OperationCommandLineAdapter
 
         try
         {
-            var inputs = ParseInputs(remaining);
+            var inputs = ParseInputs(operation, remaining);
             var invocation = await _invoker.InvokeAsync(operation, inputs, cancellationToken).ConfigureAwait(false);
 
             if (!invocation.Succeeded)
             {
                 return CommandLineExecutionResult.Failure(CleanOperationError(invocation.Error), invocation.IsCancelled ? 130 : 1);
+            }
+
+            if (operation.IsIdempotent && invocation.Value is OperationNoOp noOp)
+            {
+                return CommandLineExecutionResult.Success(noOp.Message);
             }
 
             if (!_useAxiOutputContract && outputOptions.Renderer is null && outputOptions.Fields is null && !outputOptions.Full)
@@ -293,7 +303,17 @@ public sealed class OperationCommandLineAdapter
     private static int CountOperations(CommandNode node) =>
         node.Operations.Values.Distinct().Count() + node.Categories.Values.Sum(CountOperations);
 
-    private static string RenderOperationHelp(OperationDescriptor operation) => $"{operation.Name}: {operation.Description}\n" + string.Join("\n", operation.Parameters.Where(parameter => !parameter.IsCancellationToken).Select(parameter => $"  --{parameter.Name} <{parameter.ParameterType.Name}>{(parameter.IsOptional ? " (optional)" : string.Empty)}"));
+    private static string RenderOperationHelp(OperationDescriptor operation)
+    {
+        var lines = new List<string> { $"{operation.Name}: {operation.Description}", "", "Operation flags:" };
+        lines.AddRange(operation.Parameters
+            .Where(parameter => !parameter.IsCancellationToken)
+            .Select(parameter => $"  --{parameter.Name} <{parameter.ParameterType.Name}>{(parameter.IsOptional ? " (optional)" : string.Empty)}"));
+        lines.AddRange([
+            "", "Global flags:", "  --output <toon|json>", "  --fields <name,...>", "  --full", "  --help, -h",
+        ]);
+        return string.Join("\n", lines);
+    }
 
     /// <summary>
     /// A single level of the category tree: operations reachable directly at this level (keyed by name and by
@@ -306,8 +326,18 @@ public sealed class OperationCommandLineAdapter
         public Dictionary<string, CommandNode> Categories { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyDictionary<string, JsonElement> ParseInputs(string[] arguments)
+    private static IReadOnlyDictionary<string, JsonElement> ParseInputs(OperationDescriptor operation, string[] arguments)
     {
+        var validInputNames = operation.Parameters
+            .Where(parameter => !parameter.IsCancellationToken)
+            .Select(parameter => parameter.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var validFlags = validInputNames.Select(name => $"--{name}")
+            .Append("--output")
+            .Append("--fields")
+            .Append("--full")
+            .Append("--help")
+            .Append("-h");
         var inputs = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < arguments.Length; index += 2)
         {
@@ -317,6 +347,11 @@ public sealed class OperationCommandLineAdapter
             }
 
             var name = arguments[index][2..];
+            if (!validInputNames.Contains(name))
+            {
+                throw new CommandLineUsageException($"Unknown flag '--{name}' for operation '{operation.Name}'. Valid flags: {string.Join(", ", validFlags)}.");
+            }
+
             try
             {
                 inputs[name] = JsonDocument.Parse(arguments[index + 1]).RootElement.Clone();

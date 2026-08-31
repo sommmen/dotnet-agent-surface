@@ -23,11 +23,22 @@ public sealed class OperationCommandLineAdapter
     private readonly OperationCatalog _catalog;
     private readonly OperationInvoker _invoker;
     private readonly CommandNode _root;
+    private readonly IAgentOutputRenderer _defaultRenderer;
+    private readonly bool _useAxiOutputContract;
 
-    public OperationCommandLineAdapter(OperationCatalog catalog, OperationInvoker invoker)
+    /// <summary>
+    /// Creates a command-line adapter. Supplying a renderer enables the AXI output contract and makes that renderer
+    /// the default format; omitting it preserves the historical JSON-only output for existing hosts.
+    /// </summary>
+    public OperationCommandLineAdapter(
+        OperationCatalog catalog,
+        OperationInvoker invoker,
+        IAgentOutputRenderer? defaultRenderer = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
+        _defaultRenderer = defaultRenderer ?? new JsonAgentOutputRenderer();
+        _useAxiOutputContract = defaultRenderer is not null;
         _root = BuildCommandTree(_catalog.Operations);
     }
 
@@ -35,6 +46,22 @@ public sealed class OperationCommandLineAdapter
     {
         args ??= [];
 
+        try
+        {
+            var outputOptions = ParseOutputOptions(args);
+            return await ExecuteCommandAsync(outputOptions.CommandArgs, cancellationToken, outputOptions).ConfigureAwait(false);
+        }
+        catch (CommandLineUsageException exception)
+        {
+            return CommandLineExecutionResult.Failure(exception.Message, 2);
+        }
+    }
+
+    private async ValueTask<CommandLineExecutionResult> ExecuteCommandAsync(
+        string[] args,
+        CancellationToken cancellationToken,
+        OutputOptions outputOptions)
+    {
         var node = _root;
         var index = 0;
         var pathSegments = new List<string>();
@@ -46,7 +73,7 @@ public sealed class OperationCommandLineAdapter
             if (node.Operations.TryGetValue(token, out var operation))
             {
                 index++;
-                return await ExecuteOperationAsync(operation, args, index, cancellationToken).ConfigureAwait(false);
+                return await ExecuteOperationAsync(operation, args, index, cancellationToken, outputOptions).ConfigureAwait(false);
             }
 
             if (node.Categories.TryGetValue(token, out var child))
@@ -69,7 +96,8 @@ public sealed class OperationCommandLineAdapter
         OperationDescriptor operation,
         string[] args,
         int startIndex,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OutputOptions outputOptions)
     {
         var remaining = args.Skip(startIndex).ToArray();
 
@@ -82,15 +110,117 @@ public sealed class OperationCommandLineAdapter
         {
             var inputs = ParseInputs(remaining);
             var invocation = await _invoker.InvokeAsync(operation, inputs, cancellationToken).ConfigureAwait(false);
-            return invocation.Succeeded
-                ? CommandLineExecutionResult.Success(JsonSerializer.Serialize(invocation.Value))
-                : CommandLineExecutionResult.Failure(invocation.Error ?? "Operation failed.", invocation.IsCancelled ? 130 : 1);
+
+            if (!invocation.Succeeded)
+            {
+                return CommandLineExecutionResult.Failure(CleanOperationError(invocation.Error), invocation.IsCancelled ? 130 : 1);
+            }
+
+            if (!_useAxiOutputContract && outputOptions.Renderer is null && outputOptions.Fields is null && !outputOptions.Full)
+            {
+                // Legacy behavior: no renderer or AXI-specific output option was configured for this adapter instance,
+                // so preserve the original raw-JSON output exactly for backward compatibility.
+                return CommandLineExecutionResult.Success(JsonSerializer.Serialize(invocation.Value));
+            }
+
+            var projection = AgentOutputProjector.Project(invocation.Value, outputOptions.Fields, outputOptions.Full);
+            var renderer = outputOptions.Renderer ?? _defaultRenderer;
+            return CommandLineExecutionResult.Success(renderer.Render(projection));
         }
         catch (CommandLineUsageException exception)
         {
             return CommandLineExecutionResult.Failure(exception.Message, 2);
         }
     }
+
+    /// <summary>
+    /// Strips exception-style noise (stack traces, provider dumps) from operation error text so CLI users get an
+    /// actionable one-line message rather than internal implementation detail.
+    /// </summary>
+    private static string CleanOperationError(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            return "Operation failed. Check the supplied inputs and try again.";
+        }
+
+        var message = error!;
+        return message.Replace("\r", " ").Replace("\n", " ").Trim();
+    }
+
+    /// <summary>
+    /// Extracts and validates the global <c>--output</c>/<c>--fields</c>/<c>--full</c> flags from anywhere in the
+    /// argument list, returning the remaining command/operation arguments untouched.
+    /// </summary>
+    private static OutputOptions ParseOutputOptions(string[] args)
+    {
+        var commandArgs = new List<string>();
+        IAgentOutputRenderer? renderer = null;
+        IReadOnlyList<string>? fields = null;
+        var full = false;
+
+        for (var index = 0; index < args.Length; index++)
+        {
+            switch (args[index])
+            {
+                case "--output":
+                    if (renderer is not null)
+                    {
+                        throw new CommandLineUsageException("Specify --output at most once.");
+                    }
+
+                    if (++index >= args.Length)
+                    {
+                        throw new CommandLineUsageException("The --output flag requires a value of 'toon' or 'json'.");
+                    }
+
+                    renderer = args[index].ToLowerInvariant() switch
+                    {
+                        "toon" => new ToonAgentOutputRenderer(),
+                        "json" => new JsonAgentOutputRenderer(),
+                        _ => throw new CommandLineUsageException($"Unknown --output value '{args[index]}'. Expected 'toon' or 'json'."),
+                    };
+                    break;
+                case "--fields":
+                    if (fields is not null)
+                    {
+                        throw new CommandLineUsageException("Specify --fields at most once.");
+                    }
+
+                    if (++index >= args.Length || string.IsNullOrWhiteSpace(args[index]))
+                    {
+                        throw new CommandLineUsageException("The --fields flag requires a comma-separated list of field names.");
+                    }
+
+                    fields = args[index]
+                        .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(static field => field.Trim())
+                        .Where(static field => field.Length > 0)
+                        .ToArray();
+                    if (fields.Count == 0)
+                    {
+                        throw new CommandLineUsageException("The --fields flag requires at least one field name.");
+                    }
+
+                    break;
+                case "--full":
+                    if (full)
+                    {
+                        throw new CommandLineUsageException("Specify --full at most once.");
+                    }
+
+                    full = true;
+                    break;
+                default:
+                    commandArgs.Add(args[index]);
+                    break;
+            }
+        }
+
+        return new OutputOptions(commandArgs.ToArray(), renderer, fields, full);
+    }
+
+    private sealed record OutputOptions(string[] CommandArgs, IAgentOutputRenderer? Renderer, IReadOnlyList<string>? Fields, bool Full);
 
     /// <summary>
     /// Builds the category tree once from the catalog's operations, keyed case-insensitively at every level, so

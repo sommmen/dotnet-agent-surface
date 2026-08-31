@@ -15,6 +15,11 @@ DotNetAgentSurface, without duplicating any operation definitions.
   process invocation via `OperationCommandLineAdapter`.
 - **DotNetAgentSurface.Samples.Mcp** (`tasktracker-mcp`) — discovers the same
   catalog and exposes it as an MCP server over stdio via `McpOperationServer`.
+- **DotNetAgentSurface.Samples.CliAndMcp** (`tasktracker`) — a single
+  executable that supports both surfaces: it discovers the same catalog once
+  and dispatches to the CLI adapter or the MCP stdio server depending on the
+  first argument (`mcp` vs. everything else). See "Running the combined
+  CLI+MCP sample" below.
 - **DotNetAgentSurface.Samples.LegacyDesktop** (`legacy-desktop-cli`) — a
   separate, self-contained sample that targets `net472` instead of `net10.0`
   to demonstrate `DotNetAgentSurface.Core` and `DotNetAgentSurface.CommandLine`
@@ -83,6 +88,35 @@ directly into any MCP-compatible client. For example, after sending an
 `initialize` request and an `initialized` notification, a `tools/list` request
 returns the four operations above with their generated JSON schemas and safety
 annotations.
+
+## Running the combined CLI+MCP sample
+
+`DotNetAgentSurface.Samples.Cli` and `DotNetAgentSurface.Samples.Mcp` are
+separate executables, which can make it look like a host has to pick one
+surface or the other. `DotNetAgentSurface.Samples.CliAndMcp` shows that isn't
+the case: it discovers `TaskTrackerService`'s operation catalog exactly once
+and wires up *both* `OperationCommandLineAdapter` and `McpOperationServer`
+against it in the same `Program.cs`, choosing which one to run based on the
+first command-line argument.
+
+```powershell
+# CLI mode - same behavior/output as DotNetAgentSurface.Samples.Cli
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- --help
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- tasks add-task --title "Write docs"
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- tasks list-tasks
+
+# MCP mode - same stdio JSON-RPC server as DotNetAgentSurface.Samples.Mcp
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- mcp
+```
+
+The two modes are not active at the same time within one process invocation:
+MCP's stdio transport reserves stdout exclusively for JSON-RPC protocol
+traffic, so a process actively writing normal CLI output to stdout could not
+also run the MCP server on the same stream without corrupting it. Selecting
+the mode from the first argument avoids that conflict while still proving the
+two surfaces share one catalog/invoker and one executable - a host application
+can add an `mcp` verb alongside its normal commands instead of shipping and
+maintaining a second binary.
 
 ## Legacy .NET Framework sample
 

@@ -240,6 +240,12 @@ Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f9
 | Sample hosts | Coordinator | CLI adapter, MCP adapter | Completed | Added `samples/` with a shared `TaskTrackerService` (list/add/complete/remove-task, one `Dangerous` op) plus thin `tasktracker-cli` and `tasktracker-mcp` hosts that discover the same catalog. Smoke-tested: CLI `--help`/`add-task`/`list-tasks`/error path; MCP stdio `initialize` and `tools/list` round trips (clean stdout, correct schemas and safety annotations). Full suite still 23/23 passing. |
 | Framework compatibility | Coordinator | Core catalog | Completed | `Core`, `CommandLine`, and `Mcp` now multi-target `net10.0;netstandard2.0` (covers .NET Framework 4.6.1+, superset of the 4.6.2+ goal). Added `PolySharp` for language-feature polyfills, plus hand-written TFM-uniform `Guard` (replaces `ArgumentNullException.ThrowIfNull`/`ArgumentException.ThrowIfNullOrWhiteSpace`) and `NullabilityReader` (replaces `NullabilityInfoContext`, reading `NullableAttribute`/`NullableContextAttribute` metadata directly). Zero `#if` conditionals needed anywhere. Full solution builds clean (0 warnings/errors) across both TFMs; all 23 tests still pass; both sample hosts re-smoke-tested (CLI `--help`/`add-task`/`list-tasks`, MCP build) and still work correctly, including nullable-vs-required parameter distinction. |
 | Packaging and docs | Coordinator | Sample hosts, Framework compatibility | Completed | Added `samples/DotNetAgentSurface.Samples.LegacyDesktop` (`legacy-desktop-cli`, `net472`), a self-contained `GreeterService` exercised through `OperationCatalog`/`OperationCommandLineAdapter` against the `netstandard2.0` build of Core/CommandLine; built and run successfully against the real .NET Framework 4.7.2 runtime installed on this machine (`greet`, `count-letters`, and the required-parameter error path all verified). Added `src/Directory.Build.props` with shared NuGet metadata (`Version=0.1.0-preview.1`, MIT `PackageLicenseExpression`, `PackageReadmeFile`, source-linked repository info, symbol packages, `GenerateDocumentationFile`) applied to `Core`/`CommandLine`/`Mcp`; added per-project `PackageId`/`Description`; added a root [LICENSE](../LICENSE) (MIT) and updated `README.md`'s license section. Verified `dotnet pack` end-to-end (correct nuspec, embedded README, per-TFM dependency groups, XML docs). Packages remain `IsPackable=false` by default pending an actual decision to publish to a feed. Full solution builds clean with 0 warnings/errors and all 23 tests pass. |
+| Fluent registration and aliases | Coordinator | Core catalog | Planned | Prototype builder/delegate registration, canonical names, aliases, and deterministic overload collision tests |
+| Category routing and diagnostics | Coordinator | Fluent registration and aliases, CLI adapter | Planned | Category command chains, collision diagnostics, stable help ordering, and README documentation |
+| AXI output contract | Coordinator | CLI adapter | Planned | Renderer abstraction, ToonEncoder-backed TOON, explicit JSON mode, projection, truncation, `--fields`, and structured empty/error output |
+| Explicit skill generator command | Coordinator | Skill generator | Planned | `generate`/`check` command wrapping `SkillReferenceGenerator`; MSBuild integration remains opt-in future work |
+| AXI best-effort compliance | Coordinator | CLI adapter, AXI output contract | Planned | AXI exit codes, per-command help/flag validation, content-first no-argument output, a fast version path, idempotent semantics, no prompts, and strict stdout/stderr separation |
+| Packaging and publishing readiness | Coordinator | Packaging and docs | Planned | Nerdbank.GitVersioning, DotNet.ReproducibleBuilds, packaged README/icon, packability gate removal, and a full-history NuGet publishing workflow |
 
 > Orchestration note: this environment does not expose VS Code session-creation controls, so the coordinator is implementing and tracking the single-repository dependency chain directly in the current repository worktree. The intended final integration branch is `feature/initial-agent-surface`; no worker branches have been created.
 
@@ -309,21 +315,82 @@ End-to-end tests should run generated CLI commands and an MCP client against hos
 
 ## Open design decisions
 
-The following should be resolved with prototypes before the public API is stabilized:
+The initial prototypes and external research have now resolved the design direction below. Decisions marked **work item** are intentional follow-up tasks before the public API is considered stable.
 
-- exact target framework matrix and language-version constraints;
-- attribute-only discovery versus first-class delegate registration;
-- command hierarchy and collision rules for categories;
-- TOON library or renderer choice and the exact JSON/TOON output contract;
-- output projection metadata, default truncation limits, and `--fields` behavior;
-- safety-level vocabulary and non-interactive confirmation semantics;
-- dependency-injection abstraction without forcing a specific container;
-- schema representation in the core model;
-- support for overloaded methods and operation aliases;
-- build-time generation versus an explicit generator command;
-- package names and namespace conventions.
+### Target frameworks and language version — resolved
 
-The initial implementation resolved most of these pragmatically rather than through separate prototypes: the target framework matrix landed on `net10.0;netstandard2.0` (with a real `net472` legacy sample validating downlevel compatibility); discovery uses attribute-based annotation; the shared policy pipeline covers safety-level vocabulary and non-interactive confirmation; schema representation lives in the core catalog model; dependency injection is left to the consumer's container via constructor injection rather than a bespoke abstraction; generation is build-time via the source generator/skill tooling; and package names/namespaces follow the `DotnetAgentSurface.*` convention established across the solution's projects. Two items remain genuinely unresolved and are **not** addressed by the current implementation: support for overloaded methods and operation aliases, and command hierarchy/collision rules for categories beyond the simple flat structure already in place.
+Target the libraries at `net10.0;netstandard2.0`. The repository's .NET 10 applications get the least-friction experience, while `netstandard2.0` keeps the core usable from older .NET implementations. The `net472` sample validates the downlevel path. Use the latest supported C# compiler (`LangVersion=latest`) during this preview and keep source TFM-uniform where practical; compatibility helpers are preferable to scattered conditional compilation. Do not add more TFMs until a consumer requires them.
+
+### Discovery and registration — work item
+
+Keep `[AgentOperation]` attributes as the convention for discoverable public methods, and add a first-class fluent builder for registrations that cannot be expressed naturally with attributes (delegates, aliases, or runtime composition). The intended shape is an `OperationCatalogBuilder` that can consume attributed services and explicit registrations, similar in spirit to EF Core's convention-plus-fluent configuration model. Add focused diagnostics and registration tests before treating the builder as public API.
+
+### Command hierarchy and collisions — work item
+
+Categories map to deterministic command groups: an operation in category `tasks` is invoked as `tasks <operation>`, with uncategorized operations remaining at the root. Normalize comparisons case-insensitively, sort categories and operations ordinally, and reject ambiguous effective paths rather than choosing by reflection order. Discovery should emit a diagnostic or warning for duplicate or shadowed metadata where the host has a warning channel; the CLI must return a structured error. Document the command chain and collision behavior in `README.md` (the current flat adapter is only the prototype).
+
+### TOON and output contract — work item
+
+Use [Cysharp/ToonEncoder](https://github.com/Cysharp/ToonEncoder) initially (`ToonEncoder` 2.x is available on NuGet), but hide it behind a small output-renderer boundary such as `IAgentOutputRenderer`. Keep normalized results and schemas represented internally as JSON-compatible values; render TOON only at the CLI stdout boundary. JSON remains an explicit machine-readable escape hatch (for example, `--output json`), while TOON is the AXI-oriented default. Pin and test the exact encoder options and newline/escaping contract so a future official implementation can replace the dependency without changing operation metadata.
+
+### Projection, truncation, and `--fields` — work item
+
+Follow AXI best effort: default list/detail projections should be compact, include enough identifying state to act, and include total counts for collections where available. Large text should be previewed rather than silently omitted, with its total size and a `--full` escape hatch when truncated. Add output metadata describing available fields, a configurable default truncation limit (initially 1,000 characters), and `--fields a,b,c` to request additional properties. Unknown fields must fail clearly; empty results must be explicit; errors must use the same structured output contract and exit codes.
+
+### Safety vocabulary and non-interactive confirmation — resolved and documented
+
+`Safe` means no confirmation is normally needed, `Confirm` means the host may require explicit approval, and `Dangerous` means a destructive or high-impact operation that the default policy protects. `DangerousOperationConfirmationPolicy` is the reference policy: it calls an injected confirmation delegate and denies when no approval is available. CLI and MCP hosts must never block waiting for a prompt; non-interactive execution supplies confirmation through host configuration or fails with an actionable denial. This vocabulary describes policy intent, not a security boundary or authorization system; authorization remains a separate policy concern.
+
+### Dependency injection — resolved
+
+Support `Microsoft.Extensions.DependencyInjection` conventions through `IServiceProvider` and constructor injection. Do not introduce a container-specific abstraction or require a particular container package in Core. Consumers may adapt another container to `IServiceProvider`; the invocation pipeline depends only on the BCL interface.
+
+### Schema representation — resolved and documented
+
+The core model represents an operation's inputs as parameter metadata (`OperationParameterDescriptor`), and `OperationSchemaGenerator` projects that metadata into a JSON Schema document. The schema describes an object whose properties are named operation inputs; requiredness comes from optional/default and nullable metadata; DTOs, arrays, enums, and nested records are expanded recursively with cycle protection. The schema is the interchange contract for CLI/MCP inputs, while the descriptor remains the source of truth. Keep schema generation deterministic and do not make JSON Schema nodes part of the invocation model itself.
+
+### Overloads and aliases — work item
+
+Add explicit operation aliases and a deterministic overload strategy. Prefer distinct stable operation names in the public catalog; if overloads are supported, require an alias or signature-based disambiguation rather than relying on CLR method ordering. Test duplicate aliases, case-insensitive collisions, generated help, MCP tool names, and invocation binding.
+
+### Generation model — resolved with future extension
+
+Make the main entry point an explicit generator command that invokes the existing `SkillReferenceGenerator` and supports check or stale detection. Build-time or MSBuild integration is future work, not a prerequisite for the initial release; it may be added later as an opt-in integration that does not force generation on every build.
+
+### Packages and namespaces — resolved
+
+Use normal .NET conventions: `DotNetAgentSurface.*` package IDs and namespaces, one package per independently consumable surface (`Core`, `CommandLine`, `Mcp`, and later `Skills` if it becomes a separate runtime/package concern). Keep adapter dependencies isolated and preserve the existing source-linking, XML documentation, and symbol-package metadata.
+
+### Planned work items
+
+1. Add fluent/delegate registration alongside attributes.
+2. Add category-based command routing, deterministic collision diagnostics, and README command-chain documentation.
+3. Add the renderer abstraction and Cysharp/ToonEncoder-backed TOON output with explicit JSON mode.
+4. Add AXI-oriented projections, configurable truncation, `--fields`, `--full`, total counts, and structured empty/error output.
+5. Add overload and alias support with deterministic naming rules.
+6. Add an explicit generator CLI command; evaluate optional MSBuild integration later.
+
+### AXI best-effort compliance
+
+The CLI surface should follow [AXI](https://github.com/kunchenguid/axi/blob/main/.agents/skills/axi/SKILL.md) conventions as a best-effort target. AXI defines ergonomic standards for agent-facing CLIs. The library itself is framework-agnostic; AXI compliance lives in the CLI adapter layer (`DotNetAgentSurface.CommandLine`). The following work items capture the remaining AXI gaps:
+
+7. Implement AXI exit codes: `0` for success (including idempotent no-ops), `1` for errors, `2` for usage errors. Structured errors go to stdout with actionable suggestions; never leak dependency internals.
+8. Implement AXI `--help` on every subcommand and per-subcommand flag validation. Unknown flags must be rejected with the command's valid flag list inlined in the error message.
+9. Make the no-argument route content-first: show the most relevant live operation output rather than a full usage manual, identify the executable and its purpose, and include only a few contextual next-step commands when they are useful.
+10. Add a lightweight version fast path: `-v`, `-V`, and `--version` print only the version and exit `0` without constructing the catalog, service provider, or command graph.
+11. Implement idempotent operation semantics: applying an already-applied state must succeed with exit code `0` and a brief acknowledgement rather than fail. Expose adapter/operation metadata so hosts can opt into this behavior without guessing from result text.
+12. Ensure no interactive prompts exist in the CLI surface. Every operation must be completable with flags alone; missing required values fail immediately with a clear error.
+13. Route stderr for debug/progress logging only; never mix log messages into stdout. Evaluate optional session-hook and generated agent-skill integration separately because those require explicit host/user installation intent.
+
+### Packaging and publishing readiness
+
+The library should be ready to publish to NuGet before the public API is stabilized. The current `Directory.Build.props` already sets package metadata but is missing automated versioning, reproducible build guarantees, and proper artifact bundling. Apply the repository's `/dotnet-packable` skill conventions:
+
+14. Add `Nerdbank.GitVersioning` for automated git-height-based semantic versioning. Create a root `version.json` (version `0.1`, public release ref `main`) and remove the manual `<Version>` property from `Directory.Build.props`.
+15. Add `DotNet.ReproducibleBuilds` for deterministic builds, SourceLink integration, and normalized source paths. Enable `ContinuousIntegrationBuild` for GitHub Actions and Azure DevOps.
+16. Pack the repository-level `README.md` and an optional package icon at the NuGet package root, and verify package metadata, XML documentation, `.nupkg`, and `.snupkg` contents.
+17. Remove the current `IsPackable=false` preview gate from `Directory.Build.props` only once the packaging validation and publishing pipeline are ready.
+18. Add a GitHub Actions deployment workflow that checks out with `fetch-depth: 0`, restores/builds/tests before packing, publishes to GitHub Packages first and NuGet.org second, and uses `--skip-duplicate` for repeatable publishing.
 
 ## Definition of an initial usable release
 

@@ -4,9 +4,10 @@ namespace DotNetAgentSurface.Core;
 
 public sealed class OperationDescriptor
 {
-    internal OperationDescriptor(MethodInfo method, AgentOperationAttribute operation)
+    internal OperationDescriptor(MethodInfo method, AgentOperationAttribute operation, object? boundTarget = null)
     {
         Method = method;
+        BoundTarget = boundTarget;
         Name = operation.Name;
         Description = operation.Description;
         Category = operation.Category;
@@ -32,6 +33,8 @@ public sealed class OperationDescriptor
     public bool IsIdempotent { get; }
 
     public MethodInfo Method { get; }
+
+    internal object? BoundTarget { get; }
 
     public Type? ServiceType => Method.IsStatic ? null : Method.DeclaringType;
 

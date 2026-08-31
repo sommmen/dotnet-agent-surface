@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>DotNetAgentSurface.AspNetCore</PackageId>
+    <Description>ASP.NET Core ApiExplorer discovery satellite for DotNetAgentSurface.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\DotNetAgentSurface.Core\DotNetAgentSurface.Core.csproj" />
+  </ItemGroup>
+</Project>

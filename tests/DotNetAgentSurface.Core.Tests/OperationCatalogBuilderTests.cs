@@ -25,6 +25,39 @@ public sealed class OperationCatalogBuilderTests
     }
 
     [Fact]
+    public async Task Add_invokes_capturing_lambda_without_service_registration()
+    {
+        var message = "captured";
+        var catalog = new OperationCatalogBuilder()
+            .Add("capture", "Returns a captured value", () => message)
+            .Build();
+        var invoker = new OperationInvoker(new SingleServiceProvider(new object()));
+
+        var result = await invoker.InvokeAsync(Assert.Single(catalog.Operations));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("captured", result.Value);
+    }
+
+    [Fact]
+    public async Task Add_retains_bound_delegate_targets_for_multiple_operations()
+    {
+        var first = new RecordingOperation("first");
+        var second = new RecordingOperation("second");
+        var catalog = new OperationCatalogBuilder()
+            .Add("first", "Records the first invocation", first.Record)
+            .Add("second", "Records the second invocation", second.Record)
+            .Build();
+        var invoker = new OperationInvoker(new SingleServiceProvider(new object()));
+
+        var results = await Task.WhenAll(catalog.Operations.Select(operation => invoker.InvokeAsync(operation).AsTask()));
+
+        Assert.All(results, static result => Assert.True(result.Succeeded));
+        Assert.Equal(1, first.InvocationCount);
+        Assert.Equal(1, second.InvocationCount);
+    }
+
+    [Fact]
     public void Add_configures_category_safety_level_examples_and_aliases()
     {
         var catalog = new OperationCatalogBuilder()
@@ -34,6 +67,7 @@ public sealed class OperationCatalogBuilderTests
                 options.SafetyLevel = AgentSafetyLevel.Confirm;
                 options.Examples.Add("double --value 5");
                 options.Aliases.Add("dbl");
+                options.IsIdempotent = true;
             })
             .Build();
 
@@ -42,6 +76,18 @@ public sealed class OperationCatalogBuilderTests
         Assert.Equal(AgentSafetyLevel.Confirm, operation.SafetyLevel);
         Assert.Equal(["double --value 5"], operation.Examples);
         Assert.Equal(["dbl"], operation.Aliases);
+        Assert.True(operation.IsIdempotent);
+    }
+
+    [Fact]
+    public void Add_defaults_IsIdempotent_to_false()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .Add("double", "Doubles a number", Double)
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations);
+        Assert.False(operation.IsIdempotent);
     }
 
     [Fact]
@@ -106,6 +152,17 @@ public sealed class OperationCatalogBuilderTests
     }
 
     private static int Double(int value) => value * 2;
+
+    private sealed class RecordingOperation(string name)
+    {
+        public int InvocationCount { get; private set; }
+
+        public string Record()
+        {
+            InvocationCount++;
+            return name;
+        }
+    }
 
     private sealed class SampleOperations
     {

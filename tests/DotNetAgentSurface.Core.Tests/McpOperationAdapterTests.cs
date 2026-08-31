@@ -1,6 +1,9 @@
+using System.ComponentModel;
 using System.Text.Json;
+using DotNetAgentSurface.CommandLine;
 using DotNetAgentSurface.Mcp;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace DotNetAgentSurface.Core.Tests;
 
@@ -116,10 +119,57 @@ public sealed class McpOperationAdapterTests
         Assert.True(tools["fail"].Annotations!.DestructiveHint);
     }
 
+    [Fact]
+    public async Task AddMcpServerTools_registers_native_tools_for_catalog_projection()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .AddMcpServerTools(typeof(NativeMcpTools).Assembly, type =>
+                type == typeof(NativeMcpTools) ? new NativeMcpTools() : null)
+            .Build();
+        var adapter = new McpOperationAdapter(catalog, new OperationInvoker(new SingleServiceProvider(new NativeMcpTools())));
+        var outputDirectory = Path.Combine(Path.GetTempPath(), $"dotnet-agent-surface-{Guid.NewGuid():N}");
+
+        try
+        {
+            new SkillReferenceGenerator().Generate(catalog, outputDirectory);
+
+            var operation = Assert.Single(catalog.Operations);
+            var tool = Assert.Single(adapter.GetTools());
+            var commandLine = new OperationCommandLineAdapter(catalog, new OperationInvoker(new SingleServiceProvider(new NativeMcpTools())));
+            var cliResult = await commandLine.ExecuteAsync(["native-greet", "--name", "\"Ada\""]);
+            var result = await adapter.InvokeAsync("native-greet", ArgumentsFor("Ada"));
+
+            Assert.Equal("native-greet", operation.Name);
+            Assert.Equal("Native MCP greeting", operation.Description);
+            Assert.True(operation.IsIdempotent);
+            Assert.Equal(AgentSafetyLevel.Dangerous, operation.SafetyLevel);
+            Assert.Equal("native-greet", tool.Name);
+            Assert.Equal(0, cliResult.ExitCode);
+            Assert.Equal("\"Hello, Ada!\"", cliResult.Output);
+            Assert.Contains("`native-greet`", File.ReadAllText(Path.Combine(outputDirectory, "SKILL.md")));
+            Assert.Equal("\"Hello, Ada!\"", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        }
+        finally
+        {
+            if (Directory.Exists(outputDirectory))
+            {
+                Directory.Delete(outputDirectory, recursive: true);
+            }
+        }
+    }
+
     private static Dictionary<string, JsonElement> ArgumentsFor(string name) => new()
     {
         ["name"] = JsonDocument.Parse(JsonSerializer.Serialize(name)).RootElement.Clone()
     };
+
+    [McpServerToolType]
+    private sealed class NativeMcpTools
+    {
+        [McpServerTool(Name = "native-greet", Title = "Native MCP greeting", Destructive = true, Idempotent = true)]
+        [Description("Native MCP greeting")]
+        public string Greet(string name) => $"Hello, {name}!";
+    }
 
     private sealed class GreetingOperations
     {

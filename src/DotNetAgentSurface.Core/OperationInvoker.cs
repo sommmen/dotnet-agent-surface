@@ -67,6 +67,11 @@ public sealed class OperationInvoker
 
     private object? ResolveTarget(OperationDescriptor operation)
     {
+        if (operation.BoundTarget is not null)
+        {
+            return operation.BoundTarget;
+        }
+
         if (operation.Method.IsStatic)
         {
             return null;

@@ -31,9 +31,10 @@ public sealed class OperationCatalogBuilder
     /// Registers an operation directly from a delegate rather than an attributed method. The delegate's
     /// parameters become the operation's parameters, and its underlying <see cref="Delegate.Method"/> feeds
     /// the same invocation pipeline used by attribute-discovered operations (<see cref="OperationInvoker"/>
-    /// invokes <c>operation.Method.Invoke(target, arguments)</c> unchanged). A static-method delegate needs no
-    /// service resolution; an instance-method delegate requires an instance of its declaring type to be
-    /// resolvable from the invoker's <see cref="IServiceProvider"/>, exactly like attribute discovery.
+    /// invokes <c>operation.Method.Invoke(target, arguments)</c> unchanged). The delegate's bound target, when
+    /// present, is retained and invoked directly; otherwise static delegates need no service resolution and
+    /// unbound instance methods are resolved from the invoker's <see cref="IServiceProvider"/>, exactly like
+    /// attribute discovery.
     /// </summary>
     public OperationCatalogBuilder Add(
         string name,
@@ -53,10 +54,11 @@ public sealed class OperationCatalogBuilder
             Category = options.Category,
             SafetyLevel = options.SafetyLevel,
             Examples = [.. options.Examples],
-            Aliases = [.. options.Aliases]
+            Aliases = [.. options.Aliases],
+            IsIdempotent = options.IsIdempotent
         };
 
-        _operations.Add(OperationCatalog.CreateDescriptor(implementation.Method, attribute));
+        _operations.Add(new OperationDescriptor(implementation.Method, attribute, implementation.Target));
         return this;
     }
 
@@ -80,4 +82,11 @@ public sealed class OperationRegistrationOptions
     public List<string> Examples { get; } = [];
 
     public List<string> Aliases { get; } = [];
+
+    /// <summary>
+    /// Mirrors <see cref="OperationDescriptor.IsIdempotent"/>: whether repeated invocations with the same
+    /// inputs are safe (no additional side effects beyond the first successful call). Defaults to
+    /// <see langword="false"/>, matching <see cref="AgentOperationAttribute.IsIdempotent"/>.
+    /// </summary>
+    public bool IsIdempotent { get; set; }
 }

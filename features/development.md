@@ -325,6 +325,8 @@ Target the libraries at `net10.0;netstandard2.0`. The repository's .NET 10 appli
 
 Keep `[AgentOperation]` attributes as the convention for discoverable public methods, and add a first-class fluent builder for registrations that cannot be expressed naturally with attributes (delegates, aliases, or runtime composition). The intended shape is an `OperationCatalogBuilder` that can consume attributed services and explicit registrations, similar in spirit to EF Core's convention-plus-fluent configuration model. Add focused diagnostics and registration tests before treating the builder as public API.
 
+This escape hatch is exactly what the three discovery satellites below build on: Hangfire recurring jobs, ASP.NET Core endpoints, and native MCP-SDK tools each discover operations at runtime through their own source-specific APIs and register them via `OperationCatalogBuilder.Add(...)` rather than `[AgentOperation]`, without adding new dependencies to `Core`. See [`discovery-satellites.md`](./discovery-satellites.md) for the full viability assessment and design, and the "Discovery satellites" work item below.
+
 ### Command hierarchy and collisions — work item
 
 Categories map to deterministic command groups: an operation in category `tasks` is invoked as `tasks <operation>`, with uncategorized operations remaining at the root. Normalize comparisons case-insensitively, sort categories and operations ordinally, and reject ambiguous effective paths rather than choosing by reflection order. Discovery should emit a diagnostic or warning for duplicate or shadowed metadata where the host has a warning channel; the CLI must return a structured error. Document the command chain and collision behavior in `README.md` (the current flat adapter is only the prototype).
@@ -361,6 +363,10 @@ Make the main entry point an explicit generator command that invokes the existin
 
 Use normal .NET conventions: `DotNetAgentSurface.*` package IDs and namespaces, one package per independently consumable surface (`Core`, `CommandLine`, `Mcp`, and later `Skills` if it becomes a separate runtime/package concern). Keep adapter dependencies isolated and preserve the existing source-linking, XML documentation, and symbol-package metadata.
 
+### Discovery satellites (Hangfire, ASP.NET Core, native MCP tools) — work item
+
+Assessed as viable in [`discovery-satellites.md`](./discovery-satellites.md); no source generator (the information each source needs is only fully known at runtime, not compile time), and ASP.NET Core discovery uses `IApiDescriptionGroupCollectionProvider` (`ApiExplorer`) rather than a hand-rolled `EndpointDataSource` walk. All three feed the existing catalog through `OperationCatalogBuilder.Add(...)`; none changes `Core`'s "scan only explicitly annotated methods" philosophy or adds a dependency to `Core`, `CommandLine`, or `Mcp`'s existing outward-facing adapter. See work items 19–24 below for the concrete backlog.
+
 ### Planned work items
 
 1. Add fluent/delegate registration alongside attributes.
@@ -391,6 +397,15 @@ The library should be ready to publish to NuGet before the public API is stabili
 16. Pack the repository-level `README.md` and an optional package icon at the NuGet package root, and verify package metadata, XML documentation, `.nupkg`, and `.snupkg` contents.
 17. Remove the current `IsPackable=false` preview gate from `Directory.Build.props` only once the packaging validation and publishing pipeline are ready.
 18. Add a GitHub Actions deployment workflow that checks out with `fetch-depth: 0`, restores/builds/tests before packing, publishes to GitHub Packages first and NuGet.org second, and uses `--skip-duplicate` for repeatable publishing.
+
+Discovery satellites (see [`discovery-satellites.md`](./discovery-satellites.md)):
+
+19. **Completed** — added `IsIdempotent` registration support and retained bound delegate targets for closure and instance-delegate discovery contracts (`e66520f`).
+20. **Completed** — added native MCP-SDK tool ingestion through `AddMcpServerTools(...)` (`0d7a834`). It maps name, `DescriptionAttribute`/title, idempotency, and destructive safety. `ReadOnly` and `OutputSchemaType` have no `OperationDescriptor` equivalent and remain MCP-projection concerns. Tests cover catalog, CLI, MCP, invocation, and skill output.
+21. **Completed** — added the `DotNetAgentSurface.Hangfire` satellite and `AddHangfireRecurringJobs(...)` (`8f05d49`). It discovers recurring jobs from Hangfire storage, triggers through the supplied manager, defaults to confirmation, and supports optional metadata enrichment with `Hangfire.InMemory` coverage.
+22. **Completed** — added the `DotNetAgentSurface.AspNetCore` ApiExplorer satellite (`be7a47a`). It discovers MVC and Minimal API endpoints, invokes anonymous route delegates in-process, and catalogs protected endpoints while denying their execution by default until a trusted caller-context contract exists.
+23. **Deferred — authorization caller context.** Add `AspNetCoreEndpointAuthorizationPolicy` (`IOperationInvocationPolicy`) only after Core, CLI, and MCP define a trusted invocation-context/credential-forwarding contract. Capture `IAuthorizeData`/`[Authorize]`/`[AllowAnonymous]` metadata, evaluate supplied credentials through the host's real `IAuthorizationService`, and deny by default when no valid caller context exists. The current satellite safely catalogs protected endpoints but refuses execution; it must not accept arbitrary injected principals or tokens.
+24. **Completed — cross-source validation.** Focused Core/MCP (8), ASP.NET Core (2), and Hangfire (3) test suites pass, confirming each source populates the shared catalog and its relevant projections. `DotNetAgentSurface.Samples.Hangfire` was added and manually validated end to end: it discovers two recurring jobs through `AddHangfireRecurringJobs`, demonstrates per-job metadata enrichment, and confirms invocation only enqueues the job (verified via `IMonitoringApi`) without starting a `BackgroundJobServer`. `DotNetAgentSurface.Samples.AspNetCore` was extended with `AddFromApiExplorer`, combining its attribute-discovered `TaskTrackerService` operations with two new Minimal API routes (`/demo/ping` anonymous, `/demo/secret` protected); manual validation confirmed `aspnet_get_demo_ping` executes successfully and `aspnet_get_demo_secret` is cataloged but its invocation is denied (HTTP 400) because Core does not yet forward a trusted caller context — this is the expected deny-by-default behavior from work item 23, not a gap in this item. Both samples are documented in `samples/README.md`.
 
 ## Definition of an initial usable release
 

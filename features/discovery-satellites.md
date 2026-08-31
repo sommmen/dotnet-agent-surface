@@ -86,12 +86,12 @@ public static class HangfireOperationCatalogBuilderExtensions
 }
 ```
 
-Each discovered `RecurringJobDto` becomes one operation, registered via the existing delegate-based
-`Add(name, description, delegate, configure)` overload, where the delegate wraps
-`jobManager.TriggerJob(dto.Id)` rather than the raw job method — the catalog operation's `MethodInfo` can
-still point at a thin static trigger method so schema generation has something to reflect over (recurring
-jobs take no invocation-time parameters beyond an optional reason/cancellation token, matching Hangfire's
-own `TriggerJob(string)` signature).
+Each discovered `RecurringJobDto` becomes one operation, registered via the delegate-based
+`Add(name, description, delegate, configure)` overload, where a capturing delegate wraps
+`jobManager.TriggerJob(dto.Id)` rather than the raw job method. `OperationCatalogBuilder.Add(...)` retains
+that delegate's bound target, so each discovered operation keeps its own job identity and may be invoked
+without registering a synthetic wrapper type in DI. Recurring jobs take no invocation-time parameters
+beyond an optional reason/cancellation token, matching Hangfire's own `TriggerJob(string)` signature.
 
 Design notes:
 
@@ -135,7 +135,9 @@ match `Core`'s `net10.0;netstandard2.0` unless it creates real friction, for con
 A meta package, `DotNetAgentSurface.AspNetCore`, can depend directly on ASP.NET Core (unlike `Core`, which
 must stay dependency-light per the existing non-goals). It discovers endpoints — both MVC controller
 actions and Minimal API route handlers — and registers each as a catalog operation via the same
-delegate-based `Add(...)` builder method, with the delegate invoking the endpoint's request delegate (or,
+delegate-based `Add(...)` builder method. A capturing delegate may safely retain each endpoint-specific
+invoker or request delegate; the builder preserves the bound target for invocation. The delegate invokes
+the endpoint's request delegate (or,
 more practically, wrapping an `HttpClient`/`IHttpContextFactory`-based in-process call, or delegating to
 the already-resolved `Endpoint.RequestDelegate` against a synthesized `HttpContext`).
 
@@ -241,8 +243,9 @@ source) already defines exactly the attribute pair needed:
 A small addition to `DotNetAgentSurface.Mcp` (or a new `DotNetAgentSurface.Mcp.Discovery` companion, if
 keeping the outbound adapter and inbound discovery cleanly separated is preferred — recommendation below)
 does the mirrored scan and registers each `[McpServerTool]` method via
-`OperationCatalogBuilder.Add(name, description, delegate, configure)`, mapping SDK metadata to
-`OperationRegistrationOptions` where a natural equivalent exists:
+`OperationCatalogBuilder.Add(name, description, delegate, configure)`. A per-tool capturing delegate may
+retain its tool target and invocation context because the builder preserves its bound target. Map SDK
+metadata to `OperationRegistrationOptions` where a natural equivalent exists:
 
 | MCP SDK attribute property | Catalog equivalent |
 |---|---|

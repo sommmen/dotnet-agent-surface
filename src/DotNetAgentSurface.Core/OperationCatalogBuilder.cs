@@ -53,7 +53,8 @@ public sealed class OperationCatalogBuilder
             Category = options.Category,
             SafetyLevel = options.SafetyLevel,
             Examples = [.. options.Examples],
-            Aliases = [.. options.Aliases]
+            Aliases = [.. options.Aliases],
+            IsIdempotent = options.IsIdempotent
         };
 
         _operations.Add(OperationCatalog.CreateDescriptor(implementation.Method, attribute));
@@ -80,4 +81,11 @@ public sealed class OperationRegistrationOptions
     public List<string> Examples { get; } = [];
 
     public List<string> Aliases { get; } = [];
+
+    /// <summary>
+    /// Mirrors <see cref="OperationDescriptor.IsIdempotent"/>: whether repeated invocations with the same
+    /// inputs are safe (no additional side effects beyond the first successful call). Defaults to
+    /// <see langword="false"/>, matching <see cref="AgentOperationAttribute.IsIdempotent"/>.
+    /// </summary>
+    public bool IsIdempotent { get; set; }
 }

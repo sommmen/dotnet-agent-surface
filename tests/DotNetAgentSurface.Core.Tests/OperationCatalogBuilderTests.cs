@@ -34,6 +34,7 @@ public sealed class OperationCatalogBuilderTests
                 options.SafetyLevel = AgentSafetyLevel.Confirm;
                 options.Examples.Add("double --value 5");
                 options.Aliases.Add("dbl");
+                options.IsIdempotent = true;
             })
             .Build();
 
@@ -42,6 +43,18 @@ public sealed class OperationCatalogBuilderTests
         Assert.Equal(AgentSafetyLevel.Confirm, operation.SafetyLevel);
         Assert.Equal(["double --value 5"], operation.Examples);
         Assert.Equal(["dbl"], operation.Aliases);
+        Assert.True(operation.IsIdempotent);
+    }
+
+    [Fact]
+    public void Add_defaults_IsIdempotent_to_false()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .Add("double", "Doubles a number", Double)
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations);
+        Assert.False(operation.IsIdempotent);
     }
 
     [Fact]

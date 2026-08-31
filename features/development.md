@@ -325,6 +325,8 @@ Target the libraries at `net10.0;netstandard2.0`. The repository's .NET 10 appli
 
 Keep `[AgentOperation]` attributes as the convention for discoverable public methods, and add a first-class fluent builder for registrations that cannot be expressed naturally with attributes (delegates, aliases, or runtime composition). The intended shape is an `OperationCatalogBuilder` that can consume attributed services and explicit registrations, similar in spirit to EF Core's convention-plus-fluent configuration model. Add focused diagnostics and registration tests before treating the builder as public API.
 
+This escape hatch is exactly what the three discovery satellites below build on: Hangfire recurring jobs, ASP.NET Core endpoints, and native MCP-SDK tools each discover operations at runtime through their own source-specific APIs and register them via `OperationCatalogBuilder.Add(...)` rather than `[AgentOperation]`, without adding new dependencies to `Core`. See [`discovery-satellites.md`](./discovery-satellites.md) for the full viability assessment and design, and the "Discovery satellites" work item below.
+
 ### Command hierarchy and collisions — work item
 
 Categories map to deterministic command groups: an operation in category `tasks` is invoked as `tasks <operation>`, with uncategorized operations remaining at the root. Normalize comparisons case-insensitively, sort categories and operations ordinally, and reject ambiguous effective paths rather than choosing by reflection order. Discovery should emit a diagnostic or warning for duplicate or shadowed metadata where the host has a warning channel; the CLI must return a structured error. Document the command chain and collision behavior in `README.md` (the current flat adapter is only the prototype).
@@ -361,6 +363,10 @@ Make the main entry point an explicit generator command that invokes the existin
 
 Use normal .NET conventions: `DotNetAgentSurface.*` package IDs and namespaces, one package per independently consumable surface (`Core`, `CommandLine`, `Mcp`, and later `Skills` if it becomes a separate runtime/package concern). Keep adapter dependencies isolated and preserve the existing source-linking, XML documentation, and symbol-package metadata.
 
+### Discovery satellites (Hangfire, ASP.NET Core, native MCP tools) — work item
+
+Assessed as viable in [`discovery-satellites.md`](./discovery-satellites.md); no source generator (the information each source needs is only fully known at runtime, not compile time), and ASP.NET Core discovery uses `IApiDescriptionGroupCollectionProvider` (`ApiExplorer`) rather than a hand-rolled `EndpointDataSource` walk. All three feed the existing catalog through `OperationCatalogBuilder.Add(...)`; none changes `Core`'s "scan only explicitly annotated methods" philosophy or adds a dependency to `Core`, `CommandLine`, or `Mcp`'s existing outward-facing adapter. See work items 19–24 below for the concrete backlog.
+
 ### Planned work items
 
 1. Add fluent/delegate registration alongside attributes.
@@ -391,6 +397,15 @@ The library should be ready to publish to NuGet before the public API is stabili
 16. Pack the repository-level `README.md` and an optional package icon at the NuGet package root, and verify package metadata, XML documentation, `.nupkg`, and `.snupkg` contents.
 17. Remove the current `IsPackable=false` preview gate from `Directory.Build.props` only once the packaging validation and publishing pipeline are ready.
 18. Add a GitHub Actions deployment workflow that checks out with `fetch-depth: 0`, restores/builds/tests before packing, publishes to GitHub Packages first and NuGet.org second, and uses `--skip-duplicate` for repeatable publishing.
+
+Discovery satellites (see [`discovery-satellites.md`](./discovery-satellites.md)):
+
+19. Add `IsIdempotent` to `OperationRegistrationOptions` (`OperationCatalogBuilder.cs`), mirroring the property `OperationDescriptor` already exposes, so delegate-based registrations from all three discovery satellites (and any future ones) can declare idempotency without a workaround.
+20. Add native MCP-SDK tool ingestion: reflect `[McpServerToolType]`/`[McpServerTool]` (mirroring the official SDK's own `WithToolsFromAssembly` scan) and register each tool via `OperationCatalogBuilder.Add(...)`, mapping `Name`, `Title`/description, `Idempotent`, `ReadOnly`/`Destructive` (safety level), and `OutputSchemaType` where a natural catalog equivalent exists. Add tests proving a `[McpServerTool]`-only method appears in CLI and skill output, not just the MCP surface.
+21. Add a new `DotNetAgentSurface.Hangfire` package with `AddHangfireRecurringJobs(JobStorage, IRecurringJobManager, Action<HangfireDiscoveryOptions>?)`. Discover jobs via `StorageConnectionExtensions.GetRecurringJobs(IStorageConnection)` (never blind reflection over job assemblies, since Hangfire defines no marker attribute and real jobs are registered imperatively); invoke via `IRecurringJobManager.TriggerJob(id)`, never `MethodInfo.Invoke(...)` directly. Default new Hangfire-sourced operations to `AgentSafetyLevel.Confirm`. Offer an optional companion attribute for description/category/safety-level enrichment that discovery never depends on (undecorated jobs still discover with a generated fallback description). Add tests against `Hangfire.InMemory` storage.
+22. Add a new `DotNetAgentSurface.AspNetCore` package that discovers MVC and Minimal API endpoints via `IApiDescriptionGroupCollectionProvider` (`ApiExplorer`) and registers each via `OperationCatalogBuilder.Add(...)`, invoking through the endpoint's resolved `RequestDelegate` against a synthesized `HttpContext` (in-process, no real network hop). Add tests covering both MVC controller actions and Minimal API route handlers.
+23. Add `AspNetCoreEndpointAuthorizationPolicy` (`IOperationInvocationPolicy`) in `DotNetAgentSurface.AspNetCore` to close the authentication/authorization gap flagged for endpoint discovery: capture each endpoint's `IAuthorizeData`/`[Authorize]`/`[AllowAnonymous]` metadata at discovery time; at invocation time, require the caller to supply equivalent credentials (bearer token or pre-authenticated `ClaimsPrincipal`) through the invocation context and evaluate them against the application's real `IAuthorizationService`/policy pipeline rather than reimplementing it; deny by default when authorization is required and no credentials are supplied; pass anonymous endpoints through unchanged. Add tests proving an authorized endpoint is denied without credentials and allowed with a valid supplied principal. Resolve, before implementation, the exact supplied-credential shape (bearer token vs. `ClaimsPrincipal` vs. both) since no CLI/MCP credential-forwarding mechanism exists yet.
+24. Add small `samples/DotNetAgentSurface.Samples.Hangfire` and extend/add an ASP.NET Core sample demonstrating endpoint discovery plus the authorization policy, following the existing `samples/` pattern; use as the manual + automated validation that discovery satellites feed the same catalog, CLI, MCP, and skill output as `[AgentOperation]`-sourced operations.
 
 ## Definition of an initial usable release
 

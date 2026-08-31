@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/DotNetAgentSurface.CommandLine/DotNetAgentSurface.CommandLine.csproj" />
     <Project Path="src/DotNetAgentSurface.Core/DotNetAgentSurface.Core.csproj" />
+    <Project Path="src/DotNetAgentSurface.AspNetCore/DotNetAgentSurface.AspNetCore.csproj" />
     <Project Path="src/DotNetAgentSurface.Mcp/DotNetAgentSurface.Mcp.csproj" />
   </Folder>
   <Folder Name="/samples/">
@@ -15,5 +16,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/DotNetAgentSurface.CommandLine.Tests/DotNetAgentSurface.CommandLine.Tests.csproj" />
     <Project Path="tests/DotNetAgentSurface.Core.Tests/DotNetAgentSurface.Core.Tests.csproj" />
+    <Project Path="tests/DotNetAgentSurface.AspNetCore.Tests/DotNetAgentSurface.AspNetCore.Tests.csproj" />
   </Folder>
 </Solution>

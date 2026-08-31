@@ -67,7 +67,7 @@ Hangfire's own runtime storage:
 - Each `RecurringJobDto.Job` is a `Hangfire.Common.Job` with public `Type` and `MethodInfo Method`
   properties — full reflection access to the target type and method, its cron expression, queue, and
   last/next execution, with no custom attribute required.
-- Invocation goes through `IRecurringJobManager.TriggerJob(string recurringJobId)`, not
+- Invocation goes through `IRecurringJobManager.Trigger(string recurringJobId)`, not
   `Method.Invoke(...)`. This is the piece that resolves the DI/`PerformContext` concern above.
 
 This means Hangfire job discovery is necessarily a **post-startup, runtime** operation: it has to run
@@ -88,10 +88,10 @@ public static class HangfireOperationCatalogBuilderExtensions
 
 Each discovered `RecurringJobDto` becomes one operation, registered via the delegate-based
 `Add(name, description, delegate, configure)` overload, where a capturing delegate wraps
-`jobManager.TriggerJob(dto.Id)` rather than the raw job method. `OperationCatalogBuilder.Add(...)` retains
+`jobManager.Trigger(dto.Id)` rather than the raw job method. `OperationCatalogBuilder.Add(...)` retains
 that delegate's bound target, so each discovered operation keeps its own job identity and may be invoked
-without registering a synthetic wrapper type in DI. Recurring jobs take no invocation-time parameters
-beyond an optional reason/cancellation token, matching Hangfire's own `TriggerJob(string)` signature.
+without registering a synthetic wrapper type in DI. Recurring jobs take no invocation-time parameters,
+matching Hangfire's own `Trigger(string)` signature.
 
 Design notes:
 
@@ -161,48 +161,24 @@ model — which is explicitly called out as a non-goal ("Replacing application-l
 authorization systems") and a Safety-and-security requirement ("expose hooks for authentication and
 authorization before invocation") in [`development.md`](./development.md).
 
-The mechanism already exists in Core to solve this correctly: `IOperationInvocationPolicy`. The design:
+Work item 22 is implemented in `DotNetAgentSurface.AspNetCore`. `AddFromApiExplorer` enumerates MVC and
+Minimal API descriptions through `IApiDescriptionGroupCollectionProvider`, resolves their route endpoints,
+and adds deterministic catalog operations. Anonymous endpoints invoke their `RequestDelegate` in a scoped,
+synthesized `HttpContext`; the current surface accepts a JSON request body only, so route and query parameter
+mapping is intentionally not implied.
 
-1. **Discovery time**: for each discovered endpoint, capture its authorization metadata from
-   `ApiDescription`/`Endpoint.Metadata` (`IAuthorizeData`, `[Authorize]`, `[AllowAnonymous]`) into the
-   operation's registration — either stored in `OperationRegistrationOptions.Category` /
-   a small metadata bag, or (cleaner) surfaced through a small `AspNetCoreEndpointMetadata` companion object
-   attached to the descriptor via a dictionary keyed by operation name, since `OperationDescriptor` itself
-   is sealed and framework-agnostic on purpose and should **not** grow ASP.NET-Core-specific properties.
-2. **Invocation time**: `DotNetAgentSurface.AspNetCore` ships an `IOperationInvocationPolicy` implementation
-   (for example, `AspNetCoreEndpointAuthorizationPolicy`) that, for endpoints requiring authorization,
-   requires the catalog caller to supply equivalent credentials through the invocation context (for
-   example, a bearer token or a pre-authenticated `ClaimsPrincipal` passed alongside `inputs`) and runs
-   the endpoint's actual `IAuthorizationService`/policy evaluation against it before invoking — reusing the
-   application's real authorization pipeline rather than re-implementing it. If no such context is
-   supplied, the policy denies by default. Anonymous endpoints (`[AllowAnonymous]` or no auth metadata) are
-   allowed through unchanged.
-3. **Explicit opt-out for the unsafe case**: hosts that genuinely want to expose an authorization-gated
-   endpoint to agents without agent-supplied credentials (for example, a trusted internal automation
-   context) must opt in explicitly per-endpoint or per-category — never as a default — mirroring the
-   existing `DangerousOperationConfirmationPolicy` pattern where the default behavior denies unless a host
-   explicitly wires up an approval mechanism.
+Protected endpoints are still discovered, but their registered delegate checks `IAuthorizeData` and
+`IAllowAnonymous` metadata before it can execute the endpoint. An endpoint requiring authorization throws an
+`UnauthorizedAccessException` and is therefore denied by default even when a host has not added a Core policy.
+`IAllowAnonymous` takes precedence, matching ASP.NET Core endpoint metadata semantics.
 
-This keeps the framework's stated boundary intact: it provides the *hook*, not a new identity model. The
-host application is still responsible for deciding how an agent's invocation gets treated as an
-authenticated principal (if at all).
-
-### Invocation model
-
-Two workable options, both compatible with `ApiExplorer`-based discovery:
-
-- **In-process invocation** using `Endpoint.RequestDelegate` against a synthesized `HttpContext` built from
-  the catalog invocation's `inputs` (mapping JSON inputs to route values/query/body per the endpoint's
-  bound parameters). Avoids a network hop and keeps everything in the same process/DI scope, but requires
-  careful synthesis of `HttpContext` (headers, `IServiceProvider` scope, etc.) — this is exactly the kind
-  of "in-process ASP.NET Core endpoint execution" pattern `Microsoft.AspNetCore.TestHost`
-  (`TestServer`/`WebApplicationFactory`) already solves for integration testing; reusing that machinery (or
-  a similar minimal harness) rather than hand-rolling `HttpContext` construction is the pragmatic choice.
-- **Loopback HTTP call** via an injected `HttpClient` pointed at the app's own address. Simpler to reason
-  about (it's exactly what a real caller would do, including real middleware/auth pipeline execution) but
-  adds latency and requires the app to be reachable at a known base address, which isn't always true (for
-  example, behind a reverse proxy with path rewriting).
-
+Work item 23 remains pending. Core's `IOperationInvocationPolicy` receives only an operation descriptor,
+JSON inputs, and a cancellation token; it has no trusted caller identity, credential, `HttpContext`, or
+`ClaimsPrincipal`. Accepting a bearer token in untrusted JSON inputs or synthesizing an identity would invent
+an insecure authentication API and could bypass application authorization. Completing item 23 requires a
+Core invocation-context contract that securely transports authenticated caller information and permits the
+host's real ASP.NET Core authentication and authorization services to evaluate it. Until that contract exists,
+protected endpoints must remain cataloged-but-denied.
 Recommendation: start with **`TestHost`-style in-process invocation** (via `Endpoint.RequestDelegate` and
 a synthesized context, using ASP.NET Core's own test-host approach as the reference implementation) as the
 default, since it's dependency-light and works in every hosting scenario without requiring a reachable

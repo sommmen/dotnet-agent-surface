@@ -29,6 +29,24 @@ public sealed class McpOperationAdapterTests
     }
 
     [Fact]
+    public async Task InvokeAsync_resolves_operation_by_alias()
+    {
+        var adapter = new McpOperationAdapter(
+            OperationCatalog.Discover(typeof(GreetingOperations)),
+            new OperationInvoker(new SingleServiceProvider(new GreetingOperations())));
+
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["name"] = JsonDocument.Parse("\"Ada\"").RootElement.Clone()
+        };
+
+        var result = await adapter.InvokeAsync("hello", arguments);
+
+        Assert.Null(result.IsError);
+        Assert.Equal("\"Hello, Ada!\"", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
     public async Task InvokeAsync_returns_structured_error_for_unknown_operation()
     {
         var adapter = new McpOperationAdapter(
@@ -105,7 +123,7 @@ public sealed class McpOperationAdapterTests
 
     private sealed class GreetingOperations
     {
-        [AgentOperation("greet", "Greets a person")]
+        [AgentOperation("greet", "Greets a person", Aliases = ["hello"])]
         public string Greet(string name) => $"Hello, {name}!";
 
         [AgentOperation("fail", "Always fails", SafetyLevel = AgentSafetyLevel.Dangerous)]

@@ -18,6 +18,10 @@ public sealed class AgentOperationAttribute : Attribute
     public AgentSafetyLevel SafetyLevel { get; init; } = AgentSafetyLevel.Safe;
 
     public string[] Examples { get; init; } = [];
+
+    public string[] Aliases { get; init; } = [];
+
+    public bool IsIdempotent { get; init; }
 }
 
 public enum AgentSafetyLevel

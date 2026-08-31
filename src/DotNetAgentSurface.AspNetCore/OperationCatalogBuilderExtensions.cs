@@ -24,10 +24,25 @@ public static class OperationCatalogBuilderExtensions
         IEnumerable<EndpointDataSource> endpointDataSources,
         IServiceProvider applicationServices)
     {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(apiExplorer);
-        ArgumentNullException.ThrowIfNull(endpointDataSources);
-        ArgumentNullException.ThrowIfNull(applicationServices);
+        if (builder is null)
+        {
+            throw new ArgumentNullException(nameof(builder));
+        }
+
+        if (apiExplorer is null)
+        {
+            throw new ArgumentNullException(nameof(apiExplorer));
+        }
+
+        if (endpointDataSources is null)
+        {
+            throw new ArgumentNullException(nameof(endpointDataSources));
+        }
+
+        if (applicationServices is null)
+        {
+            throw new ArgumentNullException(nameof(applicationServices));
+        }
 
         var endpoints = endpointDataSources.SelectMany(static source => source.Endpoints).OfType<RouteEndpoint>().ToArray();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

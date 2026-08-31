@@ -24,8 +24,15 @@ public static class McpOperationCatalogBuilderExtensions
         Assembly assembly,
         Func<Type, object?>? targetFactory = null)
     {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(assembly);
+        if (builder is null)
+        {
+            throw new ArgumentNullException(nameof(builder));
+        }
+
+        if (assembly is null)
+        {
+            throw new ArgumentNullException(nameof(assembly));
+        }
 
         foreach (var toolType in GetLoadableTypes(assembly)
                      .Where(static type => type.IsClass && type.IsDefined(typeof(McpServerToolTypeAttribute), inherit: false)))

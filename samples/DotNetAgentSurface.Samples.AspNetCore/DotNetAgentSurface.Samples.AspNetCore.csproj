@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DotNetAgentSurface.Core\DotNetAgentSurface.Core.csproj" />
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.AspNetCore\DotNetAgentSurface.AspNetCore.csproj" />
     <ProjectReference Include="..\DotNetAgentSurface.Samples.TaskTracker\DotNetAgentSurface.Samples.TaskTracker.csproj" />
   </ItemGroup>
 

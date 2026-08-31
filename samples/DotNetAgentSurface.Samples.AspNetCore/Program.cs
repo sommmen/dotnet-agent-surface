@@ -1,10 +1,26 @@
 using System.Text.Json;
+using DotNetAgentSurface.AspNetCore;
 using DotNetAgentSurface.Core;
 using DotNetAgentSurface.Samples.TaskTracker;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
+using Microsoft.AspNetCore.Routing;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<TaskTrackerService>();
-builder.Services.AddSingleton(sp => OperationCatalog.Discover(typeof(TaskTrackerService)));
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddAuthorization();
+
+// The catalog is resolved lazily on first request (from the /operations endpoints below), which happens
+// after the routes mapped further down have been added to the application's EndpointDataSource. This lets
+// a single catalog combine attribute-discovered TaskTracker operations with ApiExplorer-discovered minimal
+// API routes without needing to start the host manually before building the catalog.
+builder.Services.AddSingleton(sp => new OperationCatalogBuilder()
+    .AddFromType<TaskTrackerService>()
+    .AddFromApiExplorer(
+        sp.GetRequiredService<IApiDescriptionGroupCollectionProvider>(),
+        sp.GetServices<EndpointDataSource>(),
+        sp)
+    .Build());
 builder.Services.AddSingleton<OperationInvoker>();
 
 var app = builder.Build();
@@ -14,6 +30,12 @@ app.MapGet("/", () => Results.Ok(new
     name = "DotNet Agent Surface ASP.NET Core sample",
     operations = new[] { "/operations", "/operations/{name}" }
 }));
+
+// Demo endpoints that exercise the ApiExplorer discovery satellite: an anonymous endpoint that the catalog
+// can invoke directly, and an authorization-protected endpoint that is cataloged but always denies invocation
+// because the Core invocation pipeline does not carry an authenticated caller context (see development.md).
+app.MapGet("/demo/ping", () => Results.Ok(new { message = "pong" }));
+app.MapGet("/demo/secret", () => Results.Ok("secret")).RequireAuthorization();
 
 app.MapGet("/operations", (OperationCatalog catalog) => Results.Ok(catalog.Operations.Select(ToResponse)));
 

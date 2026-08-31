@@ -26,9 +26,16 @@ DotNetAgentSurface, without duplicating any operation definitions.
   running on real .NET Framework, consuming their `netstandard2.0` build. See
   the "Legacy .NET Framework sample" section below.
 - **DotNetAgentSurface.Samples.AspNetCore** — a modern minimal API host that
-  exposes the same `TaskTrackerService` catalog through HTTP. It uses ASP.NET
-  Core dependency injection and delegates discovery and invocation to
-  `OperationCatalog` and `OperationInvoker`.
+  exposes the same `TaskTrackerService` catalog through HTTP, combined with
+  its own Minimal API routes discovered through the ApiExplorer satellite
+  (`DotNetAgentSurface.AspNetCore`). It uses ASP.NET Core dependency
+  injection and delegates discovery and invocation to `OperationCatalog` and
+  `OperationInvoker`.
+- **DotNetAgentSurface.Samples.Hangfire** (`hangfire-sample`) — a
+  self-contained console sample (using `Hangfire.InMemory`, no external
+  backend required) that registers two Hangfire recurring jobs and catalogs
+  them through the `DotNetAgentSurface.Hangfire` discovery satellite, then
+  invokes them as agent operations.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI
@@ -56,6 +63,28 @@ Invoke-RestMethod http://localhost:5000/operations
 Invoke-RestMethod http://localhost:5000/operations/add-task -Method Post -ContentType 'application/json' -Body '{"title":"Write docs"}'
 Invoke-RestMethod http://localhost:5000/operations/list-tasks -Method Post -ContentType 'application/json' -Body '{}'
 ```
+
+### ApiExplorer-discovered demo endpoints
+
+The sample also maps two of its own Minimal API routes — `GET /demo/ping`
+(anonymous) and `GET /demo/secret` (`RequireAuthorization()`) — purely to
+demonstrate the ApiExplorer discovery satellite (`AddFromApiExplorer`). Both
+show up in the catalog alongside the `TaskTrackerService` operations:
+
+```powershell
+Invoke-RestMethod http://localhost:5000/operations/aspnet_get_demo_ping -Method Post -ContentType 'application/json' -Body '{}'
+# => { "message": "pong" }
+
+Invoke-RestMethod http://localhost:5000/operations/aspnet_get_demo_secret -Method Post -ContentType 'application/json' -Body '{}'
+# => HTTP 400: the operation is cataloged but invocation is denied by default
+#    because the Core invocation pipeline does not yet forward an
+#    authenticated caller context (see work item 23 in development.md).
+```
+
+`aspnet_get_demo_secret` is discoverable — its metadata (including its
+authorization requirement) is visible via `GET /operations/aspnet_get_demo_secret`
+— but it can never be executed through the catalog until that authorization
+contract exists. This is intentional deny-by-default behavior, not a bug.
 
 ## Running the CLI sample
 
@@ -117,6 +146,30 @@ the mode from the first argument avoids that conflict while still proving the
 two surfaces share one catalog/invoker and one executable - a host application
 can add an `mcp` verb alongside its normal commands instead of shipping and
 maintaining a second binary.
+
+## Running the Hangfire sample
+
+```powershell
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire
+```
+
+The process is self-contained: it creates an in-memory Hangfire storage
+(`Hangfire.InMemory`, no Redis/SQL Server backend needed), registers two
+recurring jobs (`nightly-cleanup`, `hourly-report`) directly with
+`IRecurringJobManager`, then catalogs them as agent operations with
+`AddHangfireRecurringJobs`. Running it prints:
+
+- the discovered catalog entries, including the per-job metadata enrichment
+  (`hourly-report` is downgraded to `AgentSafetyLevel.Safe`);
+- confirmation that invoking each operation **enqueues** the job rather than
+  running it — `IRecurringJobManager.Trigger(jobId)` only schedules work for a
+  `BackgroundJobServer` to pick up later, and this sample deliberately does
+  not start one, so job bodies never execute inline; and
+- the enqueued jobs as reported back by Hangfire's `IMonitoringApi`, proving
+  the operation really reached Hangfire's storage.
+
+This mirrors the satellite's real contract: the agent operation means "ask
+Hangfire to run this job now", not "run this job's code directly".
 
 ## Legacy .NET Framework sample
 

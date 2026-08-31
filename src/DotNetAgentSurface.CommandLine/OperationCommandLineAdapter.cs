@@ -328,10 +328,11 @@ public sealed class OperationCommandLineAdapter
 
     private static IReadOnlyDictionary<string, JsonElement> ParseInputs(OperationDescriptor operation, string[] arguments)
     {
-        var validInputNames = operation.Parameters
-            .Where(parameter => !parameter.IsCancellationToken)
-            .Select(parameter => parameter.Name)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var validInputNames = new HashSet<string>(
+            operation.Parameters
+                .Where(parameter => !parameter.IsCancellationToken)
+                .Select(parameter => parameter.Name),
+            StringComparer.OrdinalIgnoreCase);
         var validFlags = validInputNames.Select(name => $"--{name}")
             .Append("--output")
             .Append("--fields")

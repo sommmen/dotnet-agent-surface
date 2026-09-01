@@ -117,7 +117,7 @@ The planned architecture, milestones, and open design decisions are documented i
 
 ## Status
 
-No packages are available yet. The first milestone is a minimal catalog and invocation pipeline, followed by adapters and deterministic generators.
+No packages have been published to a feed yet, though `dotnet pack` produces valid packages end to end. The core catalog, invocation pipeline, CLI/MCP adapters, skill generator, and the Hangfire/ASP.NET Core/native-MCP discovery satellites are implemented and tested; the next milestone is a trusted invocation-context contract so protected ASP.NET Core endpoints can be safely invoked instead of only cataloged. See [docs/development/tracking.md](docs/development/tracking.md) for the full milestone list and current status.
 
 ## License
 

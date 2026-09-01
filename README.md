@@ -70,7 +70,7 @@ The category is the command group and the operation name is the leaf command. Ne
 
 CLI operation output defaults to token-efficient TOON. Use `--output json` for compact JSON (or `--output toon` explicitly). For object lists, `--fields name,id` selects output fields; `--full` disables the default truncation of long string values.
 
-It is also exposed as an MCP tool named `find-customer` and an entry in generated skill documentation. The category-chain behavior is the current routing decision; the fluent registration, diagnostics, projection, and output-rendering work needed to complete it are tracked in [features/development.md](features/development.md#planned-work-items).
+It is also exposed as an MCP tool named `find-customer` and an entry in generated skill documentation. The category-chain behavior is the current routing decision; the fluent registration, diagnostics, projection, and output-rendering work needed to complete it are tracked in [docs/development/testing-and-open-decisions.md](docs/development/testing-and-open-decisions.md#planned-work-items).
 
 ## Planned outputs
 
@@ -113,7 +113,7 @@ Dependency versions, target frameworks, and compatibility will be verified befor
 
 ## Development
 
-The planned architecture, milestones, and open design decisions are documented in [features/development.md](features/development.md).
+The planned architecture, milestones, and open design decisions are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Status
 

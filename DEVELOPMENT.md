@@ -55,7 +55,7 @@ The design is split by module/feature so each slice stays focused:
 - [Core catalog and abstractions](docs/development/core-catalog.md) — goals, non-goals, architecture, `AgentOperationAttribute`, `OperationDescriptor`, `OperationCatalog`, binding/invocation, and supported types.
 - [CLI adapter](docs/development/cli-adapter.md) — `DotNetAgentSurface.CommandLine`, plus AXI and token-efficiency conventions.
 - [MCP adapter](docs/development/mcp-adapter.md) — `DotNetAgentSurface.Mcp` and stdio hosting.
-- [Skill and reference generation](docs/development/skill-generation.md) — the planned `SKILL.md`/`commands.md`/`schemas.json` generator.
+- [Skill and reference generation](docs/development/skill-generation.md) — the `SKILL.md`/`commands.md`/`schemas.json` generator, its current flat-file state, and the reference-sharding plan that keeps `SKILL.md` small as catalogs grow.
 - [Safety and security](docs/development/safety-and-security.md) — the shared policy pipeline and confirmation model.
 - [Target frameworks and dependencies](docs/development/frameworks-and-dependencies.md) — the `net10.0;netstandard2.0` compatibility baseline and dependency choices.
 - [Testing strategy and open design decisions](docs/development/testing-and-open-decisions.md) — cross-surface testing goals, resolved/open design decisions (including the fluent `OperationCatalogBuilder` and discovery satellites), and the definition of an initial usable release.

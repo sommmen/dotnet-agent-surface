@@ -3,9 +3,17 @@
 name: publish
 
 on:
+  push:
+    branches: [main]
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      publish_nuget:
+        description: Publish a stable release to NuGet.org
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   id-token: write
@@ -35,13 +43,23 @@ jobs:
         run: dotnet build DotNetAgentSurface.slnx --no-restore --configuration Release
 
       - name: Pack
-        run: dotnet pack DotNetAgentSurface.slnx --no-build --configuration Release --output ./artifacts
+        run: dotnet pack DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --output ./artifacts
 
       - name: Publish to GitHub Packages
-        run: dotnet nuget push "./artifacts/*.nupkg" --source https://nuget.pkg.github.com/sommmen/index.json --api-key ${{ github.token }} --skip-duplicate
+        run: |
+          foreach ($file in (Get-ChildItem ./artifacts -Recurse -Filter *.nupkg)) {
+            dotnet nuget push $file.FullName `
+              --source https://nuget.pkg.github.com/sommmen/index.json `
+              --api-key "${{ github.token }}" `
+              --skip-duplicate `
+              --no-symbols
+          }
 
       - name: NuGet login (OIDC to temporary API key)
-        if: env.NUGET_USER != ''
+        if: >-
+          (github.event_name == 'release' && !github.event.release.prerelease) ||
+          (github.event_name == 'workflow_dispatch' && inputs.publish_nuget)
+        && secrets.NUGET_USER != ''
         env:
           NUGET_USER: ${{ secrets.NUGET_USER }}
         uses: NuGet/login@v1

@@ -14,8 +14,8 @@ public sealed class SkillReferenceGeneratorTests : IDisposable
 
         Assert.True(generator.IsCurrent(catalog, _outputDirectory));
         Assert.Contains("`greet`", File.ReadAllText(Path.Combine(_outputDirectory, "SKILL.md")));
-        Assert.Contains("--name", File.ReadAllText(Path.Combine(_outputDirectory, "commands.md")));
-        Assert.Contains("\"greet\"", File.ReadAllText(Path.Combine(_outputDirectory, "schemas.json")));
+        Assert.Contains("--name", File.ReadAllText(Path.Combine(_outputDirectory, "references", "commands.md")));
+        Assert.Contains("\"greet\"", File.ReadAllText(Path.Combine(_outputDirectory, "references", "schemas.json")));
 
         File.AppendAllText(Path.Combine(_outputDirectory, "SKILL.md"), "stale");
         Assert.False(generator.IsCurrent(catalog, _outputDirectory));

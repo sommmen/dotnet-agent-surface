@@ -15,8 +15,8 @@ public sealed class SkillGeneratorCommandTests : IDisposable
 
         Assert.Equal(0, result.ExitCode);
         Assert.True(File.Exists(Path.Combine(_outputDirectory, "SKILL.md")));
-        Assert.True(File.Exists(Path.Combine(_outputDirectory, "commands.md")));
-        Assert.True(File.Exists(Path.Combine(_outputDirectory, "schemas.json")));
+        Assert.True(File.Exists(Path.Combine(_outputDirectory, "references", "commands.md")));
+        Assert.True(File.Exists(Path.Combine(_outputDirectory, "references", "schemas.json")));
     }
 
     [Fact]

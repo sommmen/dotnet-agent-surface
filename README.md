@@ -117,7 +117,27 @@ The planned architecture, milestones, and open design decisions are documented i
 
 ## Status
 
-No packages have been published to a feed yet, though `dotnet pack` produces valid packages end to end. The core catalog, invocation pipeline, CLI/MCP adapters, skill generator, and the Hangfire/ASP.NET Core/native-MCP discovery satellites are implemented and tested; the next milestone is a trusted invocation-context contract so protected ASP.NET Core endpoints can be safely invoked instead of only cataloged. See [docs/development/tracking.md](docs/development/tracking.md) for the full milestone list and current status.
+The core catalog, invocation pipeline, CLI/MCP adapters, skill generator, and the Hangfire/ASP.NET Core/native-MCP discovery satellites are implemented and tested; the next milestone is a trusted invocation-context contract so protected ASP.NET Core endpoints can be safely invoked instead of only cataloged. See [docs/development/tracking.md](docs/development/tracking.md) for the full milestone list and current status.
+
+### Testing prerelease packages
+
+The `publish` workflow automatically pushes `.nupkg` files to GitHub Packages on every push to `main`, producing git-versioned prerelease packages such as `0.1.8-preview.g<commit>`. It can also be run manually (`workflow_dispatch`) from any branch. The workflow only publishes to NuGet.org for a stable GitHub Release, or when its explicit `publish_nuget` input is selected on a manual run.
+
+To consume those packages from another repository, add the GitHub Packages feed. Use a GitHub personal access token with `read:packages` if the package is private:
+
+```powershell
+dotnet nuget add source https://nuget.pkg.github.com/sommmen/index.json `
+  --name github-dotnet-agent-surface `
+  --username YOUR_GITHUB_USERNAME `
+  --password YOUR_GITHUB_TOKEN `
+  --store-password-in-clear-text
+```
+
+Then reference the exact prerelease version in the consuming project:
+
+```xml
+<PackageReference Include="DotNetAgentSurface.Core" Version="0.1.8-preview.g<commit>" />
+```
 
 ## License
 

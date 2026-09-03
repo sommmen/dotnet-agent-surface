@@ -214,7 +214,7 @@ public sealed class SkillReferenceGenerator
         builder.AppendLine();
 
         var examples = catalog.Operations
-            .SelectMany(operation => operation.Examples.Select(example => ($"{example}", operation.Name)))
+            .SelectMany(operation => operation.Examples.Select(example => (Operation: operation, Example: example)))
             .Take(3)
             .ToList();
 
@@ -224,9 +224,9 @@ public sealed class SkillReferenceGenerator
         }
         else
         {
-            foreach (var (example, operationName) in examples)
+            foreach (var (operation, example) in examples)
             {
-                builder.AppendLine($"- `{options.ExecutableName} {operationName} {example.Trim()}`");
+                builder.AppendLine($"- `{FormatExampleCommand(options, operation, example)}`");
             }
         }
 
@@ -296,7 +296,7 @@ public sealed class SkillReferenceGenerator
                 builder.AppendLine("### Examples");
                 foreach (var example in operation.Examples)
                 {
-                    builder.AppendLine($"- `{options.ExecutableName} {operation.Name} {example.Trim()}`");
+                    builder.AppendLine($"- `{FormatExampleCommand(options, operation, example)}`");
                 }
             }
 
@@ -352,7 +352,7 @@ public sealed class SkillReferenceGenerator
                 builder.AppendLine("### Examples");
                 foreach (var example in operation.Examples)
                 {
-                    builder.AppendLine($"- `{options.ExecutableName} {operation.Name} {example.Trim()}`");
+                    builder.AppendLine($"- `{FormatExampleCommand(options, operation, example)}`");
                 }
             }
 
@@ -360,6 +360,29 @@ public sealed class SkillReferenceGenerator
         }
 
         return builder.ToString().TrimEnd() + Environment.NewLine;
+    }
+
+    /// <summary>
+    /// Renders a complete, invocable CLI command line for an <see cref="OperationDescriptor.Examples"/> entry.
+    /// Each example string is an argument suffix (the convention documented on <see cref="OperationDescriptor.Examples"/>):
+    /// this method prepends the executable name and the operation's category segments (see
+    /// <see cref="OperationCatalog.GetCategorySegments"/>) and the operation name, matching how
+    /// <c>DotNetAgentSurface.CommandLine.OperationCommandLineAdapter</c> actually routes categorized operations, so
+    /// generated examples are copy-pasteable even when the operation lives under one or more nested command groups.
+    /// </summary>
+    private static string FormatExampleCommand(SkillGenerationOptions options, OperationDescriptor operation, string example)
+    {
+        var segments = new List<string> { options.ExecutableName };
+        segments.AddRange(OperationCatalog.GetCategorySegments(operation.Category));
+        segments.Add(operation.Name);
+
+        var trimmedExample = example.Trim();
+        if (trimmedExample.Length > 0)
+        {
+            segments.Add(trimmedExample);
+        }
+
+        return string.Join(" ", segments);
     }
 
     private string RenderSchemas(OperationCatalog catalog)

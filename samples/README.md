@@ -171,6 +171,32 @@ recurring jobs (`nightly-cleanup`, `hourly-report`) directly with
 This mirrors the satellite's real contract: the agent operation means "ask
 Hangfire to run this job now", not "run this job's code directly".
 
+### Using SQL Server storage
+
+The sample uses `Hangfire.InMemory` so it runs without infrastructure. A SQL
+Server consumer should keep the same `DotNetAgentSurface.Hangfire` registration
+and replace only the storage package/configuration:
+
+```powershell
+dotnet add package Hangfire.SqlServer
+dotnet add package DotNetAgentSurface.Hangfire
+```
+
+```csharp
+var connectionString = configuration.GetConnectionString("Hangfire")
+    ?? throw new InvalidOperationException("Configure the Hangfire connection string.");
+var storage = new SqlServerStorage(connectionString);
+var jobManager = new RecurringJobManager(storage);
+var catalog = new OperationCatalogBuilder()
+    .AddHangfireRecurringJobs(storage, jobManager)
+    .Build();
+```
+
+Read the connection string from normal application configuration, environment
+variables, or a secret store. Do not commit it to source control. The vNext
+design below replaces the eager per-job registration shown in this sample with
+stable live operations.
+
 ## Legacy .NET Framework sample
 
 `DotNetAgentSurface.Samples.LegacyDesktop` targets `net472` and hosts a

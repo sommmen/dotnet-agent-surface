@@ -96,15 +96,15 @@ The CLI surface should follow [AXI](https://github.com/kunchenguid/axi/blob/main
 12. Ensure no interactive prompts exist in the CLI surface. Every operation must be completable with flags alone; missing required values fail immediately with a clear error.
 13. Route stderr for debug/progress logging only; never mix log messages into stdout. Evaluate optional session-hook and generated agent-skill integration separately because those require explicit host/user installation intent.
 
-### Packaging and publishing readiness
+### Packaging and publishing readiness — resolved
 
-The library should be ready to publish to NuGet before the public API is stabilized. The current `Directory.Build.props` already sets package metadata but is missing automated versioning, reproducible build guarantees, and proper artifact bundling. Apply the repository's `/dotnet-packable` skill conventions:
+The library is published to NuGet-compatible feeds while the public API is still pre-1.0. The repository's `/dotnet-packable` skill conventions were applied and the packability gate has since been removed:
 
-14. Add `Nerdbank.GitVersioning` for automated git-height-based semantic versioning. Create a root `version.json` (version `0.1`, public release ref `main`) and remove the manual `<Version>` property from `Directory.Build.props`.
-15. Add `DotNet.ReproducibleBuilds` for deterministic builds, SourceLink integration, and normalized source paths. Enable `ContinuousIntegrationBuild` for GitHub Actions and Azure DevOps.
-16. Pack the repository-level `README.md` and an optional package icon at the NuGet package root, and verify package metadata, XML documentation, `.nupkg`, and `.snupkg` contents.
-17. Remove the current `IsPackable=false` preview gate from `Directory.Build.props` only once the packaging validation and publishing pipeline are ready.
-18. Add a GitHub Actions deployment workflow that checks out with `fetch-depth: 0`, restores/builds/tests before packing, publishes to GitHub Packages first and NuGet.org second, and uses `--skip-duplicate` for repeatable publishing.
+14. **Completed** — added `Nerdbank.GitVersioning` for automated git-height-based semantic versioning. A root [`version.json`](../../version.json) drives the version (public release ref `main`); `Directory.Build.props` no longer sets a manual `<Version>` property.
+15. **Completed** — added `DotNet.ReproducibleBuilds` for deterministic builds, SourceLink integration, and normalized source paths, with `ContinuousIntegrationBuild` enabled for GitHub Actions.
+16. **Completed** — the repository-level `README.md` and package icon are packed at the NuGet package root; package metadata, XML documentation, `.nupkg`, and `.snupkg` contents are verified as part of `dotnet pack`.
+17. **Completed** — the `IsPackable=false` preview gate no longer exists in `src/`; every library under `src/` (`Core`, `CommandLine`, `Mcp`, `Hangfire`, `AspNetCore`) is packable by default. Samples and tests remain `IsPackable=false` (they are not meant to be published).
+18. **Completed** — [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml) checks out with `fetch-depth: 0`, restores/builds/tests before packing, and publishes to GitHub Packages on every push to `main` (plus NuGet.org for stable releases or an explicit `publish_nuget` manual run), using `--skip-duplicate` for repeatable publishing. Packages have been published and consumed by at least one external project (OPG Platform, `DotNetAgentSurface 0.1.14-preview`). See the root [README.md](../../README.md#testing-prerelease-packages) for the GitHub Packages consumption steps and [README.md](../../README.md#local-package-workflow) for a credential-free local `dotnet pack`-based workflow.
 
 Discovery satellites (see [`discovery-satellites.md`](../../features/discovery-satellites.md)):
 

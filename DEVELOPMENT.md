@@ -60,6 +60,7 @@ The design is split by module/feature so each slice stays focused:
 - [Target frameworks and dependencies](docs/development/frameworks-and-dependencies.md) — the `net10.0;netstandard2.0` compatibility baseline and dependency choices.
 - [Testing strategy and open design decisions](docs/development/testing-and-open-decisions.md) — cross-surface testing goals, resolved/open design decisions (including the fluent `OperationCatalogBuilder` and discovery satellites), and the definition of an initial usable release.
 - [Discovery satellites](features/discovery-satellites.md) — the Hangfire, ASP.NET Core, and native MCP-SDK discovery satellite designs referenced from the open design decisions above.
+- [Hangfire vNext](features/hangfire-vnext.md) — the P0 plan for live recurring-job operations, class-based job discovery, safety, host composition, and migration.
 
 ## Ongoing work
 

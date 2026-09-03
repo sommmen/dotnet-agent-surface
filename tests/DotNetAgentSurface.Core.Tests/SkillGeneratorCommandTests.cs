@@ -82,6 +82,35 @@ public sealed class SkillGeneratorCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Generate_passes_generation_options_through_to_the_generator()
+    {
+        var catalog = CreateCatalog();
+        var options = new SkillGenerationOptions("custom-skill", "Custom skill description", "custom-cli");
+
+        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, generationOptions: options);
+
+        Assert.Equal(0, result.ExitCode);
+        var skill = File.ReadAllText(Path.Combine(_outputDirectory, "SKILL.md"));
+        Assert.Contains("custom-skill", skill);
+        Assert.Contains("Custom skill description", skill);
+        Assert.Contains("custom-cli", skill);
+    }
+
+    [Fact]
+    public async Task Check_honors_generation_options_when_determining_currency()
+    {
+        var catalog = CreateCatalog();
+        var options = new SkillGenerationOptions("custom-skill", "Custom skill description", "custom-cli");
+        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, generationOptions: options);
+
+        var matchingOptions = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog, generationOptions: options);
+        Assert.Equal(0, matchingOptions.ExitCode);
+
+        var defaultOptions = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog);
+        Assert.NotEqual(0, defaultOptions.ExitCode);
+    }
+
+    [Fact]
     public void CanHandle_recognizes_generate_and_check_but_not_help()
     {
         Assert.True(SkillGeneratorCommand.CanHandle(["generate"]));

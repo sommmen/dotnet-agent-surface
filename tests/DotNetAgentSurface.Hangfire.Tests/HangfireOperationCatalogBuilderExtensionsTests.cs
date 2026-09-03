@@ -3,74 +3,162 @@ using Hangfire;
 using Hangfire.Common;
 using Hangfire.InMemory;
 using Hangfire.States;
+using Hangfire.Storage;
 
 namespace DotNetAgentSurface.Hangfire.Tests;
 
 public sealed class HangfireOperationCatalogBuilderExtensionsTests
 {
     [Fact]
-    public void AddHangfireRecurringJobs_discovers_jobs_with_confirm_safety_by_default()
+    public void AddHangfireRecurringOperations_does_not_access_storage_until_invocation()
     {
         using var storage = new InMemoryStorage();
         var manager = new RecurringJobManager(storage);
-        manager.AddOrUpdate("nightly-cleanup", Job.FromExpression(() => TestJobs.CleanUp()), Cron.Daily());
 
         var catalog = new OperationCatalogBuilder()
-            .AddHangfireRecurringJobs(storage, manager)
+            .AddHangfireRecurringOperations(storage, manager)
             .Build();
 
-        var operation = Assert.Single(catalog.Operations);
-        Assert.Equal("nightly-cleanup", operation.Name);
-        Assert.Equal(AgentSafetyLevel.Confirm, operation.SafetyLevel);
-        Assert.Equal("Hangfire", operation.Category);
-        Assert.Contains("Triggers the 'nightly-cleanup' recurring job", operation.Description);
+        manager.AddOrUpdate("nightly-cleanup", Job.FromExpression(() => TestJobs.CleanUp()), Cron.Daily());
+
+        var list = Assert.Single(catalog.Operations, operation => operation.Name == "list-recurring-hangfire");
+        Assert.Equal("Hangfire", list.Category);
+        var trigger = Assert.Single(catalog.Operations, operation => operation.Name == "trigger-recurring-hangfire");
+        Assert.Equal(AgentSafetyLevel.Confirm, trigger.SafetyLevel);
     }
 
     [Fact]
-    public async Task AddHangfireRecurringJobs_invokes_the_bound_manager_trigger()
+    public async Task ListRecurringHangfire_returns_current_jobs_in_ordinal_order()
+    {
+        using var storage = new InMemoryStorage();
+        var manager = new RecurringJobManager(storage);
+        var catalog = new OperationCatalogBuilder().AddHangfireRecurringOperations(storage, manager).Build();
+        manager.AddOrUpdate("zebra", Job.FromExpression(() => TestJobs.CleanUp()), Cron.Daily());
+        manager.AddOrUpdate("Alpha", Job.FromExpression(() => TestJobs.CleanUp()), Cron.Hourly());
+
+        var result = await InvokeAsync(catalog, "list-recurring-hangfire");
+
+        Assert.True(result.Succeeded);
+        var jobs = Assert.IsAssignableFrom<IReadOnlyList<RecurringHangfireJobInfo>>(result.Value);
+        Assert.Equal(["Alpha", "zebra"], jobs.Select(job => job.JobId));
+        Assert.All(jobs, job => Assert.Equal(typeof(TestJobs).FullName, job.JobType));
+    }
+
+    [Fact]
+    public async Task TriggerRecurringHangfire_rejects_unknown_job_without_triggering_manager()
+    {
+        using var storage = new InMemoryStorage();
+        var manager = new RecordingRecurringJobManager();
+        var catalog = new OperationCatalogBuilder().AddHangfireRecurringOperations(storage, manager).Build();
+
+        var result = await InvokeAsync(catalog, "trigger-recurring-hangfire", "missing");
+
+        Assert.True(result.Succeeded);
+        var acknowledgement = Assert.IsType<TriggerRecurringHangfireResult>(result.Value);
+        Assert.Equal("rejected", acknowledgement.Status);
+        Assert.Equal("missing", acknowledgement.JobId);
+        Assert.Null(manager.TriggeredJobId);
+    }
+
+    [Fact]
+    public async Task TriggerRecurringHangfire_uses_current_job_and_returns_acknowledgement()
     {
         using var storage = new InMemoryStorage();
         var storageManager = new RecurringJobManager(storage);
         storageManager.AddOrUpdate("nightly-cleanup", Job.FromExpression(() => TestJobs.CleanUp()), Cron.Daily());
-        var recordingManager = new RecordingRecurringJobManager();
-        var catalog = new OperationCatalogBuilder()
-            .AddHangfireRecurringJobs(storage, recordingManager)
-            .Build();
+        var manager = new RecordingRecurringJobManager();
+        var catalog = new OperationCatalogBuilder().AddHangfireRecurringOperations(storage, manager).Build();
 
-        var result = await new OperationInvoker(new NullServiceProvider())
-            .InvokeAsync(Assert.Single(catalog.Operations));
+        var result = await InvokeAsync(catalog, "trigger-recurring-hangfire", "NIGHTLY-CLEANUP");
 
         Assert.True(result.Succeeded);
-        Assert.Equal("nightly-cleanup", recordingManager.TriggeredJobId);
+        var acknowledgement = Assert.IsType<TriggerRecurringHangfireResult>(result.Value);
+        Assert.Equal("enqueued", acknowledgement.Status);
+        Assert.Equal("nightly-cleanup", acknowledgement.JobId);
+        Assert.Equal("nightly-cleanup", manager.TriggeredJobId);
+        Assert.Null(acknowledgement.EnqueueId);
     }
 
     [Fact]
-    public void AddHangfireRecurringJobs_allows_per_job_metadata_enrichment()
+    public async Task TriggerRecurringHangfire_isolated_execution_runs_to_completion_without_touching_configured_storage()
     {
         using var storage = new InMemoryStorage();
         var manager = new RecurringJobManager(storage);
         manager.AddOrUpdate("nightly-cleanup", Job.FromExpression(() => TestJobs.CleanUp()), Cron.Daily());
 
         var catalog = new OperationCatalogBuilder()
-            .AddHangfireRecurringJobs(storage, manager, options =>
+            .AddHangfireRecurringOperations(storage, manager, options =>
             {
-                options.Category = "Maintenance";
-                options.Enrich = (job, registration) =>
-                {
-                    registration.Name = $"run-{job.Id}";
-                    registration.Description = "Runs cleanup immediately.";
-                    registration.SafetyLevel = AgentSafetyLevel.Dangerous;
-                    registration.Aliases.Add("cleanup-now");
-                };
+                options.ExecutionModel = HangfireExecutionModel.ExecuteUsingIsolatedInMemoryServer;
+                options.IsolatedExecutionTimeout = TimeSpan.FromSeconds(10);
             })
             .Build();
 
-        var operation = Assert.Single(catalog.Operations);
-        Assert.Equal("run-nightly-cleanup", operation.Name);
-        Assert.Equal("Runs cleanup immediately.", operation.Description);
-        Assert.Equal("Maintenance", operation.Category);
-        Assert.Equal(AgentSafetyLevel.Dangerous, operation.SafetyLevel);
-        Assert.Contains("cleanup-now", operation.Aliases);
+        var result = await InvokeAsync(catalog, "trigger-recurring-hangfire", "nightly-cleanup");
+
+        Assert.True(result.Succeeded);
+        var acknowledgement = Assert.IsType<TriggerRecurringHangfireResult>(result.Value);
+        Assert.Equal("succeeded", acknowledgement.Status);
+        Assert.Equal("nightly-cleanup", acknowledgement.JobId);
+        Assert.NotNull(acknowledgement.EnqueueId);
+
+        using var connection = storage.GetConnection();
+        var recurringJobs = connection.GetRecurringJobs();
+        var registeredJob = Assert.Single(recurringJobs);
+        Assert.Null(registeredJob.LastJobId);
+    }
+
+    [Fact]
+    public async Task TriggerRecurringHangfire_isolated_execution_reports_job_failure()
+    {
+        using var storage = new InMemoryStorage();
+        var manager = new RecurringJobManager(storage);
+        manager.AddOrUpdate("failing-job", Job.FromExpression(() => TestJobs.Fail()), Cron.Daily());
+
+        var catalog = new OperationCatalogBuilder()
+            .AddHangfireRecurringOperations(storage, manager, options =>
+            {
+                options.ExecutionModel = HangfireExecutionModel.ExecuteUsingIsolatedInMemoryServer;
+                options.IsolatedExecutionTimeout = TimeSpan.FromSeconds(10);
+            })
+            .Build();
+
+        var result = await InvokeAsync(catalog, "trigger-recurring-hangfire", "failing-job");
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(result.Error);
+    }
+
+    [Fact]
+    public async Task TriggerRecurringHangfire_isolated_execution_times_out_for_long_running_jobs()
+    {
+        using var storage = new InMemoryStorage();
+        var manager = new RecurringJobManager(storage);
+        manager.AddOrUpdate("slow-job", Job.FromExpression(() => TestJobs.Sleep(1500)), Cron.Daily());
+
+        var catalog = new OperationCatalogBuilder()
+            .AddHangfireRecurringOperations(storage, manager, options =>
+            {
+                options.ExecutionModel = HangfireExecutionModel.ExecuteUsingIsolatedInMemoryServer;
+                options.IsolatedExecutionTimeout = TimeSpan.FromMilliseconds(200);
+            })
+            .Build();
+
+        var result = await InvokeAsync(catalog, "trigger-recurring-hangfire", "slow-job");
+
+        Assert.True(result.IsCancelled);
+    }
+
+    private static Task<OperationInvocationResult> InvokeAsync(OperationCatalog catalog, string operationName, string? jobId = null)
+    {
+        var operation = Assert.Single(catalog.Operations, operation => operation.Name == operationName);
+        IReadOnlyDictionary<string, System.Text.Json.JsonElement>? inputs = jobId is null
+            ? null
+            : new Dictionary<string, System.Text.Json.JsonElement>
+            {
+                ["jobId"] = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(jobId)).RootElement.Clone()
+            };
+        return new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs).AsTask();
     }
 
     [Fact]
@@ -217,6 +305,16 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
     {
         public static void CleanUp()
         {
+        }
+
+        public static void Fail()
+        {
+            throw new InvalidOperationException("boom");
+        }
+
+        public static void Sleep(int milliseconds)
+        {
+            Thread.Sleep(milliseconds);
         }
     }
 

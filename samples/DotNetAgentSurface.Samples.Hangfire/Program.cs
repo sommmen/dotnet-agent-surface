@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DotNetAgentSurface.Core;
 using DotNetAgentSurface.Hangfire;
 using Hangfire;
@@ -7,9 +8,13 @@ using Hangfire.Storage;
 
 // This sample demonstrates both Hangfire discovery satellites end to end:
 //
-//   1. Recurring-job discovery (AddHangfireRecurringJobs): jobs already registered with Hangfire's
-//      recurring-job storage are cataloged as agent operations that trigger the job through
-//      IRecurringJobManager, without ever invoking the job method body directly.
+//   1. Stable recurring-job operations (AddHangfireRecurringOperations): rather than cataloging one
+//      operation per job at startup, this registers exactly two stable operations —
+//      list-recurring-hangfire and trigger-recurring-hangfire — that query Hangfire's recurring-job
+//      storage at invocation time. Adding, removing, or renaming recurring jobs never requires
+//      rebuilding the catalog. Triggering defaults to enqueueing on the application's configured
+//      storage (an acknowledgement only, never a completion claim); an opt-in isolated execution
+//      model is also demonstrated further below.
 //   2. Class-based job-type discovery (AddHangfireJobTypes): concrete job classes are found via
 //      reflection and cataloged as agent operations that enqueue a single background execution of
 //      that job via IBackgroundJobClient.Create(...). This is the "not every job is a recurring job"
@@ -20,11 +25,12 @@ using Hangfire.Storage;
 // Hangfire.InMemory keeps the sample self-contained (no Redis/SQL Server backend required) so it can
 // run with a plain `dotnet run`.
 //
-// Note: both IRecurringJobManager.Trigger(jobId) and IBackgroundJobClient.Create(...) only *enqueue*
-// the job for execution; they do not run the job body inline. A real host would also run a
+// Note: both trigger-recurring-hangfire's default mode and IBackgroundJobClient.Create(...) only
+// *enqueue* the job for execution; they do not run the job body inline. A real host would also run a
 // BackgroundJobServer to dequeue and execute it. This sample stops at the enqueue step (verified via
-// storage) and does not start a server, keeping each discovery satellite's contract obvious: the
-// agent operation is "ask Hangfire to run this job now", not "run this job's code directly".
+// storage) and does not start a server for those cases, keeping each discovery satellite's contract
+// obvious: the agent operation is "ask Hangfire to run this job now", not "run this job's code
+// directly" — except where the isolated execution model is explicitly demonstrated below.
 using var storage = new InMemoryStorage();
 var jobManager = new RecurringJobManager(storage);
 
@@ -32,42 +38,42 @@ jobManager.AddOrUpdate("nightly-cleanup", Job.FromExpression(() => SampleJobs.Cl
 jobManager.AddOrUpdate("hourly-report", Job.FromExpression(() => SampleJobs.SendReport()), Cron.Hourly());
 
 var catalog = new OperationCatalogBuilder()
-    .AddHangfireRecurringJobs(storage, jobManager, options =>
-    {
-        // Demonstrates per-job enrichment: the report job is downgraded to Safe since it has no side
-        // effects beyond emitting a report, while the default Confirm level is left for nightly-cleanup.
-        options.Enrich = (job, registration) =>
-        {
-            if (job.Id == "hourly-report")
-            {
-                registration.SafetyLevel = AgentSafetyLevel.Safe;
-                registration.Description = "Triggers the hourly report job immediately, outside of its normal schedule.";
-            }
-        };
-    })
+    .AddHangfireRecurringOperations(storage, jobManager)
     .Build();
 
-Console.WriteLine("=== 1. Recurring-job discovery (AddHangfireRecurringJobs) ===");
-Console.WriteLine($"Discovered {catalog.Operations.Count} Hangfire recurring job operation(s):");
+Console.WriteLine("=== 1. Stable recurring-job operations (AddHangfireRecurringOperations) ===");
+Console.WriteLine($"Registered {catalog.Operations.Count} stable Hangfire operation(s) (independent of how many recurring jobs exist):");
 foreach (var operation in catalog.Operations)
 {
     Console.WriteLine($"  - {operation.Name} [{operation.Category}, {operation.SafetyLevel}]: {operation.Description}");
 }
 
-// Operations invoke jobManager.Trigger(jobId) as a static delegate, so no service provider lookups are
-// required; NullServiceProvider only exists to satisfy the OperationInvoker constructor.
+// Operations resolve storage/manager dependencies from static delegates, so no service provider
+// lookups are required; NullServiceProvider only exists to satisfy the OperationInvoker constructor.
 var invoker = new OperationInvoker(new NullServiceProvider());
 
 Console.WriteLine();
-Console.WriteLine("Triggering 'nightly-cleanup' on demand...");
-var nightlyCleanup = catalog.Operations.Single(operation => operation.Name == "nightly-cleanup");
-var result = await invoker.InvokeAsync(nightlyCleanup);
-Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {result.Error}");
+Console.WriteLine("Listing recurring jobs currently in storage...");
+var list = catalog.Operations.Single(operation => operation.Name == "list-recurring-hangfire");
+var listResult = await invoker.InvokeAsync(list);
+foreach (var job in (IReadOnlyList<RecurringHangfireJobInfo>)listResult.Value!)
+{
+    Console.WriteLine($"  - {job.JobId}: {job.JobType}.{job.Method} ({job.Cron})");
+}
 
-Console.WriteLine("Triggering 'hourly-report' on demand...");
-var hourlyReport = catalog.Operations.Single(operation => operation.Name == "hourly-report");
-result = await invoker.InvokeAsync(hourlyReport);
-Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {result.Error}");
+Console.WriteLine();
+Console.WriteLine("Triggering 'nightly-cleanup' on demand (enqueues on configured storage)...");
+var trigger = catalog.Operations.Single(operation => operation.Name == "trigger-recurring-hangfire");
+var result = await invoker.InvokeAsync(trigger, TriggerInputs.JobId("nightly-cleanup"));
+if (result.Succeeded)
+{
+    var triggerResult = (TriggerRecurringHangfireResult)result.Value!;
+    Console.WriteLine($"  Status: {triggerResult.Status} (enqueue id: {triggerResult.EnqueueId ?? "n/a"}).");
+}
+else
+{
+    Console.WriteLine($"  Failed: {result.Error}");
+}
 
 Console.WriteLine();
 Console.WriteLine("Enqueued background jobs now waiting for a worker (none is running in this sample):");
@@ -75,6 +81,38 @@ var monitoring = storage.GetMonitoringApi();
 foreach (var enqueuedJob in monitoring.EnqueuedJobs("default", 0, 20))
 {
     Console.WriteLine($"  - job {enqueuedJob.Key}: {enqueuedJob.Value.Job.Method.Name}");
+}
+
+Console.WriteLine();
+Console.WriteLine("Requesting an unknown job id (rejected without ever calling Hangfire)...");
+result = await invoker.InvokeAsync(trigger, TriggerInputs.JobId("does-not-exist"));
+var unknownTrigger = (TriggerRecurringHangfireResult)result.Value!;
+Console.WriteLine($"  Status: {unknownTrigger.Status}.");
+
+// The isolated execution model is an explicit opt-in for short-lived CLI/local scenarios: it creates a
+// separate in-memory Hangfire storage/server, enqueues the job through Hangfire's normal activation
+// pipeline, waits for the job to finish, and reports completion or failure. It never touches the
+// application's configured storage (the 'hourly-report' recurring-job entry above is left untouched).
+var isolatedCatalog = new OperationCatalogBuilder()
+    .AddHangfireRecurringOperations(storage, jobManager, options =>
+    {
+        options.ExecutionModel = HangfireExecutionModel.ExecuteUsingIsolatedInMemoryServer;
+        options.IsolatedExecutionTimeout = TimeSpan.FromSeconds(30);
+    })
+    .Build();
+
+Console.WriteLine();
+Console.WriteLine("Triggering 'hourly-report' with the isolated in-memory execution model...");
+var isolatedTrigger = isolatedCatalog.Operations.Single(operation => operation.Name == "trigger-recurring-hangfire");
+result = await invoker.InvokeAsync(isolatedTrigger, TriggerInputs.JobId("hourly-report"));
+if (result.Succeeded)
+{
+    var isolatedResult = (TriggerRecurringHangfireResult)result.Value!;
+    Console.WriteLine($"  Status: {isolatedResult.Status} (ran to completion on an isolated in-memory server).");
+}
+else
+{
+    Console.WriteLine($"  Failed: {result.Error}");
 }
 
 // === 2. Class-based job-type discovery (AddHangfireJobTypes) ===
@@ -171,6 +209,16 @@ internal static class SampleJobs
 internal sealed class NullServiceProvider : IServiceProvider
 {
     public object? GetService(Type serviceType) => null;
+}
+
+/// <summary>Builds the <c>jobId</c> input dictionary expected by <c>trigger-recurring-hangfire</c>.</summary>
+internal static class TriggerInputs
+{
+    public static IReadOnlyDictionary<string, JsonElement> JobId(string jobId) =>
+        new Dictionary<string, JsonElement>
+        {
+            ["jobId"] = JsonDocument.Parse(JsonSerializer.Serialize(jobId)).RootElement.Clone()
+        };
 }
 
 /// <summary>Marker convention for parameterless class-based jobs, used by this sample's

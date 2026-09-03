@@ -34,8 +34,10 @@ DotNetAgentSurface, without duplicating any operation definitions.
 - **DotNetAgentSurface.Samples.Hangfire** (`hangfire-sample`) — a
   self-contained console sample (using `Hangfire.InMemory`, no external
   backend required) that registers two Hangfire recurring jobs and catalogs
-  them through the `DotNetAgentSurface.Hangfire` discovery satellite, then
-  invokes them as agent operations.
+  two stable operations (`list-recurring-hangfire`,
+  `trigger-recurring-hangfire`) through the `DotNetAgentSurface.Hangfire`
+  discovery satellite, plus class-based ad-hoc job discovery
+  (`AddHangfireJobTypes`), then invokes them as agent operations.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI
@@ -156,20 +158,34 @@ dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire
 The process is self-contained: it creates an in-memory Hangfire storage
 (`Hangfire.InMemory`, no Redis/SQL Server backend needed), registers two
 recurring jobs (`nightly-cleanup`, `hourly-report`) directly with
-`IRecurringJobManager`, then catalogs them as agent operations with
-`AddHangfireRecurringJobs`. Running it prints:
+`IRecurringJobManager`, then catalogs two **stable** agent operations with
+`AddHangfireRecurringOperations`: `list-recurring-hangfire` and
+`trigger-recurring-hangfire`. Unlike a per-job catalog, these two operations
+never change as recurring jobs are added, removed, or renamed — both query
+Hangfire's recurring-job storage at invocation time rather than at catalog
+construction time. Running it prints:
 
-- the discovered catalog entries, including the per-job metadata enrichment
-  (`hourly-report` is downgraded to `AgentSafetyLevel.Safe`);
-- confirmation that invoking each operation **enqueues** the job rather than
-  running it — `IRecurringJobManager.Trigger(jobId)` only schedules work for a
+- the two stable catalog entries (not one per recurring job);
+- the current recurring jobs as returned by `list-recurring-hangfire`;
+- confirmation that invoking `trigger-recurring-hangfire` in its default mode
+  **enqueues** the job rather than running it — `IRecurringJobManager.Trigger`
+  (or `TriggerJob` when the manager supports it) only schedules work for a
   `BackgroundJobServer` to pick up later, and this sample deliberately does
-  not start one, so job bodies never execute inline; and
+  not start one for that path, so the job body does not execute inline;
 - the enqueued jobs as reported back by Hangfire's `IMonitoringApi`, proving
-  the operation really reached Hangfire's storage.
+  the operation really reached Hangfire's storage;
+- a rejected trigger for an unknown job id, without ever calling into
+  Hangfire; and
+- an isolated-execution trigger (`HangfireExecutionModel.ExecuteUsingIsolatedInMemoryServer`),
+  an explicit opt-in for short-lived CLI/local scenarios: it spins up a
+  separate in-memory Hangfire storage/server, runs the job to completion (or
+  failure/timeout), and reports the outcome — all without touching the
+  application's configured storage.
 
 This mirrors the satellite's real contract: the agent operation means "ask
-Hangfire to run this job now", not "run this job's code directly".
+Hangfire to run this job now", not "run this job's code directly" — except
+where the isolated execution model is explicitly opted into, in which case it
+means "run this job to completion on a disposable server".
 
 ### Using SQL Server storage
 
@@ -188,14 +204,12 @@ var connectionString = configuration.GetConnectionString("Hangfire")
 var storage = new SqlServerStorage(connectionString);
 var jobManager = new RecurringJobManager(storage);
 var catalog = new OperationCatalogBuilder()
-    .AddHangfireRecurringJobs(storage, jobManager)
+    .AddHangfireRecurringOperations(storage, jobManager)
     .Build();
 ```
 
 Read the connection string from normal application configuration, environment
-variables, or a secret store. Do not commit it to source control. The vNext
-design below replaces the eager per-job registration shown in this sample with
-stable live operations.
+variables, or a secret store. Do not commit it to source control.
 
 ## Legacy .NET Framework sample
 

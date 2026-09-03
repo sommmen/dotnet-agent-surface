@@ -45,7 +45,7 @@ public static class HangfireRecurringOperationCatalogBuilderExtensions
             options.IsolatedExecutionTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(configure),
+                nameof(HangfireRecurringOperationsOptions.IsolatedExecutionTimeout),
                 "The isolated execution timeout must be greater than zero.");
         }
 
@@ -153,7 +153,7 @@ public static class HangfireRecurringOperationCatalogBuilderExtensions
         {
             ServerName = $"dotnet-agent-surface-isolated-{Guid.NewGuid():N}",
             WorkerCount = 1,
-            Activator = options.IsolatedJobActivator,
+            Activator = options.IsolatedJobActivator ?? JobActivator.Current,
             // An isolated, on-demand trigger reports a single attempt's outcome; Hangfire's default
             // global filters include automatic retries, which would delay a failure result and make
             // it indistinguishable from a slow success. No filters means no retries.

@@ -15,7 +15,9 @@ public static class SkillGeneratorCommand
     /// <summary>
     /// Executes a <c>generate</c> or <c>check</c> verb against <paramref name="catalog"/>.
     /// Follows the same exit code conventions as <see cref="OperationCommandLineAdapter"/>:
-    /// 0 success, 1 failure, 2 usage error, 130 cancellation.
+    /// 0 success, 1 failure, 2 usage error, 130 cancellation. Generated output is kept small
+    /// with a root-level <c>SKILL.md</c> plus a <c>references/</c> directory for detailed command
+    /// and schema data.
     /// </summary>
     public static ValueTask<CommandLineExecutionResult> ExecuteAsync(string[] args, OperationCatalog catalog, string outputDirectoryDefault = DefaultOutputDirectory, CancellationToken cancellationToken = default)
     {
@@ -148,6 +150,6 @@ public static class SkillGeneratorCommand
 
     private static string RenderHelp() =>
         "Skill reference commands:\n" +
-        "  generate [--output <dir>] [--force]   Generate SKILL.md, commands.md, and schemas.json (default output: 'skill').\n" +
+        "  generate [--output <dir>] [--force]   Generate SKILL.md plus references/commands.md and references/schemas.json (default output: 'skill').\n" +
         "  check [--output <dir>]                Verify the generated skill reference is current (exit 0 if current, 1 if stale or missing).";
 }

@@ -7,19 +7,27 @@ using Hangfire.States;
 namespace DotNetAgentSurface.Hangfire;
 
 /// <summary>
-/// Adds on-demand operations that enqueue concrete <see cref="HangfireJob"/> implementations.
+/// Adds on-demand operations that enqueue concrete <see cref="IHangfireJob"/> implementations, including
+/// <see cref="HangfireJob"/> subclasses.
 /// </summary>
 public static class HangfireJobRegistrationCatalogBuilderExtensions
 {
     /// <summary>
-    /// Discovers concrete <see cref="HangfireJob"/> implementations and adds a parameterless enqueue operation for each.
+    /// Discovers concrete <typeparamref name="TJobBase"/> implementations and adds a parameterless enqueue
+    /// operation for each. <typeparamref name="TJobBase"/> may be <see cref="HangfireJob"/> (or a subclass of it)
+    /// for greenfield job classes, or the <see cref="IHangfireJob"/> interface itself — or any pre-existing
+    /// base class/interface that implements it — to adopt a brownfield job hierarchy that cannot derive from
+    /// <see cref="HangfireJob"/> (for example, one with constructor parameters or a CRTP-style generic
+    /// self-reference). Discovery only inspects types via reflection; it never constructs a job instance, so
+    /// brownfield job types may declare any constructor — Hangfire's own <see cref="JobActivator"/> creates the
+    /// instance when the enqueued job actually executes.
     /// </summary>
     public static OperationCatalogBuilder RegisterJobs<TJobBase>(
         this OperationCatalogBuilder builder,
         IBackgroundJobClient backgroundJobClient,
         IEnumerable<Assembly> assemblies,
         Action<HangfireJobRegistrationOptions>? configure = null)
-        where TJobBase : HangfireJob
+        where TJobBase : class, IHangfireJob
     {
         return Register(
             builder,
@@ -39,14 +47,18 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
     }
 
     /// <summary>
-    /// Discovers concrete <see cref="HangfireJobWithOptions{TOptions}"/> implementations and adds an enqueue operation for each.
+    /// Discovers concrete <typeparamref name="TJobBase"/> implementations and adds an enqueue operation for each.
+    /// <typeparamref name="TJobBase"/> may be <see cref="HangfireJobWithOptions{TOptions}"/> (or a subclass of it)
+    /// for greenfield job classes, or the <see cref="IHangfireJob{TOptions}"/> interface itself — or any
+    /// pre-existing base class/interface that implements it — to adopt a brownfield job hierarchy (see
+    /// <see cref="RegisterJobs{TJobBase}"/> for details and constructor-parameter support).
     /// </summary>
     public static OperationCatalogBuilder RegisterJobs<TJobBase, TOptions>(
         this OperationCatalogBuilder builder,
         IBackgroundJobClient backgroundJobClient,
         IEnumerable<Assembly> assemblies,
         Action<HangfireJobRegistrationOptions>? configure = null)
-        where TJobBase : HangfireJobWithOptions<TOptions>
+        where TJobBase : class, IHangfireJob<TOptions>
     {
         return Register(
             builder,
@@ -100,13 +112,6 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
 
         var options = new HangfireJobRegistrationOptions();
         configure?.Invoke(options);
-
-#pragma warning disable CS0618 // Retained only to produce an actionable startup error.
-        if (options.EnrichAsync is not null)
-#pragma warning restore CS0618
-        {
-            throw new InvalidOperationException("Hangfire job catalog registration is synchronous and cannot run EnrichAsync safely. Use Enrich for deterministic, non-I/O metadata enrichment.");
-        }
 
         var assemblyList = assemblies.ToArray();
         if (assemblyList.Any(static assembly => assembly is null))
@@ -241,6 +246,11 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
 
     private static Type? FindOptionsBase(Type jobBaseType)
     {
+        if (jobBaseType.IsGenericType && jobBaseType.GetGenericTypeDefinition() == typeof(IHangfireJob<>))
+        {
+            return jobBaseType;
+        }
+
         for (var current = jobBaseType; current is not null; current = current.BaseType)
         {
             if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(HangfireJobWithOptions<>))
@@ -249,7 +259,9 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
             }
         }
 
-        return null;
+        var optionsInterface = jobBaseType.GetInterfaces()
+            .FirstOrDefault(static candidate => candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(IHangfireJob<>));
+        return optionsInterface;
     }
 
     private static bool IsConcreteClosedClass(Type type) => type.IsClass && !type.IsAbstract && !type.ContainsGenericParameters;

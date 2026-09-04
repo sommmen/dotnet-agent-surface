@@ -25,13 +25,6 @@ public sealed class HangfireJobRegistrationOptions
     /// <summary>Gets or sets a synchronous, deterministic metadata enrichment callback.</summary>
     public Action<Type, HangfireJobRegistrationMetadata>? Enrich { get; set; }
 
-    /// <summary>
-    /// Gets or sets the former asynchronous metadata enrichment callback. It is no longer invoked because
-    /// catalog construction is synchronous; use <see cref="Enrich"/> for deterministic, non-I/O enrichment.
-    /// </summary>
-    [Obsolete("Catalog registration is synchronous. Use Enrich for deterministic, non-I/O metadata enrichment.")]
-    public Func<Type, HangfireJobRegistrationMetadata, ValueTask>? EnrichAsync { get; set; }
-
     /// <summary>Gets or sets a predicate that excludes a discovered job type.</summary>
     public Func<Type, bool>? Exclude { get; set; }
 

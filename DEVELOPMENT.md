@@ -65,6 +65,7 @@ The design is split by module/feature so each slice stays focused:
 ## Ongoing work
 
 - [Development tracking](docs/development/tracking.md) — delivery milestones, current status, and the per-milestone task breakdown.
+- [Changelog](CHANGELOG.md) — breaking changes and notable additions per preview version, so a consumer upgrading across many versions has one place to read what changed.
 
 ## License
 

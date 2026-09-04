@@ -56,6 +56,61 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     }
 
     [Fact]
+    public async Task RegisterJobs_discovers_a_brownfield_crtp_base_class_with_constructor_parameters()
+    {
+        // Mirrors issue #28: a pre-existing CRTP job hierarchy (not HangfireJob) whose constructor takes a
+        // Hangfire PerformContext-like dependency. RegisterJobs must discover and enqueue it without ever
+        // constructing an instance (discovery is reflection-only; Hangfire's JobActivator builds it at
+        // execution time).
+        var client = new RecordingBackgroundJobClient();
+        var catalog = new OperationCatalogBuilder()
+            .RegisterJobs<BrownfieldJobBase<BrownfieldReconciliationJob>>(
+                client,
+                [typeof(BrownfieldReconciliationJob).Assembly],
+                options => options.Exclude = type => type != typeof(BrownfieldReconciliationJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations, operation => operation.Name == "brownfield-reconciliation-job");
+
+        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        Assert.True(result.Succeeded);
+        var created = Assert.Single(client.CreatedJobs);
+        Assert.Equal(typeof(BrownfieldReconciliationJob), created.Job.Type);
+        Assert.Equal(nameof(IHangfireJob.ExecuteAsync), created.Job.Method.Name);
+        Assert.Single(created.Job.Args);
+        Assert.Equal(CancellationToken.None, created.Job.Args[0]);
+        Assert.IsType<EnqueuedState>(created.State);
+    }
+
+    [Fact]
+    public async Task RegisterJobs_with_options_discovers_a_brownfield_crtp_base_class_with_constructor_parameters()
+    {
+        var client = new RecordingBackgroundJobClient();
+        var catalog = new OperationCatalogBuilder()
+            .RegisterJobs<BrownfieldOptionsJobBase<BrownfieldOptionsJob>, BrownfieldOptions>(
+                client,
+                [typeof(BrownfieldOptionsJob).Assembly],
+                options => options.Exclude = type => type != typeof(BrownfieldOptionsJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations, operation => operation.Name == "brownfield-options-job");
+        var inputs = new Dictionary<string, JsonElement>
+        {
+            ["options"] = JsonDocument.Parse("{\"batchSize\":7}").RootElement.Clone()
+        };
+
+        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+
+        Assert.True(result.Succeeded);
+        var created = Assert.Single(client.CreatedJobs);
+        Assert.Equal(typeof(BrownfieldOptionsJob), created.Job.Type);
+        var boundOptions = Assert.IsType<BrownfieldOptions>(created.Job.Args[0]);
+        Assert.Equal(7, boundOptions.BatchSize);
+        Assert.Equal(CancellationToken.None, created.Job.Args[1]);
+    }
+
+    [Fact]
     public void RegisterJobs_discovers_inherited_and_closed_generic_jobs_exactly_once()
     {
         var client = new RecordingBackgroundJobClient();
@@ -233,20 +288,6 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     }
 
     [Fact]
-    public void RegisterJobs_rejects_async_metadata_enrichment()
-    {
-#pragma warning disable CS0618
-        var exception = Assert.Throws<InvalidOperationException>(() => new OperationCatalogBuilder()
-            .RegisterJobs<DiscoveredJobBase>(
-                new RecordingBackgroundJobClient(),
-                [typeof(CleanupJob).Assembly],
-                options => options.EnrichAsync = static (_, _) => ValueTask.CompletedTask));
-#pragma warning restore CS0618
-
-        Assert.Contains("Use Enrich", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void RegisterJobs_rejects_null_assemblies()
     {
         var assemblies = new Assembly?[] { typeof(CleanupJob).Assembly, null };
@@ -300,5 +341,89 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     {
         public override Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    // --- Brownfield fixtures (issue #28) -----------------------------------------------------
+    //
+    // These mirror a real pre-existing Hangfire job hierarchy (OPG Platform's IOpgJob/OpgJobBase<TSelf>):
+    // a CRTP-style generic base class that is *not* HangfireJob, takes constructor parameters
+    // (simulating a Hangfire PerformContext plus an injected dependency), and only implements
+    // IHangfireJob to opt into RegisterJobs — no rewrite of the base class's inheritance chain.
+
+    /// <summary>Simulates a Hangfire <c>PerformContext</c>-like dependency resolved by <c>JobActivator</c>.</summary>
+    private sealed class FakePerformContext
+    {
+        public FakePerformContext(string jobId) => JobId = jobId;
+        public string JobId { get; }
+    }
+
+    private interface IBrownfieldService
+    {
+        Task RunAsync(CancellationToken cancellationToken);
+    }
+
+    /// <summary>Pre-existing brownfield job interface, unrelated to this package.</summary>
+    private interface IBrownfieldJob
+    {
+        Task RunAsync(CancellationToken cancellationToken);
+    }
+
+    /// <summary>
+    /// A CRTP-style brownfield base class with a constructor parameter, adopting <see cref="IHangfireJob"/>
+    /// without deriving from <see cref="HangfireJob"/>. <see cref="RegisterJobs{TJobBase}"/> never constructs
+    /// this type; only Hangfire's <see cref="JobActivator"/> does, at execution time.
+    /// </summary>
+    private abstract class BrownfieldJobBase<TSelf> : IBrownfieldJob, IHangfireJob
+        where TSelf : BrownfieldJobBase<TSelf>
+    {
+        protected BrownfieldJobBase(FakePerformContext context) => Context = context;
+
+        protected FakePerformContext Context { get; }
+
+        public abstract Task RunAsync(CancellationToken cancellationToken);
+
+        // Conventional IHangfireJob shape, implemented implicitly (public) so reflection discovery finds it.
+        public Task ExecuteAsync(CancellationToken cancellationToken) => RunAsync(cancellationToken);
+    }
+
+    private sealed class BrownfieldReconciliationJob : BrownfieldJobBase<BrownfieldReconciliationJob>
+    {
+        private readonly IBrownfieldService _service;
+
+        public BrownfieldReconciliationJob(FakePerformContext context, IBrownfieldService service)
+            : base(context)
+        {
+            _service = service;
+        }
+
+        public override Task RunAsync(CancellationToken cancellationToken) => _service.RunAsync(cancellationToken);
+    }
+
+    private sealed class BrownfieldService : IBrownfieldService
+    {
+        public Task RunAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class BrownfieldOptions { public int BatchSize { get; set; } }
+
+    /// <summary>A brownfield options-bearing base class taking a constructor parameter.</summary>
+    private abstract class BrownfieldOptionsJobBase<TSelf> : IHangfireJob<BrownfieldOptions>
+        where TSelf : BrownfieldOptionsJobBase<TSelf>
+    {
+        protected BrownfieldOptionsJobBase(FakePerformContext context) => Context = context;
+
+        protected FakePerformContext Context { get; }
+
+        public abstract Task ExecuteAsync(BrownfieldOptions options, CancellationToken cancellationToken);
+    }
+
+    private sealed class BrownfieldOptionsJob : BrownfieldOptionsJobBase<BrownfieldOptionsJob>
+    {
+        public BrownfieldOptionsJob(FakePerformContext context)
+            : base(context)
+        {
+        }
+
+        public override Task ExecuteAsync(BrownfieldOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

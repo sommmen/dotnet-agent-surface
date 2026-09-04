@@ -145,7 +145,7 @@ public sealed class HangfireJobRegistrationOptions
     public AgentSafetyLevel SafetyLevel { get; set; } = AgentSafetyLevel.Confirm;
     public Func<Type, string>? NameFactory { get; set; }
     public Func<Type, MethodInfo?>? MethodSelector { get; set; }
-    public Func<Type, HangfireJobRegistrationMetadata, ValueTask>? EnrichAsync { get; set; }
+    public Action<Type, HangfireJobRegistrationMetadata>? Enrich { get; set; }
     public Func<Type, bool>? Exclude { get; set; }
 }
 ```
@@ -273,9 +273,27 @@ Discovery now emits immutable `HangfireJobDiscoveryReport` entries for
 registration, skips, warnings, and strict failures, while retaining the older
 mutable diagnostics collection for compatibility. Registration validates null
 assemblies and generated metadata. Catalog registration is synchronous: use the
-deterministic, non-I/O `Enrich` callback. `EnrichAsync` is retained only for
-source compatibility and fails at startup with actionable migration guidance,
-rather than synchronously blocking asynchronous work.
+deterministic, non-I/O `Enrich` callback. The former asynchronous `EnrichAsync`
+callback, which never ran because catalog construction is synchronous, has been
+removed outright (see [`CHANGELOG.md`](../CHANGELOG.md)) rather than kept as a
+startup-time throw.
+
+### Brownfield job hierarchies (delivered, issue #28)
+
+`RegisterJobs<TJobBase>`/`RegisterJobs<TJobBase, TOptions>` no longer require
+`TJobBase` to derive from `HangfireJob`/`HangfireJobWithOptions<TOptions>`.
+Both base classes now implement new `IHangfireJob`/`IHangfireJob<TOptions>`
+interfaces, and `RegisterJobs`'s generic constraint was relaxed from the
+concrete base class to the interface. A pre-existing job hierarchy — including
+a CRTP-style generic self-referencing base class that takes a Hangfire
+`PerformContext` (or any other DI-resolvable dependency) through its
+constructor — can implement the interface directly and register without
+rewriting its inheritance chain. Discovery only inspects types via reflection
+and never constructs a job instance itself; Hangfire's own `JobActivator`
+constructs the instance when the enqueued job executes, exactly as it already
+does for jobs with constructor-injected dependencies. See
+[`hangfire-recurring-migration.md`](../docs/development/hangfire-recurring-migration.md#adopting-a-pre-existing-brownfield-job-hierarchy)
+for a worked example.
 
 A supported SQL Server storage compatibility suite required opt-in,
 credential-free infrastructure. [Issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22)

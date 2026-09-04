@@ -131,11 +131,78 @@ dotnet nuget add source https://nuget.pkg.github.com/sommmen/index.json `
   --store-password-in-clear-text
 ```
 
-Then reference the exact prerelease version in the consuming project:
+Then reference the exact prerelease version in the consuming project. The publish workflow writes every package ID and computed version to its **Published preview packages** job summary; use that version rather than assuming an example version is current:
 
 ```xml
 <PackageReference Include="DotNetAgentSurface.Core" Version="0.1.8-preview.g<commit>" />
+<PackageReference Include="DotNetAgentSurface.Hangfire" Version="0.1.8-preview.g<commit>" />
 ```
+
+Keep GitHub Packages scoped to this project's packages so other dependencies continue to resolve from nuget.org. Put credentials in a user-level NuGet configuration or a CI secret; never commit the token:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="github-dotnet-agent-surface" value="https://nuget.pkg.github.com/sommmen/index.json" />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+  </packageSources>
+  <packageSourceMapping>
+    <packageSource key="github-dotnet-agent-surface">
+      <package pattern="DotNetAgentSurface.*" />
+    </packageSource>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+  </packageSourceMapping>
+</configuration>
+```
+
+### Hangfire integration
+
+Install `DotNetAgentSurface.Hangfire` alongside `DotNetAgentSurface.Core` at the exact preview version shown by the publish workflow summary. The satellite targets `net10.0` and `netstandard2.0`, and currently references `Hangfire.Core` 1.8.18. Production applications choose and configure their supported Hangfire storage provider; this repository's `Hangfire.InMemory` dependency is only suitable for examples and tests.
+
+The following composition keeps catalog construction storage-lazy. Configure SQL Server (or another supported provider) through configuration and secret management, not source code; its connection string is intentionally not shown here.
+
+```csharp
+using DotNetAgentSurface.Core;
+using DotNetAgentSurface.Hangfire;
+using Hangfire;
+using Hangfire.SqlServer;
+
+var connectionString = configuration.GetConnectionString("Hangfire")
+    ?? throw new InvalidOperationException("The Hangfire connection string is required.");
+
+var storage = new SqlServerStorage(connectionString);
+var recurringJobs = new RecurringJobManager(storage);
+var backgroundJobs = new BackgroundJobClient(storage);
+
+var catalog = new OperationCatalogBuilder()
+    .AddHangfireRecurringOperations(storage, recurringJobs, options =>
+    {
+        options.Category = "Operations";
+        options.TriggerSafetyLevel = AgentSafetyLevel.Confirm;
+    })
+    .Build();
+
+var invoker = new OperationInvoker(
+    services,
+    policies: [new DangerousOperationConfirmationPolicy()]);
+```
+
+Register the storage and server according to the selected provider's production guidance. Ensure workers listen to every queue used by the jobs you register, run sufficient server capacity for scheduled and enqueued work, and monitor the provider's persistent storage. `IRecurringJobManager` manages recurring definitions; `IBackgroundJobClient` is used by class-based job operations to enqueue one-off work.
+
+`AddHangfireRecurringOperations(...)` adds exactly two stable operations: `list-recurring-hangfire` and `trigger-recurring-hangfire`. It does not open storage while building the catalog or generating a skill. The trigger accepts the actual recurring **`jobId`** at invocation time, so recurring IDs do not become generated command names. Generate/check the catalog skill offline with the normal skill-generator command after composition; only listing or triggering needs a reachable storage provider.
+
+Attach `DangerousOperationConfirmationPolicy` to every CLI and MCP host. It never prompts: a `Confirm` operation requires CLI `--confirm`, and a `Dangerous` operation requires `--confirm --yes`. Missing or insufficient confirmation returns exit code 1 without binding input or contacting Hangfire. The complete CLI/MCP metadata examples and cancellation semantics are in [operation-confirmation.md](docs/development/operation-confirmation.md).
+
+| Need | API | Why |
+|---|---|---|
+| List or trigger existing recurring definitions without rebuilding the catalog | `AddHangfireRecurringOperations(...)` | Primary recurring API; runtime storage access preserves stable operation names and generated skills. |
+| Conventionally discover attributed `HangfireJob` subclasses and enqueue one-off work | `RegisterJobs<TJobBase>(...)` | Primary class-discovery API; conventional base type, execution method, options binding, and diagnostics. |
+| Control candidate types, method selection, argument binding, or generated metadata | `AddHangfireJobTypes(...)` | Advanced generic discovery API for exceptional integrations; not a recurring-job replacement. |
+
+For migration from the removed eager `AddHangfireRecurringJobs(...)` API, including category/path changes and generated-skill behavior, see [hangfire-recurring-migration.md](docs/development/hangfire-recurring-migration.md).
 
 ### Local package workflow
 

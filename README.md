@@ -115,7 +115,7 @@ The planned architecture, milestones, and open design decisions are documented i
 
 ## Status
 
-The core catalog, invocation pipeline, CLI/MCP adapters, skill generator, and the Hangfire/ASP.NET Core/native-MCP discovery satellites are implemented and tested; the next milestone is a trusted invocation-context contract so protected ASP.NET Core endpoints can be safely invoked instead of only cataloged. See [docs/development/tracking.md](docs/development/tracking.md) for the full milestone list and current status.
+The core catalog, invocation pipeline, CLI/MCP adapters, skill generator, and the Hangfire/ASP.NET Core/native-MCP discovery satellites are implemented and tested; the next milestone is a trusted invocation-context contract so protected ASP.NET Core endpoints can be safely invoked instead of only cataloged. See [docs/development/tracking.md](docs/development/tracking.md) for the full milestone list and current status, and [CHANGELOG.md](CHANGELOG.md) for breaking changes and notable additions per preview version.
 
 ### Testing prerelease packages
 

@@ -83,6 +83,97 @@ per-job alias. A job may be added, removed, or renamed after the catalog has
 been built; pass the current identifier using `--job-id` (CLI) or `jobId`
 (MCP) when invoking `trigger-recurring-hangfire`.
 
+## Adopting a pre-existing (brownfield) job hierarchy
+
+Most Hangfire adopters already have a job base class before they add this
+package — often one with a generic self-reference (CRTP) and a constructor
+that takes a Hangfire `PerformContext` or other DI-resolvable dependencies.
+That shape is incompatible with `HangfireJob`/`HangfireJobWithOptions<TOptions>`
+(plain abstract classes with an implicit parameterless constructor), so
+`RegisterJobs<TJobBase>` used to require either rewriting every job's base
+class or falling back to the `AddHangfireJobTypes(...)` escape hatch for what
+is actually the common case.
+
+`RegisterJobs<TJobBase>`/`RegisterJobs<TJobBase, TOptions>` now accept any
+`TJobBase` that implements `IHangfireJob`/`IHangfireJob<TOptions>` — including
+`HangfireJob`/`HangfireJobWithOptions<TOptions>` themselves, which implement
+these interfaces. A pre-existing base class can implement the interface
+directly, without changing its inheritance chain or constructor signature.
+Discovery only inspects types via reflection; it never constructs a job
+instance itself, so the job type can declare any constructor. Hangfire's own
+`JobActivator` (the same activator already used for jobs with
+constructor-injected dependencies) constructs the instance when the enqueued
+job actually executes.
+
+For example, a CRTP-style base class that takes a `PerformContext` through its
+constructor:
+
+```csharp
+using Hangfire;
+using DotNetAgentSurface.Hangfire;
+
+// Pre-existing brownfield hierarchy — unchanged except for adding `: IHangfireJob`.
+public interface IOpgJob
+{
+    Task RunAsync(CancellationToken cancellationToken);
+}
+
+public abstract class OpgJobBase<TSelf> : IOpgJob, IHangfireJob
+    where TSelf : OpgJobBase<TSelf>
+{
+    private readonly PerformContext _context;
+
+    protected OpgJobBase(PerformContext context)
+    {
+        _context = context;
+    }
+
+    protected PerformContext Context => _context;
+
+    public abstract Task RunAsync(CancellationToken cancellationToken);
+
+    // IHangfireJob's conventional ExecuteAsync(CancellationToken) shape forwards
+    // to the pre-existing RunAsync(...) member so no existing job needs to change.
+    Task IHangfireJob.ExecuteAsync(CancellationToken cancellationToken) => RunAsync(cancellationToken);
+}
+
+public sealed class NightlyReconciliationJob : OpgJobBase<NightlyReconciliationJob>
+{
+    private readonly IReconciliationService _service;
+
+    public NightlyReconciliationJob(PerformContext context, IReconciliationService service)
+        : base(context)
+    {
+        _service = service;
+    }
+
+    public override Task RunAsync(CancellationToken cancellationToken) =>
+        _service.ReconcileAsync(cancellationToken);
+}
+```
+
+Registration is identical to the greenfield case, just with the brownfield
+base class as `TJobBase`:
+
+```csharp
+var catalog = new OperationCatalogBuilder()
+    .RegisterJobs<OpgJobBase<NightlyReconciliationJob>>(backgroundJobClient, [typeof(NightlyReconciliationJob).Assembly])
+    .Build();
+```
+
+`NightlyReconciliationJob` is discovered exactly as a `HangfireJob` subclass
+would be — enqueued through `IBackgroundJobClient`, constructed by Hangfire's
+`JobActivator` (which resolves `PerformContext` and `IReconciliationService`
+from the application's DI container, just as it already would for a
+recurring job) — without OPG's `OpgJobBase<TSelf>`/`IOpgJob` hierarchy ever
+being rewritten to derive from `HangfireJob`.
+
+The same applies to options-bearing brownfield jobs: implement
+`IHangfireJob<TOptions>` on the existing base class/interface instead of
+`IHangfireJob`, with an `ExecuteAsync(TOptions options, CancellationToken
+cancellationToken)` method, and register with
+`RegisterJobs<TJobBase, TOptions>(...)`.
+
 ## Generated-skill migration
 
 The eager catalog generated one skill entry per recurring-job row. Its skill
@@ -118,9 +209,9 @@ registration mechanisms.
 | Consumer need | Choose | Why |
 |---|---|---|
 | List or trigger schedules already owned by Hangfire storage | `AddHangfireRecurringOperations(...)` | The storage-lazy, stable two-operation surface. It does not create schedules or expose one command per storage row. |
-| Register controlled parameterless job classes derived from `HangfireJob` | `RegisterJobs<TJobBase>(...)` | **Primary class-registration API.** It supplies conventions, method selection, metadata, diagnostics, and enqueueing for a supplied job base type. |
-| Register controlled options-bearing job classes derived from `HangfireJobWithOptions<TOptions>` | `RegisterJobs<TJobBase, TOptions>(...)` | The primary typed variant: it adds JSON schema, input binding, and an explicit options contract. |
-| Adapt legacy, non-conforming, or unusually shaped job classes | `AddHangfireJobTypes(...)` | Advanced escape hatch when the consumer needs a custom type predicate, method selector, argument factory, or metadata behavior that the opinionated APIs intentionally do not expose. |
+| Register parameterless job classes, greenfield or brownfield | `RegisterJobs<TJobBase>(...)` | **Primary class-registration API.** `TJobBase` may be `HangfireJob` for new job code, or the `IHangfireJob` interface itself — or any pre-existing base class/interface that implements it — to adopt an existing job hierarchy (including one with constructor parameters or a CRTP-style generic self-reference) without rewriting its inheritance chain. See [Adopting a pre-existing (brownfield) job hierarchy](#adopting-a-pre-existing-brownfield-job-hierarchy) below. |
+| Register options-bearing job classes, greenfield or brownfield | `RegisterJobs<TJobBase, TOptions>(...)` | The primary typed variant: it adds JSON schema, input binding, and an explicit options contract. `TJobBase` may be `HangfireJobWithOptions<TOptions>` or the `IHangfireJob<TOptions>` interface, with the same brownfield-adoption support as above. |
+| Adapt job classes with a fully custom shape (non-conventional method name/signature, custom argument binding) | `AddHangfireJobTypes(...)` | Escape hatch for callers who need a custom type predicate, method selector, or argument factory that `RegisterJobs` intentionally does not expose. Most pre-existing job hierarchies do not need this — implementing `IHangfireJob`/`IHangfireJob<TOptions>` on the existing base class/interface and using `RegisterJobs` is simpler. |
 
 `RegisterJobs` is the long-term primary API for new class-based jobs. Keep
 `AddHangfireJobTypes` when its flexibility is required; it is not a deprecated

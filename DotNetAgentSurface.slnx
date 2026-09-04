@@ -21,5 +21,6 @@
     <Project Path="tests/DotNetAgentSurface.Core.Tests/DotNetAgentSurface.Core.Tests.csproj" />
     <Project Path="tests/DotNetAgentSurface.AspNetCore.Tests/DotNetAgentSurface.AspNetCore.Tests.csproj" />
     <Project Path="tests/DotNetAgentSurface.Hangfire.Tests/DotNetAgentSurface.Hangfire.Tests.csproj" />
+    <Project Path="tests/DotNetAgentSurface.Hangfire.SqlServer.Tests/DotNetAgentSurface.Hangfire.SqlServer.Tests.csproj" />
   </Folder>
 </Solution>

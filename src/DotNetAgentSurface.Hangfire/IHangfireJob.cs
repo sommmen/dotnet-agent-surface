@@ -37,7 +37,16 @@ public interface IHangfireJob
 /// that <see cref="ExecuteAsync"/> be implemented as a public (not explicit interface implementation) method.
 /// </summary>
 /// <typeparam name="TOptions">The JSON-bindable input supplied when the job is queued.</typeparam>
-public interface IHangfireJob<in TOptions>
+/// <remarks>
+/// <typeparamref name="TOptions"/> is intentionally invariant (not <c>in TOptions</c>). Reflection-based
+/// assignability checks (<see cref="Type.IsAssignableFrom"/>), which is what discovery uses, treat a
+/// contravariant interface's variance-compatible closed generic types as assignable to each other — e.g. a job
+/// implementing <c>IHangfireJob&lt;BaseOptions&gt;</c> would be reported assignable to
+/// <c>IHangfireJob&lt;DerivedOptions&gt;</c> — which would let discovery match the wrong <typeparamref
+/// name="TOptions"/> for a job and misidentify its execution method. Keeping the parameter invariant ensures a
+/// job type is only discovered for the exact <typeparamref name="TOptions"/> it implements.
+/// </remarks>
+public interface IHangfireJob<TOptions>
 {
     /// <summary>
     /// Executes the job with the supplied input. Implement this as a public method — an explicit interface

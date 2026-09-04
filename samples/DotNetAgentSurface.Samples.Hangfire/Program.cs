@@ -6,7 +6,7 @@ using Hangfire.Common;
 using Hangfire.InMemory;
 using Hangfire.Storage;
 
-// This sample demonstrates both Hangfire discovery satellites end to end:
+// This sample demonstrates three Hangfire discovery satellites end to end:
 //
 //   1. Stable recurring-job operations (AddHangfireRecurringOperations): rather than cataloging one
 //      operation per job at startup, this registers exactly two stable operations —
@@ -21,6 +21,11 @@ using Hangfire.Storage;
 //      case — discovery here never creates a recurring-job entry (not even Cron.Never()); it behaves
 //      exactly like calling BackgroundJob.Enqueue for the type, just picked up by reflection instead
 //      of being hand-wired one type at a time.
+//   3. Attributed base-class job discovery (RegisterJobs<TJobBase>() / RegisterJobs<TJobBase, TOptions>()):
+//      concrete classes deriving from HangfireJob or HangfireJobWithOptions<TOptions> are discovered
+//      automatically — no caller-supplied predicate or method selector is required for the common case.
+//      Options-based jobs get an automatically generated JSON input schema and binding, reusing the same
+//      OperationCatalogBuilder.Add(...) reflection machinery as any other operation.
 //
 // Hangfire.InMemory keeps the sample self-contained (no Redis/SQL Server backend required) so it can
 // run with a plain `dotnet run`.
@@ -197,6 +202,34 @@ Console.WriteLine();
 Console.WriteLine($"Recurring jobs in storage are still unchanged: {storage.GetConnection().GetAllItemsFromSet("recurring-jobs").Count} " +
     "(AbstractExcludedJob was skipped because it is abstract, and neither discovered type created a recurring entry).");
 
+var attributedCatalog = new OperationCatalogBuilder()
+    .RegisterJobs<SendDigestJob>(backgroundJobClient, [typeof(Program).Assembly])
+    .RegisterJobs<PurgeCacheJobBase, PurgeCacheOptions>(backgroundJobClient, [typeof(Program).Assembly])
+    .Build();
+
+Console.WriteLine();
+Console.WriteLine("=== 3. Attributed base-class job discovery (RegisterJobs<TJobBase>()) ===");
+Console.WriteLine($"Discovered {attributedCatalog.Operations.Count} Hangfire job operation(s) from HangfireJob/HangfireJobWithOptions<> base types:");
+foreach (var operation in attributedCatalog.Operations)
+{
+    Console.WriteLine($"  - {operation.Name} [{operation.Category}, {operation.SafetyLevel}]: {operation.Description}");
+}
+
+Console.WriteLine();
+Console.WriteLine("Invoking 'send-digest-job' (parameterless HangfireJob) on demand...");
+var sendDigest = attributedCatalog.Operations.Single(operation => operation.Name == "send-digest-job");
+result = await invoker.InvokeAsync(sendDigest);
+Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {result.Error}");
+
+Console.WriteLine("Invoking 'purge-cache-job' with JSON-bound options on demand...");
+var purgeCache = attributedCatalog.Operations.Single(operation => operation.Name == "purge-cache-job");
+var purgeInputs = new Dictionary<string, JsonElement>
+{
+    ["options"] = JsonDocument.Parse("""{"olderThanDays":30}""").RootElement.Clone()
+};
+result = await invoker.InvokeAsync(purgeCache, purgeInputs);
+Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {result.Error}");
+
 /// <summary>Static job methods stand in for real recurring jobs; Hangfire jobs are typically static or DI-resolved.</summary>
 internal static class SampleJobs
 {
@@ -258,4 +291,34 @@ internal sealed class ArchiveOldRecordsJob : ISampleJobWithOptions
 internal abstract class AbstractExcludedJob : ISampleJob
 {
     public abstract void Execute();
+}
+
+/// <summary>A parameterless job discovered via <see cref="HangfireJob"/>. No predicate, method selector,
+/// or manual wiring is required — deriving from the base class is enough for RegisterJobs&lt;TJobBase&gt;
+/// to find, name, and enqueue it.</summary>
+internal sealed class SendDigestJob : HangfireJob
+{
+    public override Task ExecuteAsync(CancellationToken cancellationToken)
+    {
+        Console.WriteLine("  [job] SendDigestJob executed.");
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Options bound from JSON input and passed to the job at enqueue time.</summary>
+internal sealed record PurgeCacheOptions(int OlderThanDays);
+
+/// <summary>An intermediate, non-generic base is enough for RegisterJobs&lt;TJobBase, TOptions&gt; to
+/// locate the closed <see cref="HangfireJobWithOptions{TOptions}"/> options type.</summary>
+internal abstract class PurgeCacheJobBase : HangfireJobWithOptions<PurgeCacheOptions> { }
+
+/// <summary>An options-based job discovered via <see cref="HangfireJobWithOptions{TOptions}"/>; its input
+/// schema is generated automatically from <see cref="PurgeCacheOptions"/>.</summary>
+internal sealed class PurgeCacheJob : PurgeCacheJobBase
+{
+    public override Task ExecuteAsync(PurgeCacheOptions options, CancellationToken cancellationToken)
+    {
+        Console.WriteLine($"  [job] PurgeCacheJob executed (older than {options.OlderThanDays} days).");
+        return Task.CompletedTask;
+    }
 }

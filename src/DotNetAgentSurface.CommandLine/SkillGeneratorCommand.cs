@@ -19,7 +19,16 @@ public static class SkillGeneratorCommand
     /// with a root-level <c>SKILL.md</c> plus a <c>references/</c> directory for detailed command
     /// and schema data.
     /// </summary>
-    public static ValueTask<CommandLineExecutionResult> ExecuteAsync(string[] args, OperationCatalog catalog, string outputDirectoryDefault = DefaultOutputDirectory, CancellationToken cancellationToken = default)
+    /// <param name="args">The verb and its arguments, e.g. <c>["generate", "--output", "skill"]</c>.</param>
+    /// <param name="catalog">The operation catalog to render a skill reference for.</param>
+    /// <param name="outputDirectoryDefault">Output directory used when <c>--output</c> is not supplied.</param>
+    /// <param name="cancellationToken">Token observed before dispatching to a verb handler.</param>
+    /// <param name="generationOptions">
+    /// Optional <see cref="SkillGenerationOptions"/> (skill name/description/executable name and category shard
+    /// threshold) to pass through to <see cref="SkillReferenceGenerator"/>. When <see langword="null"/> (the
+    /// default), the generator's own <c>outputDirectory</c>-derived defaults are used, preserving prior behavior.
+    /// </param>
+    public static ValueTask<CommandLineExecutionResult> ExecuteAsync(string[] args, OperationCatalog catalog, string outputDirectoryDefault = DefaultOutputDirectory, CancellationToken cancellationToken = default, SkillGenerationOptions? generationOptions = null)
     {
         if (catalog is null)
         {
@@ -49,8 +58,8 @@ public static class SkillGeneratorCommand
             var rest = args.Skip(1).ToArray();
             var result = args[0] switch
             {
-                "generate" => ExecuteGenerate(rest, catalog, outputDirectoryDefault),
-                "check" => ExecuteCheck(rest, catalog, outputDirectoryDefault),
+                "generate" => ExecuteGenerate(rest, catalog, outputDirectoryDefault, generationOptions),
+                "check" => ExecuteCheck(rest, catalog, outputDirectoryDefault, generationOptions),
                 _ => CommandLineExecutionResult.Failure($"Unknown skill command '{args[0]}'.\n\n{RenderHelp()}", 2),
             };
             return new ValueTask<CommandLineExecutionResult>(result);
@@ -72,26 +81,37 @@ public static class SkillGeneratorCommand
     /// </summary>
     public static bool CanHandle(string[] args) => args is ["generate" or "check", ..];
 
-    private static CommandLineExecutionResult ExecuteGenerate(string[] rest, OperationCatalog catalog, string outputDirectoryDefault)
+    private static CommandLineExecutionResult ExecuteGenerate(string[] rest, OperationCatalog catalog, string outputDirectoryDefault, SkillGenerationOptions? generationOptions)
     {
         var (outputDirectory, force) = ParseGenerateOptions(rest, outputDirectoryDefault);
         var generator = new SkillReferenceGenerator();
+        var options = generationOptions;
 
-        if (!force && generator.IsCurrent(catalog, outputDirectory))
+        var isCurrent = options is null ? generator.IsCurrent(catalog, outputDirectory) : generator.IsCurrent(catalog, outputDirectory, options);
+        if (!force && isCurrent)
         {
             return CommandLineExecutionResult.Success("Skill reference is already current.");
         }
 
-        generator.Generate(catalog, outputDirectory);
+        if (options is null)
+        {
+            generator.Generate(catalog, outputDirectory);
+        }
+        else
+        {
+            generator.Generate(catalog, outputDirectory, options);
+        }
+
         return CommandLineExecutionResult.Success($"Skill reference generated in '{outputDirectory}'.");
     }
 
-    private static CommandLineExecutionResult ExecuteCheck(string[] rest, OperationCatalog catalog, string outputDirectoryDefault)
+    private static CommandLineExecutionResult ExecuteCheck(string[] rest, OperationCatalog catalog, string outputDirectoryDefault, SkillGenerationOptions? generationOptions)
     {
         var outputDirectory = ParseCheckOptions(rest, outputDirectoryDefault);
         var generator = new SkillReferenceGenerator();
 
-        return generator.IsCurrent(catalog, outputDirectory)
+        var isCurrent = generationOptions is null ? generator.IsCurrent(catalog, outputDirectory) : generator.IsCurrent(catalog, outputDirectory, generationOptions);
+        return isCurrent
             ? CommandLineExecutionResult.Success("Skill reference is current.")
             : CommandLineExecutionResult.Failure($"Skill reference in '{outputDirectory}' is missing or stale. Run 'generate' to update it.");
     }

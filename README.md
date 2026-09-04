@@ -8,7 +8,7 @@
 
 Implement an operation once, annotate it explicitly, and generate every surface from the same catalog.
 
-> This project is in its initial design phase. The API and package structure described here are planned and may change during development.
+> This project is a preview: the public API described here is implemented and tested, but still pre-1.0 and may change between preview releases. See [Status](#status) below.
 
 ## Motivation
 
@@ -90,15 +90,13 @@ skills/
 
 Keeping the MCP server outside a WinForms or WPF process prevents protocol traffic from being mixed with GUI output. A Windows service can either host the shared services directly or expose them to separate hosts through named pipes or HTTP.
 
-## Compatibility and proposed dependencies
+## Compatibility and dependencies
 
-The initial goal is to support modern .NET and legacy .NET Framework 4.6.2 or later. Candidate building blocks are:
+`Core`, `CommandLine`, and `Mcp` multi-target `net10.0;netstandard2.0`, which covers .NET Framework 4.6.1+ (the `samples/DotNetAgentSurface.Samples.LegacyDesktop` sample validates the downlevel path against a real `net472` host). Building blocks:
 
 - [MCP C# SDK](https://www.nuget.org/packages/ModelContextProtocol/) for MCP hosting and tool adaptation;
 - [System.CommandLine](https://www.nuget.org/packages/System.CommandLine) for generated CLI commands;
 - [NJsonSchema](https://www.nuget.org/packages/NJsonSchema/) for DTO and parameter schemas.
-
-Dependency versions, target frameworks, and compatibility will be verified before the first package is published.
 
 ## Design principles
 
@@ -138,6 +136,69 @@ Then reference the exact prerelease version in the consuming project:
 ```xml
 <PackageReference Include="DotNetAgentSurface.Core" Version="0.1.8-preview.g<commit>" />
 ```
+
+### Local package workflow
+
+To try an unreleased change (or iterate on this repository against a real consumer) without waiting on CI or GitHub Packages, pack straight to a local folder and point the consuming project's restore at that folder instead. No GitHub account, personal access token, or network access is required.
+
+1. **Pack the libraries you need** from this repository into a local folder (any empty folder works as a NuGet feed):
+
+   ```powershell
+   dotnet pack DotNetAgentSurface.slnx -c Release -o C:\local-nuget-feed
+   ```
+
+   Pack a single project instead if you only changed one library, for example `dotnet pack src\DotNetAgentSurface.Hangfire\DotNetAgentSurface.Hangfire.csproj -c Release -o C:\local-nuget-feed`. Each run produces version-stamped `.nupkg`/`.snupkg` files named `DotNetAgentSurface.<Project>.<version>.nupkg`; re-running `dotnet pack` after further edits overwrites files with the same version, so bump the commit (any new commit changes the Nerdbank.GitVersioning-computed height/hash) or pass `-p:VersionSuffix=...` if NuGet's local cache serves a stale copy (see Troubleshooting below).
+
+2. **Point the consuming project at that folder.** Either add it as a NuGet source, or (recommended for a scratch/throwaway consumer) add a `nuget.config` next to the consuming project's solution:
+
+   ```xml
+   <?xml version="1.0" encoding="utf-8"?>
+   <configuration>
+     <packageSources>
+       <clear />
+       <add key="local-dotnet-agent-surface" value="C:\local-nuget-feed" />
+       <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+     </packageSources>
+     <!-- Restrict the local feed to this package family so it cannot shadow unrelated
+          packages that also resolve from nuget.org. Remove if you also use the local
+          feed for other experimental packages. -->
+     <packageSourceMapping>
+       <packageSource key="local-dotnet-agent-surface">
+         <package pattern="DotNetAgentSurface.*" />
+       </packageSource>
+       <packageSource key="nuget.org">
+         <package pattern="*" />
+       </packageSource>
+     </packageSourceMapping>
+   </configuration>
+   ```
+
+   Alternatively, without a `nuget.config` file, register the folder as a machine/user-level source:
+
+   ```powershell
+   dotnet nuget add source C:\local-nuget-feed --name local-dotnet-agent-surface
+   ```
+
+3. **Discover the version to pin** by listing the folder or reading the pack output — `dotnet pack` prints the exact `.nupkg` filename, and [`version.json`](version.json) shows the Nerdbank.GitVersioning configuration (major.minor plus a `-preview` prerelease tag) that determines the computed prerelease identifier for the current commit:
+
+   ```powershell
+   Get-ChildItem C:\local-nuget-feed\DotNetAgentSurface.Core.*.nupkg
+   ```
+
+4. **Reference the exact local version** in the consuming project, matching whatever `dotnet pack` produced (for example `0.1.14-preview.g<commit>`, or a plain `0.1.14-preview` if built from a tagged commit):
+
+   ```xml
+   <PackageReference Include="DotNetAgentSurface.Core" Version="0.1.14-preview.g<commit>" />
+   ```
+
+5. **Restore** as usual (`dotnet restore` or an IDE restore). NuGet resolves `DotNetAgentSurface.*` from the local folder feed per the source mapping above, and everything else from `nuget.org`.
+
+**Cleanup and troubleshooting:**
+
+- Delete the local feed folder (`Remove-Item -Recurse C:\local-nuget-feed`) and remove the registered source (`dotnet nuget remove source local-dotnet-agent-surface`) once you are done experimenting; neither step touches this repository or any published feed.
+- If a restore keeps resolving an older package despite a newer local pack, clear NuGet's global package cache for the affected package/version: `dotnet nuget locals http-cache --clear` and `dotnet nuget locals global-packages --list` (delete the specific `dotnetagentsurface.*` subfolder under the reported path, or bump the version so it no longer collides).
+- If restore reports the package cannot be found, confirm the folder path in `nuget.config`/`dotnet nuget list source` is correct and that the `.nupkg` file actually exists there (a relative path is resolved relative to the `nuget.config` file, not the current directory).
+- If package source mapping rejects the local feed for a `DotNetAgentSurface.*` package, double-check the `<package pattern="DotNetAgentSurface.*" />` entry — package source mapping is strict once any mapping exists in scope, so every source that should serve a given package needs an explicit pattern.
 
 ## License
 

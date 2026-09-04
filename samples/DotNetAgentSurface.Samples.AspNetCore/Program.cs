@@ -31,9 +31,9 @@ app.MapGet("/", () => Results.Ok(new
     operations = new[] { "/operations", "/operations/{name}" }
 }));
 
-// Demo endpoints that exercise the ApiExplorer discovery satellite: an anonymous endpoint that the catalog
-// can invoke directly, and an authorization-protected endpoint that is cataloged but always denies invocation
-// because the Core invocation pipeline does not carry an authenticated caller context (see development.md).
+// Demo endpoints that exercise the ApiExplorer discovery satellite: an anonymous endpoint and an
+// authorization-protected endpoint. Protected operations use the authenticated request principal supplied
+// to the shared invocation context.
 app.MapGet("/demo/ping", () => Results.Ok(new { message = "pong" }));
 app.MapGet("/demo/secret", () => Results.Ok("secret")).RequireAuthorization();
 
@@ -45,7 +45,7 @@ app.MapGet("/operations/{name}", (string name, OperationCatalog catalog) =>
     return operation is null ? Results.NotFound() : Results.Ok(ToResponse(operation));
 });
 
-app.MapPost("/operations/{name}", async (string name, JsonElement? inputs, OperationCatalog catalog, OperationInvoker invoker, CancellationToken cancellationToken) =>
+app.MapPost("/operations/{name}", async (string name, JsonElement? inputs, OperationCatalog catalog, OperationInvoker invoker, HttpContext httpContext, CancellationToken cancellationToken) =>
 {
     var operation = catalog.Operations.SingleOrDefault(operation => string.Equals(operation.Name, name, StringComparison.OrdinalIgnoreCase));
     if (operation is null)
@@ -53,7 +53,11 @@ app.MapPost("/operations/{name}", async (string name, JsonElement? inputs, Opera
         return Results.NotFound();
     }
 
-    var result = await invoker.InvokeAsync(operation, ToInputs(inputs), cancellationToken);
+    var result = await invoker.InvokeAsync(
+        operation,
+        ToInputs(inputs),
+        cancellationToken,
+        invocationContext: new OperationInvocationContext(httpContext.User));
     return result.Succeeded
         ? Results.Ok(result.Value)
         : result.IsCancelled

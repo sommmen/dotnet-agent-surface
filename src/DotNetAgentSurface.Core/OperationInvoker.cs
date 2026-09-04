@@ -23,15 +23,16 @@ public sealed class OperationInvoker
         OperationDescriptor operation,
         IReadOnlyDictionary<string, JsonElement>? inputs = null,
         CancellationToken cancellationToken = default,
-        OperationConfirmation? confirmation = null)
+        OperationConfirmation? confirmation = null,
+        OperationInvocationContext? invocationContext = null)
     {
         Guard.ThrowIfNull(operation);
 
         try
         {
-            foreach (var policy in _policies)
+            foreach (var policy in _policies.Concat(operation.InvocationPolicies))
             {
-                var decision = await policy.EvaluateAsync(operation, inputs, confirmation, cancellationToken).ConfigureAwait(false);
+                var decision = await policy.EvaluateAsync(operation, inputs, confirmation, cancellationToken, invocationContext).ConfigureAwait(false);
                 if (!decision.IsAllowed)
                 {
                     return OperationInvocationResult.Failure(decision.Error ?? $"Operation '{operation.Name}' was denied by policy.");

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Claims;
 using DotNetAgentSurface.AspNetCore;
 using DotNetAgentSurface.Core;
 using Microsoft.AspNetCore.Authorization;
@@ -47,7 +48,55 @@ public sealed class ApiExplorerRegistrationTests
         var result = await new OperationInvoker(app.Services).InvokeAsync(operation);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("requires authorization", result.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("authenticated caller", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Invokes_authorized_endpoint_with_authenticated_context()
+    {
+        await using var app = CreateApplication();
+        app.MapGet("/protected", () => Results.Ok("secret")).RequireAuthorization();
+        await app.StartAsync();
+        var operation = Assert.Single(Register(app).Operations);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity("test"));
+
+        var result = await new OperationInvoker(app.Services)
+            .InvokeAsync(operation, invocationContext: new OperationInvocationContext(principal));
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Contains("secret", Assert.IsType<AspNetCoreEndpointResponse>(result.Value).Body);
+    }
+
+    [Fact]
+    public async Task Allows_anonymous_metadata_to_override_authorization()
+    {
+        await using var app = CreateApplication();
+        app.MapGet("/public", () => Results.Ok("public")).RequireAuthorization().AllowAnonymous();
+        await app.StartAsync();
+        var operation = Assert.Single(Register(app).Operations);
+
+        var result = await new OperationInvoker(app.Services).InvokeAsync(operation);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Contains("public", Assert.IsType<AspNetCoreEndpointResponse>(result.Value).Body);
+    }
+
+    [Fact]
+    public async Task Evaluates_named_authorization_policy_against_forwarded_claims()
+    {
+        await using var app = CreateApplication();
+        app.MapGet("/scoped", () => Results.Ok("scoped")).RequireAuthorization("scope");
+        await app.StartAsync();
+        var operation = Assert.Single(Register(app).Operations);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("scope", "read")],
+            "test"));
+
+        var result = await new OperationInvoker(app.Services)
+            .InvokeAsync(operation, invocationContext: new OperationInvocationContext(principal));
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Contains("scoped", Assert.IsType<AspNetCoreEndpointResponse>(result.Value).Body);
     }
 
     private static WebApplication CreateApplication()
@@ -56,7 +105,8 @@ public sealed class ApiExplorerRegistrationTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddControllers().AddApplicationPart(typeof(ControllerEndpoints).Assembly);
-        builder.Services.AddAuthorization();
+        builder.Services.AddAuthorization(options =>
+            options.AddPolicy("scope", policy => policy.RequireClaim("scope", "read")));
         return builder.Build();
     }
 

@@ -25,6 +25,7 @@ public sealed class OperationCommandLineAdapter
     private readonly CommandNode _root;
     private readonly IAgentOutputRenderer _defaultRenderer;
     private readonly bool _useAxiOutputContract;
+    private readonly OperationInvocationContext? _invocationContext;
 
     /// <summary>
     /// Creates a command-line adapter. Supplying a renderer enables the AXI output contract and makes that renderer
@@ -33,23 +34,28 @@ public sealed class OperationCommandLineAdapter
     public OperationCommandLineAdapter(
         OperationCatalog catalog,
         OperationInvoker invoker,
-        IAgentOutputRenderer? defaultRenderer = null)
+        IAgentOutputRenderer? defaultRenderer = null,
+        OperationInvocationContext? invocationContext = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
         _defaultRenderer = defaultRenderer ?? new JsonAgentOutputRenderer();
         _useAxiOutputContract = defaultRenderer is not null;
+        _invocationContext = invocationContext;
         _root = BuildCommandTree(_catalog.Operations);
     }
 
-    public async ValueTask<CommandLineExecutionResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandLineExecutionResult> ExecuteAsync(
+        string[] args,
+        CancellationToken cancellationToken = default,
+        OperationInvocationContext? invocationContext = null)
     {
         args ??= [];
 
         try
         {
             var outputOptions = ParseOutputOptions(args);
-            return await ExecuteCommandAsync(outputOptions.CommandArgs, cancellationToken, outputOptions).ConfigureAwait(false);
+            return await ExecuteCommandAsync(outputOptions.CommandArgs, cancellationToken, outputOptions, invocationContext).ConfigureAwait(false);
         }
         catch (CommandLineUsageException exception)
         {
@@ -64,7 +70,8 @@ public sealed class OperationCommandLineAdapter
     private async ValueTask<CommandLineExecutionResult> ExecuteCommandAsync(
         string[] args,
         CancellationToken cancellationToken,
-        OutputOptions outputOptions)
+        OutputOptions outputOptions,
+        OperationInvocationContext? invocationContext)
     {
         var node = _root;
         var index = 0;
@@ -77,7 +84,7 @@ public sealed class OperationCommandLineAdapter
             if (node.Operations.TryGetValue(token, out var operation))
             {
                 index++;
-                return await ExecuteOperationAsync(operation, args, index, cancellationToken, outputOptions).ConfigureAwait(false);
+                return await ExecuteOperationAsync(operation, args, index, cancellationToken, outputOptions, invocationContext).ConfigureAwait(false);
             }
 
             if (node.Categories.TryGetValue(token, out var child))
@@ -102,7 +109,8 @@ public sealed class OperationCommandLineAdapter
         string[] args,
         int startIndex,
         CancellationToken cancellationToken,
-        OutputOptions outputOptions)
+        OutputOptions outputOptions,
+        OperationInvocationContext? invocationContext)
     {
         var remaining = args.Skip(startIndex).ToArray();
 
@@ -119,7 +127,12 @@ public sealed class OperationCommandLineAdapter
                 : outputOptions.Confirm
                     ? OperationConfirmation.Confirmed
                     : OperationConfirmation.None;
-            var invocation = await _invoker.InvokeAsync(operation, inputs, cancellationToken, confirmation).ConfigureAwait(false);
+            var invocation = await _invoker.InvokeAsync(
+                operation,
+                inputs,
+                cancellationToken,
+                confirmation,
+                invocationContext ?? _invocationContext).ConfigureAwait(false);
 
             if (!invocation.Succeeded)
             {

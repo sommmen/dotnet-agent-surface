@@ -4,7 +4,9 @@ using DotNetAgentSurface.Core;
 namespace DotNetAgentSurface.Hangfire;
 
 /// <summary>
-/// Configures discovery and operation metadata for <see cref="HangfireJob"/>-based registrations.
+/// Configures reflection-based discovery and operation metadata for <see cref="HangfireJob"/>-based registrations.
+/// This registration path is unsupported in trimmed and NativeAOT applications until a source-generated
+/// registration path is available.
 /// </summary>
 public sealed class HangfireJobRegistrationOptions
 {
@@ -20,7 +22,14 @@ public sealed class HangfireJobRegistrationOptions
     /// <summary>Gets or sets an explicit execution-method selector.</summary>
     public Func<Type, MethodInfo?>? MethodSelector { get; set; }
 
-    /// <summary>Gets or sets an asynchronous metadata enrichment callback.</summary>
+    /// <summary>Gets or sets a synchronous, deterministic metadata enrichment callback.</summary>
+    public Action<Type, HangfireJobRegistrationMetadata>? Enrich { get; set; }
+
+    /// <summary>
+    /// Gets or sets the former asynchronous metadata enrichment callback. It is no longer invoked because
+    /// catalog construction is synchronous; use <see cref="Enrich"/> for deterministic, non-I/O enrichment.
+    /// </summary>
+    [Obsolete("Catalog registration is synchronous. Use Enrich for deterministic, non-I/O metadata enrichment.")]
     public Func<Type, HangfireJobRegistrationMetadata, ValueTask>? EnrichAsync { get; set; }
 
     /// <summary>Gets or sets a predicate that excludes a discovered job type.</summary>
@@ -29,7 +38,10 @@ public sealed class HangfireJobRegistrationOptions
     /// <summary>Gets or sets whether discovery diagnostics should cause registration to fail.</summary>
     public bool StrictValidation { get; set; }
 
-    /// <summary>Gets the diagnostics produced while types are inspected.</summary>
+    /// <summary>Gets a first-class report for every skipped, warning, and registered discovery outcome.</summary>
+    public ICollection<HangfireJobDiscoveryReport> DiscoveryReports { get; } = new List<HangfireJobDiscoveryReport>();
+
+    /// <summary>Gets the legacy diagnostics produced while types are inspected.</summary>
     public ICollection<HangfireJobRegistrationDiagnostic> Diagnostics { get; } = new List<HangfireJobRegistrationDiagnostic>();
 }
 

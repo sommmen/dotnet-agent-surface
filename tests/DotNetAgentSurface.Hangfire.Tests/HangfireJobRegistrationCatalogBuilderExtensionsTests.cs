@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using DotNetAgentSurface.Core;
 using Hangfire;
@@ -188,13 +189,12 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             {
                 options.Exclude = type => type != typeof(CleanupJob);
                 options.SafetyLevel = AgentSafetyLevel.Dangerous;
-                options.EnrichAsync = (_, metadata) =>
+                options.Enrich = (_, metadata) =>
                 {
                     metadata.Name = "enriched-cleanup";
                     metadata.Category = "Maintenance";
                     metadata.SafetyLevel = AgentSafetyLevel.Safe;
                     metadata.Aliases.Add("clean-now");
-                    return ValueTask.CompletedTask;
                 };
             })
             .Build();
@@ -203,6 +203,58 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
         Assert.Equal("Maintenance", operation.Category);
         Assert.Equal(AgentSafetyLevel.Dangerous, operation.SafetyLevel);
         Assert.Contains("clean-now", operation.Aliases);
+    }
+
+    [Fact]
+    public void RegisterJobs_reports_registered_and_excluded_job_types()
+    {
+        HangfireJobRegistrationOptions? observed = null;
+
+        new OperationCatalogBuilder()
+            .RegisterJobs<DiscoveredJobBase>(
+                new RecordingBackgroundJobClient(),
+                [typeof(CleanupJob).Assembly],
+                options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type == typeof(ExcludedJob);
+                })
+            .Build();
+
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(CleanupJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Registered &&
+            report.Method == nameof(HangfireJob.ExecuteAsync) &&
+            report.OperationName == "cleanup-job");
+        Assert.Contains(observed.DiscoveryReports, report =>
+            report.JobType == typeof(ExcludedJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason == "The job type was excluded by the configured predicate.");
+    }
+
+    [Fact]
+    public void RegisterJobs_rejects_async_metadata_enrichment()
+    {
+#pragma warning disable CS0618
+        var exception = Assert.Throws<InvalidOperationException>(() => new OperationCatalogBuilder()
+            .RegisterJobs<DiscoveredJobBase>(
+                new RecordingBackgroundJobClient(),
+                [typeof(CleanupJob).Assembly],
+                options => options.EnrichAsync = static (_, _) => ValueTask.CompletedTask));
+#pragma warning restore CS0618
+
+        Assert.Contains("Use Enrich", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RegisterJobs_rejects_null_assemblies()
+    {
+        var assemblies = new Assembly?[] { typeof(CleanupJob).Assembly, null };
+
+        var exception = Assert.Throws<ArgumentException>(() => new OperationCatalogBuilder()
+            .RegisterJobs<DiscoveredJobBase>(new RecordingBackgroundJobClient(), assemblies!));
+
+        Assert.Equal("assemblies", exception.ParamName);
     }
 
     private sealed class RecordingBackgroundJobClient : IBackgroundJobClient

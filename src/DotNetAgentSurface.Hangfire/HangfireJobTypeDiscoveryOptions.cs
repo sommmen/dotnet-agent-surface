@@ -6,7 +6,8 @@ namespace DotNetAgentSurface.Hangfire;
 /// Configures how class-based Hangfire jobs — discovered via reflection rather than read from Hangfire
 /// storage — are represented in an operation catalog. Discovery never registers a recurring job; each
 /// discovered type becomes an operation that enqueues a single background execution of that job on demand,
-/// leaving any existing recurring-job configuration for the type untouched.
+/// leaving any existing recurring-job configuration for the type untouched. This reflection-based path is
+/// unsupported in trimmed and NativeAOT applications until a source-generated registration path is available.
 /// </summary>
 public sealed class HangfireJobTypeDiscoveryOptions
 {
@@ -30,4 +31,7 @@ public sealed class HangfireJobTypeDiscoveryOptions
     /// Gets or sets an optional callback that enriches metadata for each discovered job type.
     /// </summary>
     public Action<Type, HangfireOperationRegistrationOptions>? Enrich { get; set; }
+
+    /// <summary>Gets a first-class report for every registered discovery outcome.</summary>
+    public ICollection<HangfireJobDiscoveryReport> DiscoveryReports { get; } = new List<HangfireJobDiscoveryReport>();
 }

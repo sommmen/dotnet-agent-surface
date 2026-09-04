@@ -186,6 +186,7 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
     public async Task AddHangfireJobTypes_enqueues_the_job_and_allows_metadata_enrichment()
     {
         var client = new RecordingBackgroundJobClient();
+        HangfireJobTypeDiscoveryOptions? discoveryOptions = null;
         var catalog = new OperationCatalogBuilder()
             .AddHangfireJobTypes(
                 client,
@@ -194,6 +195,7 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
                 type => type.GetMethod(nameof(ParameterlessDiscoveredJob.Execute))!,
                 configure: options =>
                 {
+                    discoveryOptions = options;
                     options.OperationNameFactory = type => $"job:{type.Name}";
                     options.Category = "Maintenance";
                     options.Enrich = (_, registration) =>
@@ -221,6 +223,12 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
         Assert.Equal("Maintenance", operation.Category);
         Assert.Equal(AgentSafetyLevel.Dangerous, operation.SafetyLevel);
         Assert.Contains("discovered-cleanup", operation.Aliases);
+        Assert.NotNull(discoveryOptions);
+        var report = Assert.Single(discoveryOptions.DiscoveryReports);
+        Assert.Equal(HangfireJobDiscoveryDisposition.Registered, report.Disposition);
+        Assert.Equal(typeof(ParameterlessDiscoveredJob), report.JobType);
+        Assert.Equal(nameof(ParameterlessDiscoveredJob.Execute), report.Method);
+        Assert.Equal("job:ParameterlessDiscoveredJob", report.OperationName);
     }
 
     [Fact]
@@ -260,6 +268,37 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
             .Build();
 
         Assert.Empty(catalog.Operations);
+    }
+
+    [Fact]
+    public void AddHangfireJobTypes_reports_successful_registration_and_rejects_null_assemblies()
+    {
+        HangfireJobTypeDiscoveryOptions? observed = null;
+
+        new OperationCatalogBuilder()
+            .AddHangfireJobTypes(
+                new RecordingBackgroundJobClient(),
+                [typeof(ParameterlessDiscoveredJob).Assembly],
+                type => type == typeof(ParameterlessDiscoveredJob),
+                type => type.GetMethod(nameof(ParameterlessDiscoveredJob.Execute))!,
+                configure: options => observed = options)
+            .Build();
+
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(ParameterlessDiscoveredJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Registered &&
+            report.Method == nameof(ParameterlessDiscoveredJob.Execute) &&
+            report.OperationName == typeof(ParameterlessDiscoveredJob).FullName);
+
+        var assemblies = new System.Reflection.Assembly?[] { typeof(ParameterlessDiscoveredJob).Assembly, null };
+        var exception = Assert.Throws<ArgumentException>(() => new OperationCatalogBuilder()
+            .AddHangfireJobTypes(
+                new RecordingBackgroundJobClient(),
+                assemblies!,
+                type => type == typeof(ParameterlessDiscoveredJob),
+                type => type.GetMethod(nameof(ParameterlessDiscoveredJob.Execute))!));
+
+        Assert.Equal("assemblies", exception.ParamName);
     }
 
     private sealed class RecordingRecurringJobManager : IRecurringJobManager

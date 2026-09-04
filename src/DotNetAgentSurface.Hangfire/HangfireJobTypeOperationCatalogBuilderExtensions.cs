@@ -58,9 +58,15 @@ public static class HangfireJobTypeOperationCatalogBuilderExtensions
         var options = new HangfireJobTypeDiscoveryOptions();
         configure?.Invoke(options);
 
-        var jobTypes = assemblies
+        var assemblyList = assemblies.ToArray();
+        if (assemblyList.Any(static assembly => assembly is null))
+        {
+            throw new ArgumentException("Assemblies must not contain null values.", nameof(assemblies));
+        }
+
+        var jobTypes = assemblyList
             .Distinct()
-            .SelectMany(GetLoadableTypes)
+            .SelectMany(assembly => GetLoadableTypes(assembly, options))
             .Where(IsConcreteClosedClass)
             .Where(isJobType)
             .OrderBy(type => type.FullName, StringComparer.Ordinal);
@@ -80,8 +86,14 @@ public static class HangfireJobTypeOperationCatalogBuilderExtensions
 
             var registration = new HangfireOperationRegistrationOptions();
             options.Enrich?.Invoke(jobType, registration);
+            var registeredOperationName = registration.Name ?? operationName;
+            if (string.IsNullOrWhiteSpace(registeredOperationName))
+            {
+                throw new InvalidOperationException($"Metadata enrichment produced an empty operation name for '{jobType.FullName}'.");
+            }
+
             builder.Add(
-                registration.Name ?? operationName,
+                registeredOperationName,
                 registration.Description ?? $"Enqueues a background execution of '{jobType.FullName}.{method.Name}'.",
                 (Action)(() => backgroundJobClient.Create(job, new EnqueuedState())),
                 operation =>
@@ -91,12 +103,21 @@ public static class HangfireJobTypeOperationCatalogBuilderExtensions
                     operation.Aliases.AddRange(registration.Aliases);
                     operation.Examples.AddRange(registration.Examples);
                 });
+
+            options.DiscoveryReports.Add(new HangfireJobDiscoveryReport(
+                jobType.Assembly,
+                jobType,
+                "The job type was registered.",
+                method.Name,
+                registeredOperationName,
+                HangfireJobDiscoveryDisposition.Registered,
+                StrictValidation: false));
         }
 
         return builder;
     }
 
-    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly, HangfireJobTypeDiscoveryOptions options)
     {
         try
         {
@@ -104,6 +125,14 @@ public static class HangfireJobTypeOperationCatalogBuilderExtensions
         }
         catch (ReflectionTypeLoadException exception)
         {
+            options.DiscoveryReports.Add(new HangfireJobDiscoveryReport(
+                assembly,
+                JobType: null,
+                "Some types could not be loaded; discovery continued with the loadable types.",
+                Method: null,
+                OperationName: null,
+                HangfireJobDiscoveryDisposition.Warning,
+                StrictValidation: false));
             return exception.Types.Where(type => type is not null).Cast<Type>();
         }
     }

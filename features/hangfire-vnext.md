@@ -1,10 +1,11 @@
 # Hangfire vNext integration
 
-## Status: P0 — implementation-ready plan
+## Status: delivered through P0; P1 diagnostics and AOT boundary delivered
 
-This document defines the next Hangfire satellite iteration. It deliberately
-separates current preview behavior from the vNext API and is intended to be
-split into the milestones/issues below.
+The vNext architecture is implemented. Stable recurring operations remain
+storage-lazy, while class-based one-off job registration remains an explicit
+reflection-based opt-in. The remaining operational and package-polish work is
+tracked separately from the shipped migration path.
 
 ## Problem and goals
 
@@ -233,60 +234,67 @@ existing/custom job shapes that require caller-selected types, methods, or
 Hangfire argument construction. These mechanisms are distinct from stable
 recurring operations and must not be merged.
 
-## Milestones and issues
+## Delivery status
 
-### HF-1 — runtime recurring operations (P0)
+### HF-1 — runtime recurring operations (delivered)
 
-- Implement live list/trigger descriptors, DTO/result schemas, category and
-  safety options, ordering, provider-safe errors, and the configurable
-  execution model.
-- Acceptance: catalog construction never opens storage; list reflects changes
-  after build; trigger rejects unknown ids and returns the acknowledgement;
-  both configured-storage and isolated in-memory execution are observable and
-  cancellation/timeout bounded.
-- Tests: in-memory add/remove after build, empty storage, storage exception,
-  unknown id, trigger invocation, serialization, ordering, isolated execution,
-  timeout, cancellation, and configured-storage enqueueing.
+`AddHangfireRecurringOperations(...)` supplies stable list and trigger
+operations. Catalog construction does not access Hangfire storage; listing and
+triggering use the configured storage only when invoked. The focused in-memory
+tests cover storage changes after catalog construction, ordering, unknown-id
+rejection, configured-storage acknowledgement, isolated execution, timeout, and
+cancellation.
 
-### HF-2 — class discovery and options binding (P0)
+### HF-2 — class discovery and options binding (delivered)
 
-- Implement both `RegisterJobs` overloads, method selection, DI/Hangfire
-  activation, exclusions, enrichment, names, collisions, and permissive/strict
-  diagnostics.
-- Acceptance: inherited/closed generic jobs are discovered once; abstract/open
-  types are excluded; options appear in schema and queued `Job.Args`.
-- Tests: base/inherited/closed generic jobs, overloads, parameterless/options
-  jobs, malformed options, DI activation, exclusions, collisions, ordering, and
-  reflection load failures.
+`RegisterJobs<TJobBase>` and `RegisterJobs<TJobBase, TOptions>` provide the
+primary opinionated path for concrete `HangfireJob` types, including method
+selection, options binding, exclusions, deterministic metadata enrichment, and
+strict/permissive handling. `AddHangfireJobTypes(...)` remains the deliberately
+advanced alternative where consumers must choose types, methods, or Hangfire
+arguments themselves.
 
-### HF-3 — fail-closed safety and shared host options (P0)
+### HF-3 — fail-closed safety and shared host options (delivered)
 
-- Make Confirm and Dangerous fail closed; define shared CLI/MCP confirmation
-  metadata and compose global options/policies/output/exit handling.
-- Acceptance: no prompt; no callback means denial; Core, CLI, and MCP agree.
-- Tests: each safety level, flag combinations, non-interactive denial,
-  cancellation, and adapter equivalence.
+`Confirm` and `Dangerous` operations fail closed unless the host supplies the
+shared `OperationConfirmation` metadata. CLI and MCP adapters use that same
+contract; the migration guide documents non-interactive approval, denial,
+cancellation, and exit semantics.
 
-### HF-4 — migration, source generation, and diagnostics (P1)
+### P1 — reflection diagnostics and AOT boundary (delivered scope)
 
-- Add obsolete guidance, generated registration, trimming/AOT diagnostics, and
-  structured discovery warnings.
-- Acceptance: migration text is actionable; generated/reflection metadata is
-  byte-identical; NativeAOT limitations are explicit.
-- Tests: obsolete compile sample, parity, linker smoke test, diagnostic snapshots.
+Reflection-based registration (`RegisterJobs` and `AddHangfireJobTypes`) is
+unsupported in trimmed and NativeAOT applications until source-generated
+registration exists. This is an explicit support boundary rather than a claim of
+AOT compatibility; stable recurring operations are unaffected because they do
+not discover job classes through reflection.
 
-### HF-5 — samples and documentation (P1)
+Discovery now emits immutable `HangfireJobDiscoveryReport` entries for
+registration, skips, warnings, and strict failures, while retaining the older
+mutable diagnostics collection for compatibility. Registration validates null
+assemblies and generated metadata. Catalog registration is synchronous: use the
+deterministic, non-I/O `Enrich` callback. `EnrichAsync` is retained only for
+source compatibility and fails at startup with actionable migration guidance,
+rather than synchronously blocking asynchronous work.
 
-- Update the Hangfire sample to stable runtime operations and retain the
-  credential-free SQL Server consumer guidance.
-- Acceptance: in-memory sample runs offline; SQL Server requires configuration;
-  README and skill examples use complete category paths.
-- Tests: sample build/run, package-source mapping, and API-checked examples.
+A supported SQL Server storage compatibility suite requires opt-in,
+credential-free infrastructure that this repository does not yet provide. That
+work is intentionally deferred to [issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22); it must validate recurring listing, triggering, and error translation
+against a supported SQL Server provider without making normal test runs require
+credentials or Docker.
+
+### P2 — package and operational polish (remaining)
+
+The remaining work is a dedicated README/package-consumption section, publish
+workflow preview summaries, and investigation/documentation of the transitive
+`Newtonsoft.Json` advisory. These tasks do not change the delivered recurring
+operation or class-registration architecture.
 
 ## Definition of done
 
-P0 is complete only when recurring catalog construction is storage-independent,
-invocation uses current storage, trigger results are stable and honest,
-job classes/options are explicitly discoverable and schema-bound, safety is
-fail-closed across adapters, and migration guidance plus focused tests ship
-with the implementation.
+The delivered P0 path provides storage-independent recurring catalog
+construction, current-storage invocation, explicit class discovery, fail-closed
+confirmation across adapters, and a documented offline consumer migration. P1
+adds first-class reflection diagnostics and the explicit trimming/NativeAOT
+support boundary; SQL Server compatibility coverage remains the tracked
+follow-up described above.

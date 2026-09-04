@@ -13,10 +13,18 @@ namespace DotNetAgentSurface.Hangfire;
 /// reflection and hands Hangfire the job type/method pair. Hangfire's own <see cref="JobActivator"/> — the
 /// same activator already used for jobs with injected dependencies — creates the instance when the enqueued job
 /// actually executes.
+/// <para>
+/// <see cref="ExecuteAsync"/> must be implemented as a public method (implicit interface implementation).
+/// Discovery only enumerates a job type's public <c>Execute</c>/<c>ExecuteAsync</c> methods via reflection, so an
+/// explicit interface implementation (<c>Task IHangfireJob.ExecuteAsync(...)</c>) will not be found.
+/// </para>
 /// </summary>
 public interface IHangfireJob
 {
-    /// <summary>Executes the job.</summary>
+    /// <summary>
+    /// Executes the job. Implement this as a public method — an explicit interface implementation is not
+    /// discoverable by <see cref="HangfireJobRegistrationCatalogBuilderExtensions.RegisterJobs{TJobBase}"/>.
+    /// </summary>
     Task ExecuteAsync(CancellationToken cancellationToken);
 }
 
@@ -25,11 +33,16 @@ public interface IHangfireJob
 /// <see cref="HangfireJobRegistrationCatalogBuilderExtensions.RegisterJobs{TJobBase, TOptions}"/> without requiring
 /// the type (or an existing shared base class) to derive from <see cref="HangfireJobWithOptions{TOptions}"/>. See
 /// <see cref="IHangfireJob"/> for how pre-existing/brownfield job hierarchies — including ones with constructor
-/// parameters or CRTP-style generic self-references — can adopt this interface directly.
+/// parameters or CRTP-style generic self-references — can adopt this interface directly, and for the requirement
+/// that <see cref="ExecuteAsync"/> be implemented as a public (not explicit interface implementation) method.
 /// </summary>
 /// <typeparam name="TOptions">The JSON-bindable input supplied when the job is queued.</typeparam>
 public interface IHangfireJob<in TOptions>
 {
-    /// <summary>Executes the job with the supplied input.</summary>
+    /// <summary>
+    /// Executes the job with the supplied input. Implement this as a public method — an explicit interface
+    /// implementation is not discoverable by
+    /// <see cref="HangfireJobRegistrationCatalogBuilderExtensions.RegisterJobs{TJobBase, TOptions}"/>.
+    /// </summary>
     Task ExecuteAsync(TOptions options, CancellationToken cancellationToken);
 }

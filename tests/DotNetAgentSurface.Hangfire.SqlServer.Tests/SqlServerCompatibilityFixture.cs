@@ -41,7 +41,7 @@ public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
         if (!IsEnabled)
         {
             SkipReason =
-                $"Set {OptInEnvironmentVariable}=1 (and ensure Docker is available) to run the opt-in " +
+                $"Set {OptInEnvironmentVariable}=1 (or true) (and ensure Docker is available) to run the opt-in " +
                 "Hangfire SQL Server compatibility suite.";
             return;
         }

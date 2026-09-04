@@ -283,11 +283,21 @@ work is intentionally deferred to [issue #22](https://github.com/sommmen/dotnet-
 against a supported SQL Server provider without making normal test runs require
 credentials or Docker.
 
-### P2 — package and operational polish (remaining)
+### P2 — package and operational polish (delivered)
 
-The remaining work is a dedicated README/package-consumption section, publish
-workflow preview summaries, and investigation/documentation of the transitive
-`Newtonsoft.Json` advisory. These tasks do not change the delivered recurring
+The root README now has a dedicated Hangfire consumer section covering exact
+preview-package discovery, GitHub Packages source mapping and token handling,
+production storage/manager/client wiring, queues and server expectations,
+safety, categories, offline skill generation, and the public API decision table.
+The publish workflow writes each packed package ID and computed version to its
+GitHub Actions summary after publishing, without exposing credentials.
+
+`Hangfire.Core` 1.8.18 selects vulnerable transitive `Newtonsoft.Json` 11.0.1
+for the `netstandard2.0` target. `DotNetAgentSurface.Hangfire` now carries an
+explicit compatible `Newtonsoft.Json` 13.0.3 package reference, which resolves
+the advisory without suppressing it. `Hangfire.InMemory` remains a test/sample
+storage dependency; a supported SQL Server provider compatibility suite remains
+tracked separately in [issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22). These tasks do not change the delivered recurring
 operation or class-registration architecture.
 
 ## Definition of done

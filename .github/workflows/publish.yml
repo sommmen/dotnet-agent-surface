@@ -55,6 +55,29 @@ jobs:
               --no-symbols
           }
 
+      - name: Summarize published packages
+        if: always()
+        shell: pwsh
+        run: |
+          $packages = Get-ChildItem ./artifacts -Recurse -Filter *.nupkg |
+            Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
+            ForEach-Object {
+              if ($_.Name -match '^(?<id>.+)\.(?<version>\d+\.\d+\.\d+(?:[-+].+)?)\.nupkg$') {
+                "| $($Matches['id']) | $($Matches['version']) |"
+              }
+            }
+
+          "## Published preview packages" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Package | Version |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| --- | --- |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if ($packages) {
+            $packages | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          }
+          else {
+            "| _No package artifacts found_ | — |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          }
+
       - name: NuGet login (OIDC to temporary API key)
         if: >-
           ((github.event_name == 'release' && !github.event.release.prerelease) ||

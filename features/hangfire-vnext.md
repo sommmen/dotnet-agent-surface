@@ -277,11 +277,17 @@ deterministic, non-I/O `Enrich` callback. `EnrichAsync` is retained only for
 source compatibility and fails at startup with actionable migration guidance,
 rather than synchronously blocking asynchronous work.
 
-A supported SQL Server storage compatibility suite requires opt-in,
-credential-free infrastructure that this repository does not yet provide. That
-work is intentionally deferred to [issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22); it must validate recurring listing, triggering, and error translation
-against a supported SQL Server provider without making normal test runs require
-credentials or Docker.
+A supported SQL Server storage compatibility suite required opt-in,
+credential-free infrastructure. [Issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22)
+delivers that suite as `tests\DotNetAgentSurface.Hangfire.SqlServer.Tests\`,
+an opt-in project that provisions an ephemeral `Testcontainers.MsSql` container
+(no committed connection string or credentials) and validates recurring
+listing, triggering, and Hangfire/storage error translation against a real,
+supported `Hangfire.SqlServer` storage provider. It is gated by the
+`DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_TESTS` environment variable and reports
+as skipped, not failed, when that variable is unset or Docker is unavailable —
+normal test runs, including CI, never require credentials or Docker. See the
+README's Hangfire section for how to enable it locally.
 
 ### P2 — package and operational polish (delivered)
 
@@ -295,9 +301,10 @@ GitHub Actions summary after publishing, without exposing credentials.
 `Hangfire.Core` 1.8.18 selects vulnerable transitive `Newtonsoft.Json` 11.0.1
 for the `netstandard2.0` target. `DotNetAgentSurface.Hangfire` now carries an
 explicit compatible `Newtonsoft.Json` 13.0.3 package reference, which resolves
-the advisory without suppressing it. `Hangfire.InMemory` remains a test/sample
-storage dependency; a supported SQL Server provider compatibility suite remains
-tracked separately in [issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22). These tasks do not change the delivered recurring
+the advisory without suppressing it. `Hangfire.InMemory` remains the default
+test/sample storage dependency for the offline suite; a supported SQL Server
+provider compatibility suite is now delivered separately as described above
+for [issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22). These tasks do not change the delivered recurring
 operation or class-registration architecture.
 
 ## Definition of done
@@ -306,5 +313,5 @@ The delivered P0 path provides storage-independent recurring catalog
 construction, current-storage invocation, explicit class discovery, fail-closed
 confirmation across adapters, and a documented offline consumer migration. P1
 adds first-class reflection diagnostics and the explicit trimming/NativeAOT
-support boundary; SQL Server compatibility coverage remains the tracked
-follow-up described above.
+support boundary. The opt-in SQL Server compatibility suite described above
+([issue #22](https://github.com/sommmen/dotnet-agent-surface/issues/22)) completes the remaining tracked follow-up.

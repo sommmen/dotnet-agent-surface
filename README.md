@@ -204,6 +204,28 @@ Attach `DangerousOperationConfirmationPolicy` to every CLI and MCP host. It neve
 
 For migration from the removed eager `AddHangfireRecurringJobs(...)` API, including category/path changes and generated-skill behavior, see [hangfire-recurring-migration.md](docs/development/hangfire-recurring-migration.md).
 
+#### SQL Server compatibility suite (opt-in)
+
+`tests\DotNetAgentSurface.Hangfire.Tests\` is fully offline and never touches a database; it runs in every default `dotnet test` invocation, including CI. A separate, opt-in project, `tests\DotNetAgentSurface.Hangfire.SqlServer.Tests\`, exercises `AddHangfireRecurringOperations(...)` against a real `Hangfire.SqlServer` (1.8.18, matching this repository's `Hangfire.Core` pin) storage provider to cover recurring listing, triggering, and Hangfire/storage error translation on a supported provider — not just `Hangfire.InMemory`.
+
+The suite is disabled by default and requires no committed credentials:
+
+- It uses [Testcontainers.MsSql](https://dotnet.testcontainers.org/modules/mssql/) to provision a throwaway, ephemeral SQL Server container (`mcr.microsoft.com/mssql/server:2022-latest`) with an auto-generated connection string — there is never a connection string or password to configure or commit.
+- Tests use `[SkippableFact]` (via `Xunit.SkippableFact`) and report as **Skipped** (not Failed) when the suite is not opted in, so it never breaks `dotnet test DotNetAgentSurface.slnx` or CI.
+- If the suite is opted in but Docker is not available or fails to start the container, it fails closed to a clean skip rather than a hard test failure.
+
+To run it locally:
+
+1. Ensure Docker is installed and running.
+2. Set the opt-in environment variable and run the project directly:
+
+   ```powershell
+   $env:DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_TESTS = "1"
+   dotnet test tests\DotNetAgentSurface.Hangfire.SqlServer.Tests\DotNetAgentSurface.Hangfire.SqlServer.Tests.csproj
+   ```
+
+Without Docker or the environment variable, the project still builds and its tests report as skipped — this is expected and by design, both locally and in this repository's default CI workflow (which does not set the variable and has no Docker-backed SQL Server provisioned).
+
 ### Local package workflow
 
 To try an unreleased change (or iterate on this repository against a real consumer) without waiting on CI or GitHub Packages, pack straight to a local folder and point the consuming project's restore at that folder instead. No GitHub account, personal access token, or network access is required.

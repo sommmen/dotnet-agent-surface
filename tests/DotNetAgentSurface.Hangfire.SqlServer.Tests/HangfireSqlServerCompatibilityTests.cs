@@ -33,7 +33,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         // constructor itself does not attempt to connect, and AddHangfireRecurringOperations must
         // not either.
         var unreachableStorage = new SqlServerStorage(
-            "Server=127.0.0.1,1;Database=NoSuchDatabase;User Id=sa;Password=wrong;Connect Timeout=1;TrustServerCertificate=True;Encrypt=False;",
+            "Server=127.0.0.1,1;Database=NoSuchDatabase;Connect Timeout=1;TrustServerCertificate=True;Encrypt=False;Integrated Security=True;",
             new SqlServerStorageOptions { PrepareSchemaIfNecessary = false });
         var manager = new RecurringJobManager(unreachableStorage);
 
@@ -70,7 +70,7 @@ public sealed class HangfireSqlServerCompatibilityTests
     }
 
     [SkippableFact]
-    public async Task Trigger_recurring_hangfire_rejects_unknown_job_without_touching_sql_server_manager()
+    public async Task Trigger_recurring_hangfire_rejects_unknown_job_without_triggering_manager()
     {
         SkipUnlessAvailable();
 
@@ -121,7 +121,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         // would hit: the ADO.NET/Hangfire exception must surface as
         // OperationInvocationResult.Failure(...), never as an unhandled exception.
         var unreachableStorage = new SqlServerStorage(
-            "Server=127.0.0.1,1;Database=NoSuchDatabase;User Id=sa;Password=wrong;Connect Timeout=1;TrustServerCertificate=True;Encrypt=False;",
+            "Server=127.0.0.1,1;Database=NoSuchDatabase;Connect Timeout=1;TrustServerCertificate=True;Encrypt=False;Integrated Security=True;",
             new SqlServerStorageOptions { PrepareSchemaIfNecessary = false });
         var manager = new RecurringJobManager(unreachableStorage);
         var catalog = new OperationCatalogBuilder().AddHangfireRecurringOperations(unreachableStorage, manager).Build();

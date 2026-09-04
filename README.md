@@ -210,7 +210,7 @@ For migration from the removed eager `AddHangfireRecurringJobs(...)` API, includ
 
 The suite is disabled by default and requires no committed credentials:
 
-- It uses [Testcontainers.MsSql](https://dotnet.testcontainers.org/modules/mssql/) to provision a throwaway, ephemeral SQL Server container (`mcr.microsoft.com/mssql/server:2022-latest`) with an auto-generated connection string — there is never a connection string or password to configure or commit.
+- It uses [Testcontainers.MsSql](https://dotnet.testcontainers.org/modules/mssql/) to provision a throwaway, ephemeral SQL Server container (`mcr.microsoft.com/mssql/server:2022-latest` by default) with an auto-generated connection string — there is never a connection string or password to configure or commit.
 - Tests use `[SkippableFact]` (via `Xunit.SkippableFact`) and report as **Skipped** (not Failed) when the suite is not opted in, so it never breaks `dotnet test DotNetAgentSurface.slnx` or CI.
 - If the suite is opted in but Docker is not available or fails to start the container, it fails closed to a clean skip rather than a hard test failure.
 
@@ -225,6 +225,12 @@ To run it locally:
    ```
 
 Without Docker or the environment variable, the project still builds and its tests report as skipped — this is expected and by design, both locally and in this repository's default CI workflow (which does not set the variable and has no Docker-backed SQL Server provisioned).
+
+To pin the container to a specific image tag (e.g. a fixed cumulative-update build) instead of the floating `2022-latest` default, set `DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_IMAGE` before running the suite, for example:
+
+```powershell
+$env:DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_IMAGE = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04"
+```
 
 ### Local package workflow
 

@@ -9,11 +9,21 @@ namespace DotNetAgentSurface.Hangfire.SqlServer.Tests;
 /// <c>DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_TESTS</c> environment variable is set to
 /// <c>1</c> or <c>true</c>. When unset, <see cref="IsEnabled"/> is <see langword="false"/> and
 /// no container is started, keeping the default `dotnet test` run credential- and
-/// Docker-free.
+/// Docker-free. Maintainers can pin the container image to a specific tag (e.g. a fixed
+/// cumulative-update build, for reproducibility) via <c>DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_IMAGE</c>;
+/// otherwise the floating <c>2022-latest</c> tag is used.
 /// </summary>
 public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
 {
     public const string OptInEnvironmentVariable = "DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_TESTS";
+
+    /// <summary>
+    /// Optional environment variable letting maintainers pin the SQL Server container image
+    /// (e.g. to a specific cumulative-update tag) instead of floating on the default below.
+    /// </summary>
+    public const string ContainerImageEnvironmentVariable = "DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_IMAGE";
+
+    private const string DefaultContainerImage = "mcr.microsoft.com/mssql/server:2022-latest";
 
     private MsSqlContainer? _container;
 
@@ -36,9 +46,12 @@ public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
             return;
         }
 
+        var image = Environment.GetEnvironmentVariable(ContainerImageEnvironmentVariable);
+        var container = new MsSqlBuilder(string.IsNullOrWhiteSpace(image) ? DefaultContainerImage : image).Build();
+
         try
         {
-            _container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+            _container = container;
             await _container.StartAsync().ConfigureAwait(false);
             ConnectionString = _container.GetConnectionString();
         }
@@ -48,6 +61,7 @@ public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
             // set in an environment without a working Docker daemon (e.g. a misconfigured shell).
             SkipReason = $"Could not start a throwaway SQL Server container: {exception.Message}";
             _container = null;
+            await container.DisposeAsync().ConfigureAwait(false);
         }
     }
 

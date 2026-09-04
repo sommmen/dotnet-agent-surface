@@ -101,7 +101,20 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
         var options = new HangfireJobRegistrationOptions();
         configure?.Invoke(options);
 
-        var jobTypes = GetLoadableTypes(assemblies, options)
+#pragma warning disable CS0618 // Retained only to produce an actionable startup error.
+        if (options.EnrichAsync is not null)
+#pragma warning restore CS0618
+        {
+            throw new InvalidOperationException("Hangfire job catalog registration is synchronous and cannot run EnrichAsync safely. Use Enrich for deterministic, non-I/O metadata enrichment.");
+        }
+
+        var assemblyList = assemblies.ToArray();
+        if (assemblyList.Any(static assembly => assembly is null))
+        {
+            throw new ArgumentException("Assemblies must not contain null values.", nameof(assemblies));
+        }
+
+        var jobTypes = GetLoadableTypes(assemblyList, options)
             .Where(type => IsConcreteClosedClass(type) && jobBaseType.IsAssignableFrom(type))
             .Distinct()
             .OrderBy(type => NormalizeName(options.NameFactory?.Invoke(type) ?? ToKebabCase(type.Name), options.Category), StringComparer.Ordinal)
@@ -112,6 +125,7 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
         {
             if (options.Exclude?.Invoke(jobType) == true)
             {
+                Report(options, jobType, "The job type was excluded by the configured predicate.", HangfireJobDiscoveryDisposition.Skipped);
                 continue;
             }
 
@@ -124,7 +138,12 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
             var name = options.NameFactory?.Invoke(jobType) ?? ToKebabCase(jobType.Name);
             var description = $"Enqueues a single execution of {jobType.FullName ?? jobType.Name}.";
             var metadata = new HangfireJobRegistrationMetadata(name, description, options.Category, options.SafetyLevel);
-            options.EnrichAsync?.Invoke(jobType, metadata).GetAwaiter().GetResult();
+            options.Enrich?.Invoke(jobType, metadata);
+            if (string.IsNullOrWhiteSpace(metadata.Name))
+            {
+                throw new InvalidOperationException($"Metadata enrichment produced an empty operation name for '{jobType.FullName}'.");
+            }
+
             if (options.SafetyLevel == AgentSafetyLevel.Dangerous && metadata.SafetyLevel != AgentSafetyLevel.Dangerous)
             {
                 metadata.SafetyLevel = AgentSafetyLevel.Dangerous;
@@ -137,6 +156,8 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
                 operation.Aliases.AddRange(metadata.Aliases);
                 operation.Examples.AddRange(metadata.Examples);
             });
+
+            Report(options, jobType, "The job type was registered.", HangfireJobDiscoveryDisposition.Registered, method.Name, metadata.Name);
         }
 
         return builder;
@@ -152,7 +173,7 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
                 return selected;
             }
 
-            Report(options, jobType, "The selected execution method must be a public instance Execute or ExecuteAsync method with the expected parameters.", failInStrictMode: true);
+            Report(options, jobType, "The selected execution method must be a public instance Execute or ExecuteAsync method with the expected parameters.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
             return null;
         }
 
@@ -164,13 +185,13 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
 
         if (candidates.Length == 0)
         {
-            Report(options, jobType, "No valid public Execute or ExecuteAsync method was found.", failInStrictMode: true);
+            Report(options, jobType, "No valid public Execute or ExecuteAsync method was found.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
             return null;
         }
 
         if (candidates.Length > 1)
         {
-            Report(options, jobType, "Multiple valid Execute or ExecuteAsync methods were found; the deterministic conventional method was selected.", failInStrictMode: true);
+            Report(options, jobType, "Multiple valid Execute or ExecuteAsync methods were found; the deterministic conventional method was selected.", HangfireJobDiscoveryDisposition.Warning, failInStrictMode: true);
         }
 
         return candidates[0];
@@ -205,7 +226,12 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
             }
             catch (ReflectionTypeLoadException exception)
             {
-                Report(options, null, $"Could not load all types from assembly '{assembly.FullName}': {exception.Message}", failInStrictMode: true);
+                Report(
+                    options,
+                    null,
+                    $"Could not load all types from assembly '{assembly.FullName}': {exception.Message}",
+                    HangfireJobDiscoveryDisposition.Warning,
+                    failInStrictMode: true);
                 types.AddRange(exception.Types.Where(static type => type is not null).Cast<Type>());
             }
         }
@@ -228,9 +254,33 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
 
     private static bool IsConcreteClosedClass(Type type) => type.IsClass && !type.IsAbstract && !type.ContainsGenericParameters;
 
-    private static void Report(HangfireJobRegistrationOptions options, Type? jobType, string message, bool failInStrictMode = false)
+    private static void Report(
+        HangfireJobRegistrationOptions options,
+        Type? jobType,
+        string message,
+        HangfireJobDiscoveryDisposition disposition = HangfireJobDiscoveryDisposition.Warning,
+        string? method = null,
+        string? operationName = null,
+        bool failInStrictMode = false)
     {
-        options.Diagnostics.Add(new HangfireJobRegistrationDiagnostic(jobType, message));
+        var effectiveDisposition = options.StrictValidation && failInStrictMode
+            ? HangfireJobDiscoveryDisposition.Failed
+            : disposition;
+
+        options.DiscoveryReports.Add(new HangfireJobDiscoveryReport(
+            jobType?.Assembly,
+            jobType,
+            message,
+            method,
+            operationName,
+            effectiveDisposition,
+            options.StrictValidation));
+
+        if (disposition is not HangfireJobDiscoveryDisposition.Registered)
+        {
+            options.Diagnostics.Add(new HangfireJobRegistrationDiagnostic(jobType, message));
+        }
+
         if (options.StrictValidation && failInStrictMode)
         {
             throw new OperationCatalogException($"Hangfire job discovery failed for '{jobType?.FullName ?? "assembly"}': {message}");

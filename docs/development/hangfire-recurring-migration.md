@@ -134,7 +134,9 @@ public abstract class OpgJobBase<TSelf> : IOpgJob, IHangfireJob
 
     // IHangfireJob's conventional ExecuteAsync(CancellationToken) shape forwards
     // to the pre-existing RunAsync(...) member so no existing job needs to change.
-    Task IHangfireJob.ExecuteAsync(CancellationToken cancellationToken) => RunAsync(cancellationToken);
+    // This must be a public method (not an explicit interface implementation):
+    // discovery only considers public Execute/ExecuteAsync methods via reflection.
+    public Task ExecuteAsync(CancellationToken cancellationToken) => RunAsync(cancellationToken);
 }
 
 public sealed class NightlyReconciliationJob : OpgJobBase<NightlyReconciliationJob>

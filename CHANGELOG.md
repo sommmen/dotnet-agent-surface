@@ -23,11 +23,11 @@ listed. Each entry links the pull request(s) that shipped it.
 ### Breaking changes
 
 - None. `RegisterJobs<TJobBase>`/`RegisterJobs<TJobBase, TOptions>`'s generic
-  constraints were relaxed from the concrete `HangfireJob`/`HangfireJobWithOptions<TOptions>`
-  base classes to the new `IHangfireJob`/`IHangfireJob<TOptions>` interfaces.
-  This is purely additive: `HangfireJob`/`HangfireJobWithOptions<TOptions>` now
-  implement the interfaces, so every existing greenfield caller keeps
-  compiling unchanged.
+  constraints were relaxed (not tightened) from the concrete
+  `HangfireJob`/`HangfireJobWithOptions<TOptions>` base classes to the new
+  `IHangfireJob`/`IHangfireJob<TOptions>` interfaces. This is purely additive:
+  `HangfireJob`/`HangfireJobWithOptions<TOptions>` now implement the
+  interfaces, so every existing greenfield caller keeps compiling unchanged.
 
 ### Added
 

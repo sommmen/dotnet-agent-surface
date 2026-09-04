@@ -36,8 +36,10 @@ DotNetAgentSurface, without duplicating any operation definitions.
   backend required) that registers two Hangfire recurring jobs and catalogs
   two stable operations (`list-recurring-hangfire`,
   `trigger-recurring-hangfire`) through the `DotNetAgentSurface.Hangfire`
-  discovery satellite, plus class-based ad-hoc job discovery
-  (`AddHangfireJobTypes`), then invokes them as agent operations.
+  discovery satellite, plus predicate-based ad-hoc job discovery
+  (`AddHangfireJobTypes`) and attributed base-class job discovery
+  (`RegisterJobs<TJobBase>()` / `RegisterJobs<TJobBase, TOptions>()`), then
+  invokes them as agent operations.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI
@@ -186,6 +188,19 @@ This mirrors the satellite's real contract: the agent operation means "ask
 Hangfire to run this job now", not "run this job's code directly" — except
 where the isolated execution model is explicitly opted into, in which case it
 means "run this job to completion on a disposable server".
+
+The same run also prints two class-based discovery demos that catalog
+job classes directly, rather than jobs already registered with
+`IRecurringJobManager`:
+
+- predicate-based discovery via `AddHangfireJobTypes`, which scans an
+  assembly for classes matching a caller-supplied predicate; and
+- attributed base-class discovery via `RegisterJobs<TJobBase>()` and
+  `RegisterJobs<TJobBase, TOptions>()`, which catalog every concrete class
+  derived from `HangfireJob` or `HangfireJobWithOptions<TOptions>` in an
+  assembly as a stable, kebab-case-named operation — including
+  options-binding jobs whose JSON input is bound to `TOptions` before the
+  job is enqueued via `IBackgroundJobClient`.
 
 ### Using SQL Server storage
 

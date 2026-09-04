@@ -14,6 +14,7 @@
     <Project Path="samples/DotNetAgentSurface.Samples.LegacyDesktop/DotNetAgentSurface.Samples.LegacyDesktop.csproj" />
     <Project Path="samples/DotNetAgentSurface.Samples.AspNetCore/DotNetAgentSurface.Samples.AspNetCore.csproj" />
     <Project Path="samples/DotNetAgentSurface.Samples.Hangfire/DotNetAgentSurface.Samples.Hangfire.csproj" />
+    <Project Path="samples/DotNetAgentSurface.Samples.Hangfire.Cli/DotNetAgentSurface.Samples.Hangfire.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DotNetAgentSurface.CommandLine.Tests/DotNetAgentSurface.CommandLine.Tests.csproj" />

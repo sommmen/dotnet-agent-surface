@@ -222,13 +222,16 @@ Existing adapters remain independently usable.
 This is a prerelease package with no supported installed base. Remove
 `AddHangfireRecurringJobs` in the vNext implementation rather than carrying a
 compatibility window or adding an obsolete shim. The replacement is the stable
-runtime operation registration described above. Update the sample, tests,
-README, and generated documentation in the same change so no snapshot-based
-registration remains in the supported surface.
+runtime operation registration described above. The direct, consumer-facing
+steps—including category/command-path changes and generated-skill implications—
+are in the [eager recurring-job migration guide](../docs/development/hangfire-recurring-migration.md).
 
-`AddHangfireJobTypes` remains supported as a low-level escape hatch; its
-delegate selectors map to the fluent registration and can remain an advanced
-overload.
+`RegisterJobs<TJobBase>` is the primary class-registration API for new job
+classes based on `HangfireJob` or `HangfireJobWithOptions<TOptions>`.
+`AddHangfireJobTypes` remains supported as an advanced escape hatch for
+existing/custom job shapes that require caller-selected types, methods, or
+Hangfire argument construction. These mechanisms are distinct from stable
+recurring operations and must not be merged.
 
 ## Milestones and issues
 

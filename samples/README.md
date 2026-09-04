@@ -151,6 +151,37 @@ two surfaces share one catalog/invoker and one executable - a host application
 can add an `mcp` verb alongside its normal commands instead of shipping and
 maintaining a second binary.
 
+## Running the offline Hangfire CLI composition sample
+
+```powershell
+# List the current in-memory recurring jobs.
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire.Cli -- Hangfire list-recurring-hangfire
+
+# Denied without a prompt; exits 1 and schedules nothing.
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire.Cli -- Hangfire trigger-recurring-hangfire --jobId nightly-cleanup
+
+# Approved by the shared fail-closed confirmation policy.
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire.Cli -- Hangfire trigger-recurring-hangfire --jobId nightly-cleanup --confirm
+
+# Generate and verify a checked-in-or-CI skill snapshot without connecting to external storage.
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire.Cli -- generate --output skill
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire.Cli -- check --output skill
+```
+
+`DotNetAgentSurface.Samples.Hangfire.Cli` is a complete composition example:
+it creates `Hangfire.InMemory` storage, registers stable recurring operations,
+attaches `DangerousOperationConfirmationPolicy` to the same `OperationInvoker`
+used by the CLI, and dispatches `generate`/`check` before generated operation
+commands. Every invocation starts with fresh in-memory jobs, so triggering
+returns Hangfire's configured-storage acknowledgement; it intentionally does
+not claim that a background worker completed the job. It requires no credentials
+or external services. For SQL Server, move only the connection string and
+storage wiring to configuration—never put a credential in source.
+
+See the [recurring-job migration guide](../docs/development/hangfire-recurring-migration.md)
+and [non-interactive confirmation contract](../docs/development/operation-confirmation.md)
+for the consumer contract demonstrated here.
+
 ## Running the Hangfire sample
 
 ```powershell

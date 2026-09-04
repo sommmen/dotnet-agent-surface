@@ -65,6 +65,7 @@ public sealed class OperationInvocationPolicyTests
         public ValueTask<OperationPolicyResult> EvaluateAsync(
             OperationDescriptor operation,
             IReadOnlyDictionary<string, JsonElement>? inputs,
+            OperationConfirmation? confirmation = null,
             CancellationToken cancellationToken = default)
         {
             WasEvaluated = true;

@@ -51,7 +51,7 @@ public sealed class SkillReferenceGeneratorTests : IDisposable
         generator.Generate(catalog, _outputDirectory, options);
 
         var skill = File.ReadAllText(Path.Combine(_outputDirectory, "SKILL.md"));
-        var lineCount = skill.Split('\n').Length;
+        var lineCount = skill.TrimEnd('\r', '\n').Split('\n').Length;
         var byteCount = Encoding.UTF8.GetByteCount(skill);
 
         Assert.True(lineCount < 150, $"Expected SKILL.md to stay under 150 lines but it had {lineCount}.");

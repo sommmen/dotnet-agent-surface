@@ -19,4 +19,9 @@ Initial design requirements:
 
 The framework should provide extension points for policy but must not pretend to supply an application's identity model.
 
+`OperationInvocationContext` is the trusted forwarding contract for those hooks.
+Hosts authenticate credentials before constructing it; operation JSON cannot
+inject a principal or credential. ASP.NET Core endpoint authorization uses the
+resolved principal and fails closed when it is absent.
+
 See also: [core catalog and abstractions](core-catalog.md) for `OperationInvocationPolicy` and the shared invocation pipeline.

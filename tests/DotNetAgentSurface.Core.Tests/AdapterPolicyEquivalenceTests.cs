@@ -185,7 +185,8 @@ public sealed class AdapterPolicyEquivalenceTests
             OperationDescriptor operation,
             IReadOnlyDictionary<string, JsonElement>? inputs,
             OperationConfirmation? confirmation = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            OperationInvocationContext? invocationContext = null) =>
             ValueTask.FromResult(OperationPolicyResult.Deny($"Operation '{operation.Name}' was denied by policy for testing."));
     }
 

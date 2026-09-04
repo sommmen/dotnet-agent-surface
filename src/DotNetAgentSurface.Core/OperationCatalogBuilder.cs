@@ -58,7 +58,12 @@ public sealed class OperationCatalogBuilder
             IsIdempotent = options.IsIdempotent
         };
 
-        _operations.Add(new OperationDescriptor(implementation.Method, attribute, implementation.Target));
+        _operations.Add(new OperationDescriptor(
+            implementation.Method,
+            attribute,
+            implementation.Target,
+            options.PolicyMetadata,
+            options.InvocationPolicies));
         return this;
     }
 
@@ -89,4 +94,10 @@ public sealed class OperationRegistrationOptions
     /// <see langword="false"/>, matching <see cref="AgentOperationAttribute.IsIdempotent"/>.
     /// </summary>
     public bool IsIdempotent { get; set; }
+
+    /// <summary>Metadata made available to invocation policies without exposing it as operation input.</summary>
+    public List<object> PolicyMetadata { get; } = [];
+
+    /// <summary>Policies that apply specifically to this source registration.</summary>
+    public List<IOperationInvocationPolicy> InvocationPolicies { get; } = [];
 }

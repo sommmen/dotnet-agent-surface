@@ -4,7 +4,12 @@ namespace DotNetAgentSurface.Core;
 
 public sealed class OperationDescriptor
 {
-    internal OperationDescriptor(MethodInfo method, AgentOperationAttribute operation, object? boundTarget = null)
+    internal OperationDescriptor(
+        MethodInfo method,
+        AgentOperationAttribute operation,
+        object? boundTarget = null,
+        IReadOnlyList<object>? policyMetadata = null,
+        IReadOnlyList<IOperationInvocationPolicy>? invocationPolicies = null)
     {
         Method = method;
         BoundTarget = boundTarget;
@@ -15,6 +20,8 @@ public sealed class OperationDescriptor
         Examples = Array.AsReadOnly(operation.Examples);
         Aliases = Array.AsReadOnly(operation.Aliases);
         IsIdempotent = operation.IsIdempotent;
+        PolicyMetadata = Array.AsReadOnly((policyMetadata ?? []).ToArray());
+        InvocationPolicies = Array.AsReadOnly((invocationPolicies ?? []).ToArray());
         Parameters = Array.AsReadOnly(method.GetParameters().Select(static parameter => new OperationParameterDescriptor(parameter)).ToArray());
     }
 
@@ -39,6 +46,12 @@ public sealed class OperationDescriptor
     public Type? ServiceType => Method.IsStatic ? null : Method.DeclaringType;
 
     public IReadOnlyList<OperationParameterDescriptor> Parameters { get; }
+
+    /// <summary>Host-defined metadata consumed by invocation policies.</summary>
+    public IReadOnlyList<object> PolicyMetadata { get; }
+
+    /// <summary>Policies attached by the source that registered this operation.</summary>
+    public IReadOnlyList<IOperationInvocationPolicy> InvocationPolicies { get; }
 
     public Type DeclaredReturnType => Method.ReturnType;
 }

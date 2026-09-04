@@ -172,14 +172,14 @@ Protected endpoints are still discovered, but their registered delegate checks `
 `UnauthorizedAccessException` and is therefore denied by default even when a host has not added a Core policy.
 `IAllowAnonymous` takes precedence, matching ASP.NET Core endpoint metadata semantics.
 
-Work item 23 remains pending. Core's `IOperationInvocationPolicy` receives only an operation descriptor,
-JSON inputs, and a cancellation token; it has no trusted caller identity, credential, `HttpContext`, or
-`ClaimsPrincipal`. Accepting a bearer token in untrusted JSON inputs or synthesizing an identity would invent
-an insecure authentication API and could bypass application authorization. Completing item 23 requires a
-Core invocation-context contract that securely transports authenticated caller information and permits the
-host's real ASP.NET Core authentication and authorization services to evaluate it. Until that contract exists,
-protected endpoints must remain cataloged-but-denied.
-Recommendation: start with **`TestHost`-style in-process invocation** (via `Endpoint.RequestDelegate` and
+Work item 23 is implemented. Core's `OperationInvocationContext` securely transports a host-authenticated
+`ClaimsPrincipal` and optional credential separately from JSON operation inputs. CLI hosts can provide the context
+when constructing their adapter, while MCP uses the SDK transport's authenticated request principal (stdio hosts
+remain unauthenticated unless they explicitly provide a context). `AspNetCoreEndpointAuthorizationPolicy` combines
+the endpoint's `IAuthorizeData` through the host's real `IAuthorizationService`, honors `IAllowAnonymous`, and
+fails closed without an authenticated principal. The optional credential is not parsed or trusted by Core; hosts
+remain responsible for authenticating it before creating the context.
+The implementation uses **`TestHost`-style in-process invocation** (via `Endpoint.RequestDelegate` and
 a synthesized context, using ASP.NET Core's own test-host approach as the reference implementation) as the
 default, since it's dependency-light and works in every hosting scenario without requiring a reachable
 base URL — but structure the invocation path behind a small internal abstraction so a loopback-HTTP mode

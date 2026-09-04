@@ -15,8 +15,8 @@ public static class OperationCatalogBuilderExtensions
 {
     /// <summary>
     /// Discovers MVC and Minimal API descriptions through ApiExplorer and registers invocations for their resolved route endpoints.
-    /// Endpoints carrying authorization metadata are cataloged but always deny invocation because the Core invocation contract
-    /// does not carry an authenticated caller context.
+    /// Endpoints carrying authorization metadata are cataloged with their metadata so an authorization policy can
+    /// evaluate them before invocation.
     /// </summary>
     public static OperationCatalogBuilder AddFromApiExplorer(
         this OperationCatalogBuilder builder,
@@ -63,11 +63,16 @@ public static class OperationCatalogBuilderExtensions
             }
 
             var name = CreateUniqueName(description.HttpMethod, description.RelativePath, names);
-            var requiresAuthorization = RequiresAuthorization(description, endpoint);
-            var invocation = new ApiEndpointInvocation(endpoint, description.HttpMethod, requiresAuthorization, applicationServices);
+            var metadata = description.ActionDescriptor.EndpointMetadata.Concat(endpoint.Metadata).ToArray();
+            var invocation = new ApiEndpointInvocation(endpoint, description.HttpMethod, applicationServices);
             builder.Add(name, $"Invokes ASP.NET Core {description.HttpMethod} /{description.RelativePath}.",
                 (Func<JsonElement?, CancellationToken, Task<AspNetCoreEndpointResponse>>)invocation.InvokeAsync,
-                options => options.Category = "aspnetcore");
+                options =>
+                {
+                    options.Category = "aspnetcore";
+                    options.PolicyMetadata.AddRange(metadata);
+                    options.InvocationPolicies.Add(new AspNetCoreEndpointAuthorizationPolicy(applicationServices));
+                });
         }
 
         return builder;
@@ -79,12 +84,6 @@ public static class OperationCatalogBuilderExtensions
         return endpoints.FirstOrDefault(endpoint =>
             string.Equals(NormalizePath(endpoint.RoutePattern.RawText), path, StringComparison.OrdinalIgnoreCase) &&
             endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods.Contains(description.HttpMethod!, StringComparer.OrdinalIgnoreCase) == true);
-    }
-
-    private static bool RequiresAuthorization(ApiDescription description, RouteEndpoint endpoint)
-    {
-        var metadata = description.ActionDescriptor.EndpointMetadata.Concat(endpoint.Metadata);
-        return !metadata.OfType<IAllowAnonymous>().Any() && metadata.OfType<IAuthorizeData>().Any();
     }
 
     private static string CreateUniqueName(string method, string path, ISet<string> names)
@@ -105,15 +104,10 @@ public static class OperationCatalogBuilderExtensions
 /// <summary>Response returned by an in-process anonymous endpoint invocation.</summary>
 public sealed record AspNetCoreEndpointResponse(int StatusCode, string? ContentType, string Body);
 
-internal sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string method, bool requiresAuthorization, IServiceProvider applicationServices)
+internal sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string method, IServiceProvider applicationServices)
 {
     public async Task<AspNetCoreEndpointResponse> InvokeAsync(JsonElement? body = null, CancellationToken cancellationToken = default)
     {
-        if (requiresAuthorization)
-        {
-            throw new UnauthorizedAccessException("This endpoint requires authorization. DotNetAgentSurface's current invocation contract does not carry caller credentials or a ClaimsPrincipal, so protected ASP.NET Core endpoints are denied by default.");
-        }
-
         await using var scope = applicationServices.CreateAsyncScope();
         var context = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
         context.Request.Method = method;

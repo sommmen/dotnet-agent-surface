@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using DotNetAgentSurface.Core;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -26,7 +28,8 @@ public sealed class McpOperationServer
                 context.Params.Arguments is null
                     ? null
                     : new Dictionary<string, System.Text.Json.JsonElement>(context.Params.Arguments),
-                cancellationToken)
+                cancellationToken,
+                GetConfirmation(context.Params.Meta))
         }
     };
 
@@ -35,5 +38,20 @@ public sealed class McpOperationServer
         var options = CreateOptions();
         var transport = new StdioServerTransport(options);
         return McpServer.Create(transport, options).RunAsync(cancellationToken);
+    }
+
+    /// <summary>The MCP request metadata key carrying host-level operation approval.</summary>
+    public const string ConfirmationMetadataKey = "io.dotnetagentsurface/confirmation";
+
+    internal static OperationConfirmation GetConfirmation(JsonObject? metadata)
+    {
+        if (metadata?[ConfirmationMetadataKey] is not JsonObject confirmation)
+        {
+            return OperationConfirmation.None;
+        }
+
+        var isConfirmed = confirmation["confirmed"]?.GetValue<bool>() ?? false;
+        var isDangerousConfirmed = confirmation["dangerousConfirmed"]?.GetValue<bool>() ?? false;
+        return new OperationConfirmation(isConfirmed || isDangerousConfirmed, isDangerousConfirmed);
     }
 }

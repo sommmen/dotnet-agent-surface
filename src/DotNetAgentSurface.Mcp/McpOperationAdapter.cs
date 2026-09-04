@@ -25,10 +25,15 @@ public sealed class McpOperationAdapter
         .Select(CreateTool)
         .ToArray();
 
+    /// <summary>
+    /// Invokes a tool. Supply explicit <paramref name="confirmation"/> metadata for safety-gated tools; absent
+    /// metadata fails closed when a confirmation policy is registered.
+    /// </summary>
     public async ValueTask<CallToolResult> InvokeAsync(
         string name,
         IReadOnlyDictionary<string, JsonElement>? arguments = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        OperationConfirmation? confirmation = null)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -43,7 +48,7 @@ public sealed class McpOperationAdapter
             return Error($"Unknown operation '{name}'.");
         }
 
-        var invocation = await _invoker.InvokeAsync(operation, arguments, cancellationToken).ConfigureAwait(false);
+        var invocation = await _invoker.InvokeAsync(operation, arguments, cancellationToken, confirmation).ConfigureAwait(false);
         if (invocation.IsCancelled)
         {
             return Error("Operation was cancelled.");

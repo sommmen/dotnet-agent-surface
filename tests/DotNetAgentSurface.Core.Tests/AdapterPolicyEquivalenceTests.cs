@@ -76,6 +76,7 @@ public sealed class AdapterPolicyEquivalenceTests
         public ValueTask<OperationPolicyResult> EvaluateAsync(
             OperationDescriptor operation,
             IReadOnlyDictionary<string, JsonElement>? inputs,
+            OperationConfirmation? confirmation = null,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(OperationPolicyResult.Deny($"Operation '{operation.Name}' was denied by policy for testing."));
     }

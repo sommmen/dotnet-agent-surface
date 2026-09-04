@@ -114,7 +114,12 @@ public sealed class OperationCommandLineAdapter
         try
         {
             var inputs = ParseInputs(operation, remaining);
-            var invocation = await _invoker.InvokeAsync(operation, inputs, cancellationToken).ConfigureAwait(false);
+            var confirmation = outputOptions.Confirm && outputOptions.Yes
+                ? OperationConfirmation.DangerousConfirmed
+                : outputOptions.Confirm
+                    ? OperationConfirmation.Confirmed
+                    : OperationConfirmation.None;
+            var invocation = await _invoker.InvokeAsync(operation, inputs, cancellationToken, confirmation).ConfigureAwait(false);
 
             if (!invocation.Succeeded)
             {
@@ -168,6 +173,8 @@ public sealed class OperationCommandLineAdapter
         IAgentOutputRenderer? renderer = null;
         IReadOnlyList<string>? fields = null;
         var full = false;
+        var confirm = false;
+        var yes = false;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -221,16 +228,38 @@ public sealed class OperationCommandLineAdapter
 
                     full = true;
                     break;
+                case "--confirm":
+                    if (confirm)
+                    {
+                        throw new CommandLineUsageException("Specify --confirm at most once.");
+                    }
+
+                    confirm = true;
+                    break;
+                case "--yes":
+                    if (yes)
+                    {
+                        throw new CommandLineUsageException("Specify --yes at most once.");
+                    }
+
+                    yes = true;
+                    break;
                 default:
                     commandArgs.Add(args[index]);
                     break;
             }
         }
 
-        return new OutputOptions(commandArgs.ToArray(), renderer, fields, full);
+        return new OutputOptions(commandArgs.ToArray(), renderer, fields, full, confirm, yes);
     }
 
-    private sealed record OutputOptions(string[] CommandArgs, IAgentOutputRenderer? Renderer, IReadOnlyList<string>? Fields, bool Full);
+    private sealed record OutputOptions(
+        string[] CommandArgs,
+        IAgentOutputRenderer? Renderer,
+        IReadOnlyList<string>? Fields,
+        bool Full,
+        bool Confirm,
+        bool Yes);
 
     /// <summary>
     /// Builds the category tree once from the catalog's operations, keyed case-insensitively at every level, so
@@ -310,7 +339,7 @@ public sealed class OperationCommandLineAdapter
             .Where(parameter => !parameter.IsCancellationToken)
             .Select(parameter => $"  --{parameter.Name} <{parameter.ParameterType.Name}>{(parameter.IsOptional ? " (optional)" : string.Empty)}"));
         lines.AddRange([
-            "", "Global flags:", "  --output <toon|json>", "  --fields <name,...>", "  --full", "  --help, -h",
+            "", "Global flags:", "  --output <toon|json>", "  --fields <name,...>", "  --full", "  --confirm", "  --yes (requires --confirm for dangerous operations)", "  --help, -h",
         ]);
         return string.Join("\n", lines);
     }
@@ -337,6 +366,8 @@ public sealed class OperationCommandLineAdapter
             .Append("--output")
             .Append("--fields")
             .Append("--full")
+            .Append("--confirm")
+            .Append("--yes")
             .Append("--help")
             .Append("-h");
         var inputs = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);

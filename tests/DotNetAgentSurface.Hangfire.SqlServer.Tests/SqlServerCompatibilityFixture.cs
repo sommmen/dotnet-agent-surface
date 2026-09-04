@@ -46,11 +46,12 @@ public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
             return;
         }
 
-        var image = Environment.GetEnvironmentVariable(ContainerImageEnvironmentVariable);
-        var container = new MsSqlBuilder(string.IsNullOrWhiteSpace(image) ? DefaultContainerImage : image).Build();
+        MsSqlContainer? container = null;
 
         try
         {
+            var image = Environment.GetEnvironmentVariable(ContainerImageEnvironmentVariable);
+            container = new MsSqlBuilder(string.IsNullOrWhiteSpace(image) ? DefaultContainerImage : image).Build();
             _container = container;
             await _container.StartAsync().ConfigureAwait(false);
             ConnectionString = _container.GetConnectionString();
@@ -58,10 +59,16 @@ public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
         catch (Exception exception)
         {
             // Fail closed into a clean skip rather than a hard failure: the opt-in variable may be
-            // set in an environment without a working Docker daemon (e.g. a misconfigured shell).
+            // set in an environment without a working Docker daemon (e.g. a misconfigured shell), or
+            // the image tag/builder configuration itself may be invalid (e.g. a malformed
+            // DOTNETAGENTSURFACE_HANGFIRE_SQLSERVER_IMAGE override).
             SkipReason = $"Could not start a throwaway SQL Server container: {exception.Message}";
             _container = null;
-            await container.DisposeAsync().ConfigureAwait(false);
+
+            if (container is not null)
+            {
+                await container.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 

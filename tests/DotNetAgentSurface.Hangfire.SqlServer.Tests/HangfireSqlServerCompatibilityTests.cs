@@ -141,7 +141,7 @@ public sealed class HangfireSqlServerCompatibilityTests
             ? null
             : new Dictionary<string, System.Text.Json.JsonElement>
             {
-                ["jobId"] = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(jobId)).RootElement.Clone()
+                ["jobId"] = System.Text.Json.JsonSerializer.SerializeToElement(jobId)
             };
         return new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs).AsTask();
     }

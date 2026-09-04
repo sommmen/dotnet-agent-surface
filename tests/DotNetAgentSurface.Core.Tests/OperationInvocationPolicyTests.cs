@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Claims;
 
 namespace DotNetAgentSurface.Core.Tests;
 
@@ -50,6 +51,21 @@ public sealed class OperationInvocationPolicyTests
         Assert.True(operations.WasInvoked);
     }
 
+    [Fact]
+    public async Task InvokeAsync_forwards_trusted_context_to_policies()
+    {
+        var operations = new DangerousOperations();
+        var operation = OperationCatalog.Discover(typeof(DangerousOperations)).Operations.Single();
+        var policy = new RecordingPolicy();
+        var context = new OperationInvocationContext(new ClaimsPrincipal(new ClaimsIdentity("test")), "credential");
+
+        var result = await new OperationInvoker(new SingleServiceProvider(operations), policies: [policy])
+            .InvokeAsync(operation, invocationContext: context);
+
+        Assert.True(result.Succeeded);
+        Assert.Same(context, policy.Context);
+    }
+
     private sealed class DangerousOperations
     {
         public bool WasInvoked { get; private set; }
@@ -61,14 +77,17 @@ public sealed class OperationInvocationPolicyTests
     private sealed class RecordingPolicy : IOperationInvocationPolicy
     {
         public bool WasEvaluated { get; private set; }
+        public OperationInvocationContext? Context { get; private set; }
 
         public ValueTask<OperationPolicyResult> EvaluateAsync(
             OperationDescriptor operation,
             IReadOnlyDictionary<string, JsonElement>? inputs,
             OperationConfirmation? confirmation = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            OperationInvocationContext? invocationContext = null)
         {
             WasEvaluated = true;
+            Context = invocationContext;
             return ValueTask.FromResult(OperationPolicyResult.Allow());
         }
     }

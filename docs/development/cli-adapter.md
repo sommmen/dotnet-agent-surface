@@ -18,6 +18,10 @@ The CLI adapter will use System.CommandLine to generate commands and options fro
 - non-interactive confirmation flags for destructive operations;
 - cancellation propagation where practical.
 
+Hosts that authenticate a caller out of band can pass an
+`OperationInvocationContext` to `OperationCommandLineAdapter` or to an individual
+`ExecuteAsync` call. The context is never read from operation arguments.
+
 Human-friendly formatting can be layered on later, but automation must have a stable output mode from the start.
 
 ## AXI and token efficiency

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Claims;
 
 namespace DotNetAgentSurface.Core;
 
@@ -9,7 +10,22 @@ public interface IOperationInvocationPolicy
         OperationDescriptor operation,
         IReadOnlyDictionary<string, JsonElement>? inputs,
         OperationConfirmation? confirmation = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        OperationInvocationContext? invocationContext = null);
+}
+
+/// <summary>
+/// Trusted, host-supplied caller information for an operation invocation.
+/// </summary>
+/// <remarks>
+/// This value must be created by the host after authentication. It is deliberately separate from operation inputs;
+/// callers cannot inject an identity through the JSON argument object.
+/// </remarks>
+public sealed record OperationInvocationContext(ClaimsPrincipal? Principal = null, string? Credential = null)
+{
+    public static OperationInvocationContext Empty { get; } = new();
+
+    public bool HasAuthenticatedPrincipal => Principal?.Identity?.IsAuthenticated == true;
 }
 
 /// <summary>Explicit, host-supplied approval for safety-gated operation invocations.</summary>
@@ -57,7 +73,8 @@ public sealed class DangerousOperationConfirmationPolicy : IOperationInvocationP
         OperationDescriptor operation,
         IReadOnlyDictionary<string, JsonElement>? inputs,
         OperationConfirmation? confirmation = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        OperationInvocationContext? invocationContext = null)
     {
         Guard.ThrowIfNull(operation);
 

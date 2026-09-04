@@ -10,15 +10,18 @@ public sealed class McpOperationAdapter
     private readonly OperationCatalog _catalog;
     private readonly OperationInvoker _invoker;
     private readonly OperationSchemaGenerator _schemaGenerator;
+    private readonly OperationInvocationContext? _invocationContext;
 
     public McpOperationAdapter(
         OperationCatalog catalog,
         OperationInvoker invoker,
-        OperationSchemaGenerator? schemaGenerator = null)
+        OperationSchemaGenerator? schemaGenerator = null,
+        OperationInvocationContext? invocationContext = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
         _schemaGenerator = schemaGenerator ?? new OperationSchemaGenerator();
+        _invocationContext = invocationContext;
     }
 
     public IReadOnlyList<Tool> GetTools() => _catalog.Operations
@@ -33,7 +36,8 @@ public sealed class McpOperationAdapter
         string name,
         IReadOnlyDictionary<string, JsonElement>? arguments = null,
         CancellationToken cancellationToken = default,
-        OperationConfirmation? confirmation = null)
+        OperationConfirmation? confirmation = null,
+        OperationInvocationContext? invocationContext = null)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -48,7 +52,12 @@ public sealed class McpOperationAdapter
             return Error($"Unknown operation '{name}'.");
         }
 
-        var invocation = await _invoker.InvokeAsync(operation, arguments, cancellationToken, confirmation).ConfigureAwait(false);
+        var invocation = await _invoker.InvokeAsync(
+            operation,
+            arguments,
+            cancellationToken,
+            confirmation,
+            invocationContext ?? _invocationContext).ConfigureAwait(false);
         if (invocation.IsCancelled)
         {
             return Error("Operation was cancelled.");

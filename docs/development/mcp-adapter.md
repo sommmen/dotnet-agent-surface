@@ -18,6 +18,11 @@ The adapter should preserve:
 - structured errors;
 - cancellation where supported.
 
+Hosts can provide an `OperationInvocationContext` to the adapter. For transports
+that authenticate requests, `McpOperationServer` forwards the MCP SDK's
+transport-populated `JsonRpcMessageContext.User`; request `_meta` and tool
+arguments are not treated as credentials.
+
 MCP hosting should be provided as a separate executable or an easy-to-compose host library rather than embedded in a WinForms or WPF process.
 
 See also: the [`tasktracker-mcp` sample](../../samples/README.md), which hosts `McpOperationServer` over stdio.

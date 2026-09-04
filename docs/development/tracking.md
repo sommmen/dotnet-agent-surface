@@ -97,11 +97,11 @@ Implementation began on 2026-08-30 from `main` at `4f52f9a7fd1e252eae081d3efc5f9
 
 ### 9. Trusted invocation context & authorization
 
-- [ ] Define a Core invocation-context contract that securely carries authenticated caller identity/credentials (not raw JSON input) through to `IOperationInvocationPolicy`.
-- [ ] Forward that context from the CLI and MCP adapters so callers can supply credentials the host's real authentication middleware can evaluate.
-- [ ] Add `AspNetCoreEndpointAuthorizationPolicy` (`IOperationInvocationPolicy`) to evaluate `IAuthorizeData`/`[Authorize]`/`[AllowAnonymous]` metadata against the invocation context through the host's real `IAuthorizationService`, replacing today's unconditional deny-by-default `UnauthorizedAccessException` for protected endpoints.
-- [ ] Deny by default when no valid caller context exists; do not accept arbitrary injected principals or tokens.
-- [ ] Add focused tests proving protected endpoints execute only with a valid forwarded context and remain denied otherwise.
+- [x] Define a Core invocation-context contract that securely carries a host-authenticated `ClaimsPrincipal` and optional credential (not raw JSON input) through to `IOperationInvocationPolicy`.
+- [x] Forward that context from the CLI and MCP adapters; MCP also uses the SDK transport's authenticated request principal.
+- [x] Add `AspNetCoreEndpointAuthorizationPolicy` (`IOperationInvocationPolicy`) to evaluate `IAuthorizeData`/`[Authorize]`/`[AllowAnonymous]` metadata through the host's real `IAuthorizationService`, replacing the unconditional endpoint exception.
+- [x] Deny by default when no authenticated caller context exists; arbitrary JSON principals or tokens are never accepted.
+- [x] Add focused tests proving protected endpoints execute only with a valid forwarded context and remain denied otherwise.
 
 ### 10. Skill generator — reference-based `SKILL.md`
 

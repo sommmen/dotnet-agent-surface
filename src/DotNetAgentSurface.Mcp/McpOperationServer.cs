@@ -29,7 +29,8 @@ public sealed class McpOperationServer
                     ? null
                     : new Dictionary<string, System.Text.Json.JsonElement>(context.Params.Arguments),
                 cancellationToken,
-                GetConfirmation(context.Params.Meta))
+                GetConfirmation(context.Params.Meta),
+                GetInvocationContext(context))
         }
     };
 
@@ -53,5 +54,11 @@ public sealed class McpOperationServer
         var isConfirmed = confirmation["confirmed"]?.GetValue<bool>() ?? false;
         var isDangerousConfirmed = confirmation["dangerousConfirmed"]?.GetValue<bool>() ?? false;
         return new OperationConfirmation(isConfirmed || isDangerousConfirmed, isDangerousConfirmed);
+    }
+
+    private static OperationInvocationContext? GetInvocationContext(RequestContext<CallToolRequestParams> context)
+    {
+        var principal = context.JsonRpcRequest.Context?.User;
+        return principal is null ? null : new OperationInvocationContext(principal);
     }
 }

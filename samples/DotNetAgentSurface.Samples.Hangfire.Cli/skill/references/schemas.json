@@ -1,0 +1,20 @@
+{
+  "list-recurring-hangfire": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "trigger-recurring-hangfire": {
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "jobId"
+    ],
+    "additionalProperties": false
+  }
+}

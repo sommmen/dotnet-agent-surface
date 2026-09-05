@@ -271,32 +271,44 @@ foreach (var operation in statusCatalog.Operations)
     Console.WriteLine($"  - {operation.Name} [{operation.Category}, {operation.SafetyLevel}]: {operation.Description}");
 }
 
-Console.WriteLine();
-Console.WriteLine($"Enqueuing a follow-up job to run once job {welcomeEmailJobId} succeeds...");
-var continueJob = statusCatalog.Operations.Single(operation => operation.Name == "continue-hangfire-job");
-var continueInputs = new Dictionary<string, JsonElement>
-{
-    ["parentJobId"] = JsonDocument.Parse(JsonSerializer.Serialize(welcomeEmailJobId)).RootElement.Clone()
-};
-result = await invoker.InvokeAsync(continueJob, continueInputs);
-var continuationJobId = result.Succeeded ? (string?)result.Value : null;
-Console.WriteLine(result.Succeeded ? $"  Enqueued continuation as job {continuationJobId}." : $"  Failed: {result.Error}");
-
-Console.WriteLine();
-Console.WriteLine($"Looking up the status of job {welcomeEmailJobId}...");
 var jobStatus = statusCatalog.Operations.Single(operation => operation.Name == "get-hangfire-job-status");
-var jobStatusInputs = new Dictionary<string, JsonElement>
+if (welcomeEmailJobId is null)
 {
-    ["jobId"] = JsonDocument.Parse(JsonSerializer.Serialize(welcomeEmailJobId)).RootElement.Clone()
-};
-result = await invoker.InvokeAsync(jobStatus, jobStatusInputs);
-if (result is { Succeeded: true, Value: HangfireJobStatus status })
-{
-    Console.WriteLine($"  State: {status.State}, dashboard: {status.DashboardUrl ?? "n/a"}.");
+    // continue-hangfire-job/get-hangfire-job-status both reject a missing job ID rather than
+    // silently treating it as "not found" (see HangfireJobStatusOperationCatalogBuilderExtensions),
+    // so the demo below only runs when the earlier enqueue actually returned an ID.
+    Console.WriteLine();
+    Console.WriteLine("Skipping the continuation/status demo: no welcome-email job ID is available " +
+        "because the earlier enqueue failed.");
 }
 else
 {
-    Console.WriteLine(result.Succeeded ? "  Job not found." : $"  Failed: {result.Error}");
+    Console.WriteLine();
+    Console.WriteLine($"Enqueuing a follow-up job to run once job {welcomeEmailJobId} succeeds...");
+    var continueJob = statusCatalog.Operations.Single(operation => operation.Name == "continue-hangfire-job");
+    var continueInputs = new Dictionary<string, JsonElement>
+    {
+        ["parentJobId"] = JsonDocument.Parse(JsonSerializer.Serialize(welcomeEmailJobId)).RootElement.Clone()
+    };
+    result = await invoker.InvokeAsync(continueJob, continueInputs);
+    var continuationJobId = result.Succeeded ? (string?)result.Value : null;
+    Console.WriteLine(result.Succeeded ? $"  Enqueued continuation as job {continuationJobId}." : $"  Failed: {result.Error}");
+
+    Console.WriteLine();
+    Console.WriteLine($"Looking up the status of job {welcomeEmailJobId}...");
+    var jobStatusInputs = new Dictionary<string, JsonElement>
+    {
+        ["jobId"] = JsonDocument.Parse(JsonSerializer.Serialize(welcomeEmailJobId)).RootElement.Clone()
+    };
+    result = await invoker.InvokeAsync(jobStatus, jobStatusInputs);
+    if (result is { Succeeded: true, Value: HangfireJobStatus status })
+    {
+        Console.WriteLine($"  State: {status.State}, dashboard: {status.DashboardUrl ?? "n/a"}.");
+    }
+    else
+    {
+        Console.WriteLine(result.Succeeded ? "  Job not found." : $"  Failed: {result.Error}");
+    }
 }
 
 Console.WriteLine();

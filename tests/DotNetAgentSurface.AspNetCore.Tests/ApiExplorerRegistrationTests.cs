@@ -37,6 +37,24 @@ public sealed class ApiExplorerRegistrationTests
     }
 
     [Fact]
+    public async Task Invokes_mvc_controller_endpoint_whose_route_pattern_has_no_leading_slash()
+    {
+        // Controller route patterns (e.g. "controller") are reported by ApiExplorer/RouteEndpoint without a
+        // leading '/', unlike minimal API routes. Assigning that raw text directly to HttpContext.Request.Path
+        // previously threw ArgumentException ("The path in 'value' must start with '/'").
+        await using var app = CreateApplication();
+        app.MapControllers();
+        await app.StartAsync();
+        var catalog = Register(app);
+
+        var operation = catalog.Operations.Single(candidate => candidate.Name == "aspnet_get_controller");
+        var result = await new OperationInvoker(app.Services).InvokeAsync(operation);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(200, Assert.IsType<AspNetCoreEndpointResponse>(result.Value).StatusCode);
+    }
+
+    [Fact]
     public async Task Denies_authorized_endpoint_without_allowing_direct_handler_execution()
     {
         await using var app = CreateApplication();

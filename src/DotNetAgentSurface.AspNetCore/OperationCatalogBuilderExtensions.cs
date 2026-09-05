@@ -111,7 +111,9 @@ internal sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string metho
         await using var scope = applicationServices.CreateAsyncScope();
         var context = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
         context.Request.Method = method;
-        context.Request.Path = endpoint.RoutePattern.RawText ?? "/";
+        // RouteEndpoint.RoutePattern.RawText is the raw route template (e.g. "Development/autologin"),
+        // which is not guaranteed to have a leading '/' and would otherwise throw when assigned to PathString.
+        context.Request.Path = "/" + (endpoint.RoutePattern.RawText ?? string.Empty).TrimStart('/');
         context.RequestAborted = cancellationToken;
         await using var responseBody = new MemoryStream();
         context.Response.Body = responseBody;

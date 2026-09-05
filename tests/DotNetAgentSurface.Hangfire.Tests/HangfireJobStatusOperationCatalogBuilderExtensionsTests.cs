@@ -129,6 +129,21 @@ public sealed class HangfireJobStatusOperationCatalogBuilderExtensionsTests
     }
 
     [Fact]
+    public async Task GetHangfireJobStatus_rejects_a_missing_job_id()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var job = Job.FromExpression(() => TestJobs.CleanUp());
+        var catalog = new OperationCatalogBuilder()
+            .AddHangfireJobStatusOperations(client, storage, job)
+            .Build();
+
+        var result = await InvokeAsync(catalog, "get-hangfire-job-status", parentJobId: "   ");
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
     public async Task GetHangfireJobStatus_builds_a_dashboard_url_when_a_base_url_is_configured()
     {
         using var storage = new InMemoryStorage();

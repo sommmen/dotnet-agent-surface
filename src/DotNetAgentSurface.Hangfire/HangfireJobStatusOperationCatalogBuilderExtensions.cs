@@ -91,7 +91,8 @@ public static class HangfireJobStatusOperationCatalogBuilderExtensions
             "get-hangfire-job-status",
             "Looks up the current status of a background job by its Hangfire job ID, for example one " +
             "returned by enqueuing or continuing a job through this catalog. Returns null if no job with " +
-            "that ID exists in storage (it may have already been expired and removed).",
+            "that ID exists in storage (it may have already been expired and removed), but throws if " +
+            "'jobId' itself is missing or blank.",
             (Func<string, HangfireJobStatus?>)(jobId => GetJobStatus(storage, jobId, options)),
             operation =>
             {
@@ -121,7 +122,7 @@ public static class HangfireJobStatusOperationCatalogBuilderExtensions
     {
         if (string.IsNullOrWhiteSpace(jobId))
         {
-            return null;
+            throw new ArgumentException("A job ID is required.", nameof(jobId));
         }
 
         using var connection = storage.GetConnection();

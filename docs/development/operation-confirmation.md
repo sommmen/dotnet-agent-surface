@@ -5,6 +5,27 @@ host must attach it to the `OperationInvoker` used by every exposed surface.
 The same operation metadata and `OperationConfirmation` contract apply to CLI
 and MCP requests:
 
+## `SafetyLevel` is metadata only
+
+An operation's `SafetyLevel` (`AgentOperationAttribute.SafetyLevel`,
+`OperationDescriptor.SafetyLevel`, or a catalog-builder option such as
+`HangfireJobTypeDiscoveryOptions.SafetyLevel`) describes how dangerous an
+operation is; it does **not**, by itself, gate execution. Enforcement only
+happens if the `OperationInvoker` was constructed with (or the operation
+carries) a policy implementing `IConfirmationEnforcingPolicy` — the interface
+`DangerousOperationConfirmationPolicy` implements.
+
+To catch the common mistake of registering `Confirm`/`Dangerous` operations
+without such a policy, `OperationInvoker.InvokeAsync` throws
+`ConfirmationPolicyMissingException` when it is asked to invoke an operation
+whose `SafetyLevel` is above `Safe` and no confirmation-enforcing policy is
+present (checked across both the invoker's own `policies` and the operation's
+own `InvocationPolicies`). This is a fail-fast guard, not a substitute for
+attaching `DangerousOperationConfirmationPolicy` (or an equivalent) to every
+host surface — do that regardless, so that `Confirm`/`Dangerous` operations
+are actually denied without confirmation instead of merely detected as
+unguarded.
+
 | Safety level | Required confirmation |
 |---|---|
 | `Safe` | None |

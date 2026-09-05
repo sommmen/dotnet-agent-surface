@@ -143,7 +143,10 @@ public sealed class HangfireSqlServerCompatibilityTests
             {
                 ["jobId"] = System.Text.Json.JsonSerializer.SerializeToElement(jobId)
             };
-        return new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs).AsTask();
+        var invoker = new OperationInvoker(
+            new NullServiceProvider(),
+            policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
+        return invoker.InvokeAsync(operation, inputs).AsTask();
     }
 
     private sealed class NullServiceProvider : IServiceProvider

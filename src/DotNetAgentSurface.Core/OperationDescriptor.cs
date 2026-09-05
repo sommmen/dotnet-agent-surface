@@ -31,6 +31,11 @@ public sealed class OperationDescriptor
 
     public string? Category { get; }
 
+    /// <summary>
+    /// Gets the advertised safety level for this operation. See <see cref="AgentSafetyLevel"/> for why this is
+    /// metadata only and must be paired with a confirmation-enforcing <see cref="IOperationInvocationPolicy"/>
+    /// to actually be enforced by <see cref="OperationInvoker"/>.
+    /// </summary>
     public AgentSafetyLevel SafetyLevel { get; }
 
     public IReadOnlyList<string> Examples { get; }

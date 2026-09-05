@@ -158,8 +158,16 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
             {
                 ["jobId"] = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(jobId)).RootElement.Clone()
             };
-        return new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs).AsTask();
+        return CreateInvoker().InvokeAsync(operation, inputs).AsTask();
     }
+
+    /// <summary>
+    /// Some of the operations exercised by this test class default to
+    /// <see cref="AgentSafetyLevel.Confirm"/>, which is metadata only. A confirming policy is
+    /// supplied here so <see cref="OperationInvoker"/> actually executes them.
+    /// </summary>
+    private static OperationInvoker CreateInvoker() =>
+        new(new NullServiceProvider(), policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
 
     [Fact]
     public void AddHangfireJobTypes_discovers_matching_job_types_without_registering_anything()
@@ -210,7 +218,7 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
         var operation = Assert.Single(catalog.Operations);
         Assert.Empty(client.CreatedJobs);
 
-        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var result = await CreateInvoker().InvokeAsync(operation);
 
         Assert.True(result.Succeeded);
         Assert.Equal("job:ParameterlessDiscoveredJob", operation.Name);
@@ -247,7 +255,7 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
             .Build();
 
         var operation = Assert.Single(catalog.Operations);
-        await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        await CreateInvoker().InvokeAsync(operation);
 
         var created = Assert.Single(client.CreatedJobs);
         Assert.Equal(typeof(OptionsDiscoveredJob), created.Job.Type);

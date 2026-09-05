@@ -37,12 +37,12 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
             typeof(TJobBase),
             static (client, jobType, method) =>
             {
-                void Enqueue(CancellationToken cancellationToken)
+                string Enqueue(CancellationToken cancellationToken)
                 {
-                    client.Create(new Job(jobType, method, new object?[] { CancellationToken.None }), new EnqueuedState());
+                    return client.Create(new Job(jobType, method, new object?[] { CancellationToken.None }), new EnqueuedState());
                 }
 
-                return (Action<CancellationToken>)Enqueue;
+                return (Func<CancellationToken, string>)Enqueue;
             });
     }
 
@@ -68,12 +68,12 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
             typeof(TJobBase),
             static (client, jobType, method) =>
             {
-                void Enqueue(TOptions options, CancellationToken cancellationToken)
+                string Enqueue(TOptions options, CancellationToken cancellationToken)
                 {
-                    client.Create(new Job(jobType, method, new object?[] { options, CancellationToken.None }), new EnqueuedState());
+                    return client.Create(new Job(jobType, method, new object?[] { options, CancellationToken.None }), new EnqueuedState());
                 }
 
-                return (Action<TOptions, CancellationToken>)Enqueue;
+                return (Func<TOptions, CancellationToken, string>)Enqueue;
             });
     }
 

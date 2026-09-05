@@ -160,7 +160,7 @@ Keep GitHub Packages scoped to this project's packages so other dependencies con
 
 ### Hangfire integration
 
-Install `DotNetAgentSurface.Hangfire` alongside `DotNetAgentSurface.Core` at the exact preview version shown by the publish workflow summary. The satellite targets `net10.0` and `netstandard2.0`, and currently references `Hangfire.Core` 1.8.18. Production applications choose and configure their supported Hangfire storage provider; this repository's `Hangfire.InMemory` dependency is only suitable for examples and tests.
+Install `DotNetAgentSurface.Hangfire` alongside `DotNetAgentSurface.Core` at the exact preview version shown by the publish workflow summary. The satellite targets `net10.0` and `netstandard2.0`, and currently references `Hangfire.Core` 1.8.25. Production applications choose and configure their supported Hangfire storage provider; this repository's `Hangfire.InMemory` dependency is only suitable for examples and tests.
 
 The following composition keeps catalog construction storage-lazy. Configure SQL Server (or another supported provider) through configuration and secret management, not source code; its connection string is intentionally not shown here.
 
@@ -199,14 +199,33 @@ Attach `DangerousOperationConfirmationPolicy` to every CLI and MCP host. It neve
 | Need | API | Why |
 |---|---|---|
 | List or trigger existing recurring definitions without rebuilding the catalog | `AddHangfireRecurringOperations(...)` | Primary recurring API; runtime storage access preserves stable operation names and generated skills. |
-| Conventionally discover attributed `HangfireJob` subclasses and enqueue one-off work | `RegisterJobs<TJobBase>(...)` | Primary class-discovery API; conventional base type, execution method, options binding, and diagnostics. |
-| Control candidate types, method selection, argument binding, or generated metadata | `AddHangfireJobTypes(...)` | Advanced generic discovery API for exceptional integrations; not a recurring-job replacement. |
+| Conventionally discover attributed `HangfireJob` subclasses and enqueue one-off work | `RegisterJobs<TJobBase>(...)` | Primary class-discovery API; conventional base type, execution method, options binding, and diagnostics. Returns the enqueued Hangfire job ID. |
+| Control candidate types, method selection, argument binding, or generated metadata | `AddHangfireJobTypes(...)` | Advanced generic discovery API for exceptional integrations; not a recurring-job replacement. Returns the enqueued Hangfire job ID. |
+| Enqueue a follow-up job that only runs once a known job ID succeeds, or look up any job's current status by ID | `AddHangfireJobStatusOperations(...)` | Adds the `continue-hangfire-job` and `get-hangfire-job-status` operations; independent of `RegisterJobs`/`AddHangfireJobTypes` and can be composed with either. |
+
+`RegisterJobs<TJobBase>(...)` and `AddHangfireJobTypes(...)` register operations whose delegate returns the `string` job ID produced by `IBackgroundJobClient.Create(...)`, so invoking them yields a usable ID instead of `null`. Use that ID with `continue-hangfire-job` (as `parentJobId`) or `get-hangfire-job-status` (as `jobId`):
+
+```csharp
+using Hangfire.Common;
+
+var continuationJob = new Job(typeof(MyFollowUpJob), typeof(MyFollowUpJob).GetMethod(nameof(MyFollowUpJob.Execute)));
+
+var catalog = new OperationCatalogBuilder()
+    .AddHangfireJobTypes(backgroundJobs, options => { /* ... */ })
+    .AddHangfireJobStatusOperations(backgroundJobs, storage, continuationJob, options =>
+    {
+        options.DashboardBaseUrl = "https://ops.example.com/hangfire";
+    })
+    .Build();
+```
+
+`continue-hangfire-job` defaults to `AgentSafetyLevel.Confirm` (it enqueues new work) and `get-hangfire-job-status` defaults to `AgentSafetyLevel.Safe` (it only reads storage). `get-hangfire-job-status` returns `null` when the supplied job ID is unknown to Hangfire storage, and includes a dashboard URL only when `DashboardBaseUrl` is configured — Hangfire's dashboard does not expose its own mounted base path at runtime, so callers must supply it.
 
 For migration from the removed eager `AddHangfireRecurringJobs(...)` API, including category/path changes and generated-skill behavior, see [hangfire-recurring-migration.md](docs/development/hangfire-recurring-migration.md).
 
 #### SQL Server compatibility suite (opt-in)
 
-`tests\DotNetAgentSurface.Hangfire.Tests\` is fully offline and never touches a database; it runs in every default `dotnet test` invocation, including CI. A separate, opt-in project, `tests\DotNetAgentSurface.Hangfire.SqlServer.Tests\`, exercises `AddHangfireRecurringOperations(...)` against a real `Hangfire.SqlServer` (1.8.18, matching this repository's `Hangfire.Core` pin) storage provider to cover recurring listing, triggering, and Hangfire/storage error translation on a supported provider — not just `Hangfire.InMemory`.
+`tests\DotNetAgentSurface.Hangfire.Tests\` is fully offline and never touches a database; it runs in every default `dotnet test` invocation, including CI. A separate, opt-in project, `tests\DotNetAgentSurface.Hangfire.SqlServer.Tests\`, exercises `AddHangfireRecurringOperations(...)` against a real `Hangfire.SqlServer` (1.8.25, matching this repository's `Hangfire.Core` pin) storage provider to cover recurring listing, triggering, and Hangfire/storage error translation on a supported provider — not just `Hangfire.InMemory`.
 
 The suite is disabled by default and requires no committed credentials:
 

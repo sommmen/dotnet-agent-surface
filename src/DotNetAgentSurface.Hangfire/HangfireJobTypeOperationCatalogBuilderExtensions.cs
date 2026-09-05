@@ -14,13 +14,21 @@ public static class HangfireJobTypeOperationCatalogBuilderExtensions
     /// <summary>
     /// Discovers concrete class-based jobs from <paramref name="assemblies"/> and adds an operation for each
     /// matching type that enqueues a single background execution of that job via
-    /// <paramref name="backgroundJobClient"/>. Discovery does not register, modify, or depend on any recurring
-    /// job configuration — it only makes the job invokable on demand, exactly like calling
-    /// <c>BackgroundJob.Enqueue</c> for it. The supplied <paramref name="jobMethod"/> must identify an
-    /// instance method whose arguments can be supplied by <paramref name="argumentsFactory"/>. Supplying a
-    /// custom argument factory permits options-based jobs to be exposed without assuming their options can be
-    /// constructed by this library.
+    /// <paramref name="backgroundJobClient"/>, returning the Hangfire job ID from
+    /// <see cref="IBackgroundJobClient.Create"/> when invoked. Discovery does not register, modify, or depend
+    /// on any recurring job configuration — it only makes the
+    /// job invokable on demand, exactly like calling <c>BackgroundJob.Enqueue</c> for it. The supplied
+    /// <paramref name="jobMethod"/> must identify an instance method whose arguments can be supplied by
+    /// <paramref name="argumentsFactory"/>. Supplying a custom argument factory permits options-based jobs to
+    /// be exposed without assuming their options can be constructed by this library.
     /// </summary>
+    /// <remarks>
+    /// Discovered operations default to <see cref="AgentSafetyLevel.Confirm"/> (see
+    /// <see cref="HangfireJobTypeDiscoveryOptions.SafetyLevel"/>), but that is metadata only. Enqueuing these
+    /// jobs through an <see cref="OperationInvoker"/> without a policy implementing
+    /// <see cref="IConfirmationEnforcingPolicy"/> (for example <see cref="DangerousOperationConfirmationPolicy"/>)
+    /// will throw <see cref="ConfirmationPolicyMissingException"/> rather than silently bypassing confirmation.
+    /// </remarks>
     public static OperationCatalogBuilder AddHangfireJobTypes(
         this OperationCatalogBuilder builder,
         IBackgroundJobClient backgroundJobClient,
@@ -95,7 +103,7 @@ public static class HangfireJobTypeOperationCatalogBuilderExtensions
             builder.Add(
                 registeredOperationName,
                 registration.Description ?? $"Enqueues a background execution of '{jobType.FullName}.{method.Name}'.",
-                (Action)(() => backgroundJobClient.Create(job, new EnqueuedState())),
+                (Func<string>)(() => backgroundJobClient.Create(job, new EnqueuedState())),
                 operation =>
                 {
                     operation.Category = registration.Category ?? options.Category;

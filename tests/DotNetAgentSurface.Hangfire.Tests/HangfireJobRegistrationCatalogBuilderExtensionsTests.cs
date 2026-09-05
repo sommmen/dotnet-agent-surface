@@ -9,6 +9,14 @@ namespace DotNetAgentSurface.Hangfire.Tests;
 
 public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
 {
+    /// <summary>
+    /// Registered Hangfire jobs default to <see cref="AgentSafetyLevel.Confirm"/>, which is
+    /// metadata only. Tests must supply a confirming policy for <see cref="OperationInvoker"/>
+    /// to actually execute them.
+    /// </summary>
+    private static OperationInvoker CreateInvoker(IServiceProvider serviceProvider) =>
+        new(serviceProvider, policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
+
     [Fact]
     public async Task RegisterJobs_discovers_concrete_jobs_and_enqueues_without_executing_them()
     {
@@ -22,7 +30,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
         Assert.Equal(AgentSafetyLevel.Confirm, operation.SafetyLevel);
         Assert.Empty(client.CreatedJobs);
 
-        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -46,7 +54,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             ["options"] = JsonDocument.Parse("{\"batchSize\":25}").RootElement.Clone()
         };
 
-        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -72,7 +80,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
 
         var operation = Assert.Single(catalog.Operations, operation => operation.Name == "brownfield-reconciliation-job");
 
-        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -100,7 +108,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             ["options"] = JsonDocument.Parse("{\"batchSize\":7}").RootElement.Clone()
         };
 
-        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -136,7 +144,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             .Build();
 
         var operation = Assert.Single(catalog.Operations, operation => operation.Name == "overloaded-job");
-        await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
 
         var created = Assert.Single(client.CreatedJobs);
         Assert.Single(created.Job.Method.GetParameters());
@@ -182,7 +190,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             ["options"] = JsonDocument.Parse("{\"batchSize\":\"not-a-number\"}").RootElement.Clone()
         };
 
-        var result = await new OperationInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
 
         Assert.False(result.Succeeded);
         Assert.Empty(client.CreatedJobs);

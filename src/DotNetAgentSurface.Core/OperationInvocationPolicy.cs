@@ -15,6 +15,23 @@ public interface IOperationInvocationPolicy
 }
 
 /// <summary>
+/// Marker implemented by policies that actually enforce <see cref="AgentSafetyLevel.Confirm"/>/
+/// <see cref="AgentSafetyLevel.Dangerous"/> confirmation semantics (for example, <see
+/// cref="DangerousOperationConfirmationPolicy"/>).
+/// </summary>
+/// <remarks>
+/// <see cref="AgentOperationAttribute.SafetyLevel"/>/<see cref="OperationDescriptor.SafetyLevel"/> is metadata
+/// only — it is not, by itself, enforced. <see cref="OperationInvoker"/> uses this marker to detect the common
+/// trap where an operation's safety level looks gated (<c>Confirm</c> or <c>Dangerous</c>) but no supplied policy
+/// actually implements confirmation enforcement, which would otherwise let unconfirmed invocations silently
+/// succeed. Implement this interface on a custom policy if it enforces confirmation the same way <see
+/// cref="DangerousOperationConfirmationPolicy"/> does, so <see cref="OperationInvoker"/> recognizes it.
+/// </remarks>
+public interface IConfirmationEnforcingPolicy : IOperationInvocationPolicy
+{
+}
+
+/// <summary>
 /// Trusted, host-supplied caller information for an operation invocation.
 /// </summary>
 /// <remarks>
@@ -50,7 +67,7 @@ public sealed record OperationPolicyResult(bool IsAllowed, string? Error)
 }
 
 /// <summary>Requires explicit host approval for <see cref="AgentSafetyLevel.Confirm"/> and dangerous operations.</summary>
-public sealed class DangerousOperationConfirmationPolicy : IOperationInvocationPolicy
+public sealed class DangerousOperationConfirmationPolicy : IConfirmationEnforcingPolicy
 {
     private readonly Func<OperationDescriptor, IReadOnlyDictionary<string, JsonElement>?, CancellationToken, ValueTask<bool>>? _isConfirmed;
 

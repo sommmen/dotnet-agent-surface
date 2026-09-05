@@ -22,15 +22,46 @@ listed. Each entry links the pull request(s) that shipped it.
 
 ### Breaking changes
 
-- None. `RegisterJobs<TJobBase>`/`RegisterJobs<TJobBase, TOptions>`'s generic
+- `OperationInvoker.InvokeAsync` now throws `ConfirmationPolicyMissingException`
+  when an operation's `SafetyLevel` is `AgentSafetyLevel.Confirm` or
+  `AgentSafetyLevel.Dangerous` but no supplied policy implements the new
+  `IConfirmationEnforcingPolicy` marker interface (`DangerousOperationConfirmationPolicy`
+  is the built-in implementation). Previously, `SafetyLevel` was metadata only:
+  an `OperationInvoker` constructed without a confirmation policy would
+  silently execute confirm/dangerous operations unconfirmed. Every consumer
+  that invokes an operation with `SafetyLevel >= Confirm` must now supply a
+  policy implementing `IConfirmationEnforcingPolicy` (for example
+  `DangerousOperationConfirmationPolicy`) in `OperationInvoker`'s `policies`.
+  See [`docs/development/operation-confirmation.md`](docs/development/operation-confirmation.md#safetylevel-is-metadata-only)
+  for details.
+- `AddHangfireJobTypes(...)` and `RegisterJobs<TJobBase>`/`RegisterJobs<TJobBase, TOptions>`
+  now register operations whose delegate returns the enqueued Hangfire job ID
+  (a `string`) instead of discarding it. Invoking these operations through
+  `OperationInvoker` now yields the job ID as `OperationInvocationResult.Value`
+  instead of `null`. This is a behavioral change for any caller inspecting
+  `result.Value` after invoking a job-type or `RegisterJobs<>` operation.
+
+### Added
+
+- `RegisterJobs<TJobBase>`/`RegisterJobs<TJobBase, TOptions>`'s generic
   constraints were relaxed (not tightened) from the concrete
   `HangfireJob`/`HangfireJobWithOptions<TOptions>` base classes to the new
   `IHangfireJob`/`IHangfireJob<TOptions>` interfaces. This is purely additive:
   `HangfireJob`/`HangfireJobWithOptions<TOptions>` now implement the
   interfaces, so every existing greenfield caller keeps compiling unchanged.
 
-### Added
-
+- `IConfirmationEnforcingPolicy` marker interface in `DotNetAgentSurface.Core`,
+  implemented by `DangerousOperationConfirmationPolicy`, identifying a policy
+  that enforces `AgentSafetyLevel.Confirm`/`AgentSafetyLevel.Dangerous`
+  confirmation. Paired with the new `ConfirmationPolicyMissingException`
+  breaking change above.
+- `AddHangfireJobStatusOperations(...)` in `DotNetAgentSurface.Hangfire`, adding
+  two stable operations: `continue-hangfire-job` (enqueues a follow-up job that
+  runs once a given parent job ID reaches a matching state, wrapping Hangfire's
+  `AwaitingState`/`ContinueJobWith` behavior) and `get-hangfire-job-status`
+  (looks up a background job's current state by ID via `JobStorage`, returning
+  `null` for an unknown ID, and an optional dashboard URL when a base URL is
+  configured).
 - `IHangfireJob`/`IHangfireJob<TOptions>` interfaces in
   `DotNetAgentSurface.Hangfire`, so a pre-existing ("brownfield") Hangfire job
   hierarchy — including a CRTP-style base class with constructor parameters
@@ -42,6 +73,17 @@ listed. Each entry links the pull request(s) that shipped it.
 - [`CHANGELOG.md`](CHANGELOG.md) itself, and a PR template checklist item
   reminding contributors to update it for breaking changes.
   ([issue #28](https://github.com/sommmen/dotnet-agent-surface/issues/28))
+
+### Changed
+
+- `Hangfire.Core`/`Hangfire.SqlServer` bumped from `1.8.18` to the latest
+  stable `1.8.25`, and `Hangfire.InMemory` bumped from `0.9.0` to the latest
+  stable `1.0.0`, across `DotNetAgentSurface.Hangfire` and its test/sample
+  projects. The `Newtonsoft.Json` 13.0.3 pin remains: `Hangfire.Core` 1.8.25's
+  `netstandard2.0` dependency group still selects vulnerable `Newtonsoft.Json`
+  11.0.1 transitively. `Hangfire.InMemory` 1.0.0 removed the deprecated
+  `DisableJobSerialization` option and changed the default `IdType`; neither is
+  referenced by this repository, so no source changes were needed.
 
 ### Removed
 

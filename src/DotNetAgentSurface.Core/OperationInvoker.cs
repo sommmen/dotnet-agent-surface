@@ -3,12 +3,44 @@ using System.Text.Json;
 
 namespace DotNetAgentSurface.Core;
 
+/// <summary>
+/// Invokes <see cref="OperationDescriptor"/>s discovered/registered via <see cref="OperationCatalog"/>/<see
+/// cref="OperationCatalogBuilder"/>, resolving service targets, binding JSON inputs, and evaluating the
+/// constructor-supplied policies before the underlying method runs.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Confirmation is opt-in, not automatic.</b> <see cref="AgentOperationAttribute.SafetyLevel"/>/<see
+/// cref="OperationDescriptor.SafetyLevel"/> (<see cref="AgentSafetyLevel.Confirm"/>/<see
+/// cref="AgentSafetyLevel.Dangerous"/>) is metadata only — it describes intent but enforces nothing by itself.
+/// An operation is only actually gated when a policy that implements <see cref="IConfirmationEnforcingPolicy"/>
+/// (for example, <see cref="DangerousOperationConfirmationPolicy"/>) is supplied either to this class's
+/// constructor policies or on the individual <see cref="OperationDescriptor.InvocationPolicies"/>.
+/// </para>
+/// <para>
+/// To make this hard to miss, <see cref="InvokeAsync"/> throws <see cref="ConfirmationPolicyMissingException"/>
+/// before running any operation whose <see cref="OperationDescriptor.SafetyLevel"/> is above <see
+/// cref="AgentSafetyLevel.Safe"/> if no confirmation-enforcing policy is present. Attach a <see
+/// cref="DangerousOperationConfirmationPolicy"/> (or a custom policy implementing <see
+/// cref="IConfirmationEnforcingPolicy"/>) to avoid this, and pass an <see cref="OperationConfirmation"/> at
+/// invocation time to actually satisfy it.
+/// </para>
+/// </remarks>
 public sealed class OperationInvoker
 {
     private readonly IServiceProvider _services;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly IReadOnlyList<IOperationInvocationPolicy> _policies;
 
+    /// <param name="services">Resolves unbound instance-method targets for discovered/registered operations.</param>
+    /// <param name="jsonOptions">Options used to bind JSON inputs; defaults to <see cref="JsonSerializerDefaults.Web"/>.</param>
+    /// <param name="policies">
+    /// Policies evaluated before every invocation, in order, ahead of any operation-level <see
+    /// cref="OperationDescriptor.InvocationPolicies"/>. To enforce <see cref="AgentSafetyLevel.Confirm"/>/<see
+    /// cref="AgentSafetyLevel.Dangerous"/> operations — rather than merely describing them via metadata — include
+    /// a policy implementing <see cref="IConfirmationEnforcingPolicy"/>, such as <see
+    /// cref="DangerousOperationConfirmationPolicy"/>. See the type-level remarks for details.
+    /// </param>
     public OperationInvoker(
         IServiceProvider services,
         JsonSerializerOptions? jsonOptions = null,
@@ -27,6 +59,7 @@ public sealed class OperationInvoker
         OperationInvocationContext? invocationContext = null)
     {
         Guard.ThrowIfNull(operation);
+        EnsureConfirmationIsEnforceable(operation);
 
         try
         {
@@ -65,6 +98,33 @@ public sealed class OperationInvoker
         {
             return OperationInvocationResult.Failure(exception.Message);
         }
+    }
+
+    /// <summary>
+    /// Guards against the trap where <see cref="OperationDescriptor.SafetyLevel"/> looks gated (<see
+    /// cref="AgentSafetyLevel.Confirm"/> or <see cref="AgentSafetyLevel.Dangerous"/>) but no supplied policy
+    /// actually enforces confirmation, which would otherwise let the invocation silently proceed unconfirmed.
+    /// See the <see cref="OperationInvoker(IServiceProvider, JsonSerializerOptions?, IEnumerable{IOperationInvocationPolicy}?)"/>
+    /// constructor remarks for how to satisfy this check.
+    /// </summary>
+    private void EnsureConfirmationIsEnforceable(OperationDescriptor operation)
+    {
+        if (operation.SafetyLevel == AgentSafetyLevel.Safe)
+        {
+            return;
+        }
+
+        if (_policies.Concat(operation.InvocationPolicies).Any(static policy => policy is IConfirmationEnforcingPolicy))
+        {
+            return;
+        }
+
+        throw new ConfirmationPolicyMissingException(
+            $"Operation '{operation.Name}' has SafetyLevel '{operation.SafetyLevel}', which is metadata only. " +
+            $"No supplied policy implements {nameof(IConfirmationEnforcingPolicy)} to actually enforce confirmation, " +
+            $"so invoking it would silently bypass the safety gate. Pass a {nameof(DangerousOperationConfirmationPolicy)} " +
+            "(or another policy implementing that interface) to the OperationInvoker constructor or the operation's " +
+            $"{nameof(OperationDescriptor.InvocationPolicies)}.");
     }
 
     private object? ResolveTarget(OperationDescriptor operation)
@@ -205,6 +265,20 @@ public sealed record OperationInvocationResult(bool Succeeded, bool IsCancelled,
 public sealed class OperationBindingException : Exception
 {
     public OperationBindingException(string message)
+        : base(message)
+    {
+    }
+}
+
+/// <summary>
+/// Thrown by <see cref="OperationInvoker"/> when an operation's <see cref="OperationDescriptor.SafetyLevel"/> is
+/// <see cref="AgentSafetyLevel.Confirm"/> or <see cref="AgentSafetyLevel.Dangerous"/> but none of the supplied
+/// policies (constructor-level or operation-level) implement <see cref="IConfirmationEnforcingPolicy"/>. This
+/// fails fast instead of allowing an apparently safety-gated operation to run unconfirmed.
+/// </summary>
+public sealed class ConfirmationPolicyMissingException : Exception
+{
+    public ConfirmationPolicyMissingException(string message)
         : base(message)
     {
     }

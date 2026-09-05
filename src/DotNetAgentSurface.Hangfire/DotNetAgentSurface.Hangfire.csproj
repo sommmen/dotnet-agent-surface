@@ -14,9 +14,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Hangfire.Core" Version="1.8.18" />
-    <PackageReference Include="Hangfire.InMemory" Version="0.9.0" />
-    <!-- Hangfire.Core 1.8.18 transitively selects vulnerable Newtonsoft.Json 11.0.1 on netstandard2.0. -->
+    <PackageReference Include="Hangfire.Core" Version="1.8.25" />
+    <PackageReference Include="Hangfire.InMemory" Version="1.0.0" />
+    <!-- Hangfire.Core 1.8.25 still transitively selects vulnerable Newtonsoft.Json 11.0.1 on netstandard2.0. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="PolySharp" Version="1.14.1">
       <PrivateAssets>all</PrivateAssets>

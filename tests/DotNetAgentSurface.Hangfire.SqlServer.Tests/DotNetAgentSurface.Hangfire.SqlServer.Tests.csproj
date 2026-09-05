@@ -11,9 +11,9 @@
     <!-- Hangfire.SqlServer is pinned to the exact Hangfire.Core version referenced by
          DotNetAgentSurface.Hangfire so both packages resolve a single, consistent
          Hangfire.Core version. -->
-    <PackageReference Include="Hangfire.SqlServer" Version="1.8.18" />
+    <PackageReference Include="Hangfire.SqlServer" Version="1.8.25" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
-    <!-- Hangfire.Core 1.8.18 selects vulnerable Newtonsoft.Json 11.0.1 transitively; pin the
+    <!-- Hangfire.Core 1.8.25 still selects vulnerable Newtonsoft.Json 11.0.1 transitively; pin the
          same remediated version DotNetAgentSurface.Hangfire already carries. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <!-- Provisions a throwaway SQL Server container for opt-in local/CI compatibility runs. -->

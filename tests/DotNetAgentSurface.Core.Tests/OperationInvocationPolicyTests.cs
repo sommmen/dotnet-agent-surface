@@ -42,7 +42,9 @@ public sealed class OperationInvocationPolicyTests
         var operations = new DangerousOperations();
         var operation = OperationCatalog.Discover(typeof(DangerousOperations)).Operations.Single();
         var policy = new RecordingPolicy();
-        var invoker = new OperationInvoker(new SingleServiceProvider(operations), policies: [policy]);
+        var invoker = new OperationInvoker(
+            new SingleServiceProvider(operations),
+            policies: [policy, new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
 
         var result = await invoker.InvokeAsync(operation);
 
@@ -59,7 +61,9 @@ public sealed class OperationInvocationPolicyTests
         var policy = new RecordingPolicy();
         var context = new OperationInvocationContext(new ClaimsPrincipal(new ClaimsIdentity("test")), "credential");
 
-        var result = await new OperationInvoker(new SingleServiceProvider(operations), policies: [policy])
+        var result = await new OperationInvoker(
+                new SingleServiceProvider(operations),
+                policies: [policy, new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))])
             .InvokeAsync(operation, invocationContext: context);
 
         Assert.True(result.Succeeded);

@@ -6,7 +6,7 @@ using Hangfire.Common;
 using Hangfire.InMemory;
 using Hangfire.Storage;
 
-// This sample demonstrates three Hangfire discovery satellites end to end:
+// This sample demonstrates four Hangfire discovery satellites end to end:
 //
 //   1. Stable recurring-job operations (AddHangfireRecurringOperations): rather than cataloging one
 //      operation per job at startup, this registers exactly two stable operations —
@@ -26,6 +26,10 @@ using Hangfire.Storage;
 //      automatically — no caller-supplied predicate or method selector is required for the common case.
 //      Options-based jobs get an automatically generated JSON input schema and binding, reusing the same
 //      OperationCatalogBuilder.Add(...) reflection machinery as any other operation.
+//   4. Job continuation and status lookup (AddHangfireJobStatusOperations): continue-hangfire-job
+//      enqueues a follow-up job that only starts once a given parent job ID succeeds, and
+//      get-hangfire-job-status reports a job's current state (and, if configured, its dashboard URL)
+//      by ID. Both operations work with a job ID returned by any of the satellites above.
 //
 // Hangfire.InMemory keeps the sample self-contained (no Redis/SQL Server backend required) so it can
 // run with a plain `dotnet run`.
@@ -55,7 +59,17 @@ foreach (var operation in catalog.Operations)
 
 // Operations resolve storage/manager dependencies from static delegates, so no service provider
 // lookups are required; NullServiceProvider only exists to satisfy the OperationInvoker constructor.
-var invoker = new OperationInvoker(new NullServiceProvider());
+//
+// Every operation registered by this sample defaults to AgentSafetyLevel.Confirm or higher (trigger-
+// recurring-hangfire, the AddHangfireJobTypes discoveries, and RegisterJobs<>()). That SafetyLevel is
+// metadata only: OperationInvoker does not enforce it by itself, so a policy implementing
+// IConfirmationEnforcingPolicy (here, DangerousOperationConfirmationPolicy) must be supplied, or
+// OperationInvoker throws ConfirmationPolicyMissingException instead of silently allowing unconfirmed
+// invocations. This sample auto-approves every confirmation for demonstration purposes only; a real
+// host should gate the callback on genuine user/operator approval.
+var invoker = new OperationInvoker(
+    new NullServiceProvider(),
+    policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
 
 Console.WriteLine();
 Console.WriteLine("Listing recurring jobs currently in storage...");
@@ -181,12 +195,15 @@ Console.WriteLine();
 Console.WriteLine("Invoking 'job:SendWelcomeEmailJob' (parameterless job) on demand...");
 var welcomeEmail = jobTypeCatalog.Operations.Single(operation => operation.Name == "job:SendWelcomeEmailJob");
 result = await invoker.InvokeAsync(welcomeEmail);
-Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {result.Error}");
+// AddHangfireJobTypes/RegisterJobs register operations returning the enqueued Hangfire job ID (a
+// string), not null, so callers can chain a continuation or poll status with it (see part 4 below).
+var welcomeEmailJobId = result.Succeeded ? (string?)result.Value : null;
+Console.WriteLine(result.Succeeded ? $"  Enqueued successfully as job {welcomeEmailJobId}." : $"  Failed: {result.Error}");
 
 Console.WriteLine("Invoking 'job:ArchiveOldRecordsJob' (options-based job) on demand...");
 var archiveOldRecords = jobTypeCatalog.Operations.Single(operation => operation.Name == "job:ArchiveOldRecordsJob");
 result = await invoker.InvokeAsync(archiveOldRecords);
-Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {result.Error}");
+Console.WriteLine(result.Succeeded ? $"  Enqueued successfully as job {result.Value}." : $"  Failed: {result.Error}");
 
 Console.WriteLine();
 Console.WriteLine("Enqueued background jobs now waiting for a worker (none is running in this sample):");
@@ -229,6 +246,67 @@ var purgeInputs = new Dictionary<string, JsonElement>
 };
 result = await invoker.InvokeAsync(purgeCache, purgeInputs);
 Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {result.Error}");
+
+// === 4. Chaining a follow-up job and polling status (AddHangfireJobStatusOperations) ===
+//
+// continue-hangfire-job and get-hangfire-job-status are independent of how the parent job was
+// enqueued: any job ID returned by AddHangfireJobTypes, RegisterJobs<>(), or trigger-recurring-hangfire
+// works as the parentId/jobId input below.
+var digestFollowUpJob = new Job(typeof(SampleJobs), typeof(SampleJobs).GetMethod(nameof(SampleJobs.SendReport))!);
+var statusCatalog = new OperationCatalogBuilder()
+    .AddHangfireJobStatusOperations(backgroundJobClient, storage, digestFollowUpJob, options =>
+    {
+        options.Category = "Ad-hoc jobs";
+        // No public Hangfire API exposes the dashboard's mounted base path at runtime, so callers
+        // supply it explicitly if a dashboard is hosted; omit this to skip reporting a URL.
+        options.DashboardBaseUrl = "https://ops.example.com/hangfire";
+    })
+    .Build();
+
+Console.WriteLine();
+Console.WriteLine("=== 4. Chaining a follow-up job and polling status (AddHangfireJobStatusOperations) ===");
+Console.WriteLine($"Discovered {statusCatalog.Operations.Count} Hangfire job-status operation(s):");
+foreach (var operation in statusCatalog.Operations)
+{
+    Console.WriteLine($"  - {operation.Name} [{operation.Category}, {operation.SafetyLevel}]: {operation.Description}");
+}
+
+Console.WriteLine();
+Console.WriteLine($"Enqueuing a follow-up job to run once job {welcomeEmailJobId} succeeds...");
+var continueJob = statusCatalog.Operations.Single(operation => operation.Name == "continue-hangfire-job");
+var continueInputs = new Dictionary<string, JsonElement>
+{
+    ["parentJobId"] = JsonDocument.Parse(JsonSerializer.Serialize(welcomeEmailJobId)).RootElement.Clone()
+};
+result = await invoker.InvokeAsync(continueJob, continueInputs);
+var continuationJobId = result.Succeeded ? (string?)result.Value : null;
+Console.WriteLine(result.Succeeded ? $"  Enqueued continuation as job {continuationJobId}." : $"  Failed: {result.Error}");
+
+Console.WriteLine();
+Console.WriteLine($"Looking up the status of job {welcomeEmailJobId}...");
+var jobStatus = statusCatalog.Operations.Single(operation => operation.Name == "get-hangfire-job-status");
+var jobStatusInputs = new Dictionary<string, JsonElement>
+{
+    ["jobId"] = JsonDocument.Parse(JsonSerializer.Serialize(welcomeEmailJobId)).RootElement.Clone()
+};
+result = await invoker.InvokeAsync(jobStatus, jobStatusInputs);
+if (result is { Succeeded: true, Value: HangfireJobStatus status })
+{
+    Console.WriteLine($"  State: {status.State}, dashboard: {status.DashboardUrl ?? "n/a"}.");
+}
+else
+{
+    Console.WriteLine(result.Succeeded ? "  Job not found." : $"  Failed: {result.Error}");
+}
+
+Console.WriteLine();
+Console.WriteLine("Looking up an unknown job id (returns null instead of throwing)...");
+var unknownStatusInputs = new Dictionary<string, JsonElement>
+{
+    ["jobId"] = JsonDocument.Parse("""  "does-not-exist"  """).RootElement.Clone()
+};
+result = await invoker.InvokeAsync(jobStatus, unknownStatusInputs);
+Console.WriteLine(result.Succeeded ? $"  Status: {result.Value ?? "null (not found)"}." : $"  Failed: {result.Error}");
 
 /// <summary>Static job methods stand in for real recurring jobs; Hangfire jobs are typically static or DI-resolved.</summary>
 internal static class SampleJobs

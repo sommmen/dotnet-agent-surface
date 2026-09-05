@@ -17,8 +17,25 @@ public sealed class HangfireJobTypeDiscoveryOptions
     public string? Category { get; set; } = "Hangfire";
 
     /// <summary>
-    /// Gets or sets the safety level assigned when no per-job enrichment is supplied.
+    /// Gets or sets the safety level assigned when no per-job enrichment is supplied. Defaults to
+    /// <see cref="AgentSafetyLevel.Confirm"/> because enqueuing a background job is rarely something an agent
+    /// should be able to do without confirmation.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This default does not, by itself, prevent unconfirmed execution.</b> <see cref="AgentSafetyLevel"/> is
+    /// metadata only; it is only enforced if the <see cref="OperationInvoker"/> used to invoke discovered job
+    /// operations is constructed with a policy implementing <see cref="IConfirmationEnforcingPolicy"/> (for
+    /// example <see cref="DangerousOperationConfirmationPolicy"/>).
+    /// </para>
+    /// <para>
+    /// Consumers who call <see cref="HangfireJobTypeOperationCatalogBuilderExtensions.AddHangfireJobTypes"/> and
+    /// then construct an <see cref="OperationInvoker"/> without such a policy will find that
+    /// <see cref="OperationInvoker.InvokeAsync"/> throws <see cref="ConfirmationPolicyMissingException"/> instead
+    /// of silently enqueuing the job unconfirmed &#8212; wire a confirmation-enforcing policy into the invoker to
+    /// enable (and gate) execution.
+    /// </para>
+    /// </remarks>
     public AgentSafetyLevel SafetyLevel { get; set; } = AgentSafetyLevel.Confirm;
 
     /// <summary>

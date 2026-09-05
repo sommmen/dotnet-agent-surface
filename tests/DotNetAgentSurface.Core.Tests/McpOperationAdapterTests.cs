@@ -96,7 +96,9 @@ public sealed class McpOperationAdapterTests
     {
         var adapter = new McpOperationAdapter(
             OperationCatalog.Discover(typeof(GreetingOperations)),
-            new OperationInvoker(new SingleServiceProvider(new GreetingOperations())));
+            new OperationInvoker(
+                new SingleServiceProvider(new GreetingOperations()),
+                policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]));
 
         var result = await adapter.InvokeAsync("fail");
 
@@ -126,7 +128,13 @@ public sealed class McpOperationAdapterTests
             .AddMcpServerTools(typeof(NativeMcpTools).Assembly, type =>
                 type == typeof(NativeMcpTools) ? new NativeMcpTools() : null)
             .Build();
-        var adapter = new McpOperationAdapter(catalog, new OperationInvoker(new SingleServiceProvider(new NativeMcpTools())));
+        var confirmationPolicies = new IOperationInvocationPolicy[]
+        {
+            new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true)),
+        };
+        var adapter = new McpOperationAdapter(
+            catalog,
+            new OperationInvoker(new SingleServiceProvider(new NativeMcpTools()), policies: confirmationPolicies));
         var outputDirectory = Path.Combine(Path.GetTempPath(), $"dotnet-agent-surface-{Guid.NewGuid():N}");
 
         try
@@ -135,7 +143,9 @@ public sealed class McpOperationAdapterTests
 
             var operation = Assert.Single(catalog.Operations);
             var tool = Assert.Single(adapter.GetTools());
-            var commandLine = new OperationCommandLineAdapter(catalog, new OperationInvoker(new SingleServiceProvider(new NativeMcpTools())));
+            var commandLine = new OperationCommandLineAdapter(
+                catalog,
+                new OperationInvoker(new SingleServiceProvider(new NativeMcpTools()), policies: confirmationPolicies));
             var cliResult = await commandLine.ExecuteAsync(["native-greet", "--name", "\"Ada\""]);
             var result = await adapter.InvokeAsync("native-greet", ArgumentsFor("Ada"));
 

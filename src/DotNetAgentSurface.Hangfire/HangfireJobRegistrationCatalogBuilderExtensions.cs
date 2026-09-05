@@ -77,6 +77,146 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
             });
     }
 
+    /// <summary>
+    /// Discovers every concrete class across <paramref name="assemblies"/> that closes the open generic
+    /// <see cref="IHangfireJob{TOptions}"/> interface for any <c>TOptions</c> — including via
+    /// <see cref="HangfireJobWithOptions{TOptions}"/> — and adds an enqueue operation for each discovered
+    /// (job type, <c>TOptions</c>) pair. This is the assembly-scanning counterpart to
+    /// <see cref="RegisterJobs{TJobBase, TOptions}"/>: that overload registers one closed, compile-time-known
+    /// <c>TOptions</c> per call, so a consumer with several distinct options-based job families needs one call
+    /// per family; this overload registers all of them in a single call and automatically picks up a newly
+    /// added options-based job the next time discovery runs, without a corresponding call-site change.
+    /// </summary>
+    /// <remarks>
+    /// Each discovered job must implement exactly one closed <see cref="IHangfireJob{TOptions}"/> interface;
+    /// a job that implements more than one is skipped and reported as ambiguous because
+    /// <see cref="HangfireJobRegistrationOptions.NameFactory"/> accepts only the job type and cannot produce a
+    /// distinct name for each options type. Prefer <see cref="RegisterJobs{TJobBase, TOptions}"/> when a
+    /// single, narrow <c>TOptions</c>-shaped family should be exposed under a caller-controlled
+    /// <c>TOptions</c>-typed base constraint; prefer this overload when the goal is "expose every
+    /// options-based job in these assemblies, whatever their options type turns out to be". Discovery only
+    /// inspects types via reflection; it never
+    /// constructs a job instance (see <see cref="RegisterJobs{TJobBase}"/> for the brownfield/constructor
+    /// rationale).
+    /// </remarks>
+    public static OperationCatalogBuilder RegisterAllOptionsJobs(
+        this OperationCatalogBuilder builder,
+        IBackgroundJobClient backgroundJobClient,
+        IEnumerable<Assembly> assemblies,
+        Action<HangfireJobRegistrationOptions>? configure = null)
+    {
+        if (builder is null)
+        {
+            throw new ArgumentNullException(nameof(builder));
+        }
+
+        if (backgroundJobClient is null)
+        {
+            throw new ArgumentNullException(nameof(backgroundJobClient));
+        }
+
+        if (assemblies is null)
+        {
+            throw new ArgumentNullException(nameof(assemblies));
+        }
+
+        var options = new HangfireJobRegistrationOptions();
+        configure?.Invoke(options);
+
+        var assemblyList = assemblies.ToArray();
+        if (assemblyList.Any(static assembly => assembly is null))
+        {
+            throw new ArgumentException("Assemblies must not contain null values.", nameof(assemblies));
+        }
+
+        var candidates = new List<(Type Type, Type OptionsInterface)>();
+        foreach (var jobType in GetLoadableTypes(assemblyList, options).Where(IsConcreteClosedClass).Distinct())
+        {
+            var optionsInterfaces = jobType.GetInterfaces()
+                .Where(static candidate => candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(IHangfireJob<>))
+                .Distinct()
+                .ToArray();
+
+            if (optionsInterfaces.Length > 1)
+            {
+                Report(options, jobType, "Multiple closed IHangfireJob<TOptions> interfaces were found; use RegisterJobs<TJobBase, TOptions> to register this job explicitly.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+                continue;
+            }
+
+            if (optionsInterfaces.Length == 1)
+            {
+                candidates.Add((jobType, optionsInterfaces[0]));
+            }
+        }
+
+        foreach (var (jobType, optionsInterface) in candidates
+            .OrderBy(pair => NormalizeName(options.NameFactory?.Invoke(pair.Type) ?? ToKebabCase(pair.Type.Name), options.Category), StringComparer.Ordinal)
+            .ThenBy(pair => pair.Type.FullName, StringComparer.Ordinal))
+        {
+            if (options.Exclude?.Invoke(jobType) == true)
+            {
+                Report(options, jobType, "The job type was excluded by the configured predicate.", HangfireJobDiscoveryDisposition.Skipped);
+                continue;
+            }
+
+            var method = SelectMethod(jobType, optionsInterface, options);
+            if (method is null)
+            {
+                continue;
+            }
+
+            var optionsType = optionsInterface.GetGenericArguments()[0];
+            var name = options.NameFactory?.Invoke(jobType) ?? ToKebabCase(jobType.Name);
+            var description = $"Enqueues a single execution of {jobType.FullName ?? jobType.Name}.";
+            var metadata = new HangfireJobRegistrationMetadata(name, description, options.Category, options.SafetyLevel);
+            options.Enrich?.Invoke(jobType, metadata);
+            if (string.IsNullOrWhiteSpace(metadata.Name))
+            {
+                throw new InvalidOperationException($"Metadata enrichment produced an empty operation name for '{jobType.FullName}'.");
+            }
+
+            if (options.SafetyLevel == AgentSafetyLevel.Dangerous && metadata.SafetyLevel != AgentSafetyLevel.Dangerous)
+            {
+                metadata.SafetyLevel = AgentSafetyLevel.Dangerous;
+            }
+
+            var implementation = (Delegate)CreateEnqueueDelegateMethod
+                .MakeGenericMethod(optionsType)
+                .Invoke(null, new object[] { backgroundJobClient, jobType, method })!;
+
+            builder.Add(metadata.Name, metadata.Description, implementation, operation =>
+            {
+                operation.Category = metadata.Category;
+                operation.SafetyLevel = metadata.SafetyLevel;
+                operation.Aliases.AddRange(metadata.Aliases);
+                operation.Examples.AddRange(metadata.Examples);
+            });
+
+            Report(options, jobType, "The job type was registered.", HangfireJobDiscoveryDisposition.Registered, method.Name, metadata.Name);
+        }
+
+        return builder;
+    }
+
+    private static readonly MethodInfo CreateEnqueueDelegateMethod =
+        typeof(HangfireJobRegistrationCatalogBuilderExtensions).GetMethod(nameof(CreateEnqueueDelegate), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+    /// <summary>
+    /// Builds the enqueue delegate for <see cref="RegisterAllOptionsJobs"/>, where <typeparamref name="TOptions"/>
+    /// is only known at runtime (via <see cref="MethodInfo.MakeGenericMethod"/>) rather than as a compile-time
+    /// generic argument, unlike <see cref="RegisterJobs{TJobBase, TOptions}"/>'s statically-typed delegate.
+    /// </summary>
+    private static Func<TOptions, CancellationToken, string> CreateEnqueueDelegate<TOptions>(
+        IBackgroundJobClient client, Type jobType, MethodInfo method)
+    {
+        string Enqueue(TOptions options, CancellationToken cancellationToken)
+        {
+            return client.Create(new Job(jobType, method, new object?[] { options, CancellationToken.None }), new EnqueuedState());
+        }
+
+        return Enqueue;
+    }
+
     private static OperationCatalogBuilder Register(
         OperationCatalogBuilder builder,
         IBackgroundJobClient backgroundJobClient,

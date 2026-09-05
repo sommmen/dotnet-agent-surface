@@ -33,16 +33,31 @@ public static class HangfireJobStatusOperationCatalogBuilderExtensions
     /// <param name="job">
     /// The job to enqueue as a continuation once its parent job ID (supplied at invocation time) reaches a
     /// matching state. Build this the same way <c>AddHangfireJobTypes</c> does, for example
-    /// <c>new Job(typeof(MyJob), typeof(MyJob).GetMethod(nameof(MyJob.Execute)))</c>.
+    /// <c>new Job(typeof(MyJob), typeof(MyJob).GetMethod(nameof(MyJob.Execute)))</c>, or use
+    /// <see cref="HangfireJobStatusOperations.ForJob{TJob}()"/>/<see cref="HangfireJobStatusOperations.ForJob{TJob, TOptions}(TOptions)"/>
+    /// to build it via the same convention-based method discovery <c>RegisterJobs</c> uses internally.
     /// </param>
-    /// <param name="configure">Optional callback to customize category, safety level, and continuation defaults.</param>
+    /// <param name="configure">Optional callback to customize category, safety level, operation names, and continuation defaults.</param>
     /// <remarks>
+    /// <para>
     /// Both operations default to <see cref="AgentSafetyLevel.Confirm"/> and <see cref="AgentSafetyLevel.Safe"/>
     /// respectively (see <see cref="HangfireJobStatusOperationsOptions"/>), but <see cref="AgentSafetyLevel"/> is
     /// metadata only. Invoking <c>continue-hangfire-job</c> through an <see cref="OperationInvoker"/> without a
     /// policy implementing <see cref="IConfirmationEnforcingPolicy"/> (for example
     /// <see cref="DangerousOperationConfirmationPolicy"/>) will throw <see cref="ConfirmationPolicyMissingException"/>
     /// rather than silently bypassing confirmation.
+    /// </para>
+    /// <para>
+    /// Each call to this method binds <c>continue-hangfire-job</c> to exactly one <paramref name="job"/>. To
+    /// expose several distinct continuation targets from one CLI, call this method once per target and set
+    /// <see cref="HangfireJobStatusOperationsOptions.ContinuationOperationName"/> to a distinct name each time
+    /// (for example <c>"continue-with-report-job"</c>, <c>"continue-with-cleanup-job"</c>) — every operation in
+    /// a catalog must have a unique name, so registering the default <c>"continue-hangfire-job"</c> name twice
+    /// throws an <see cref="OperationCatalogException"/> when the catalog is built. Only the first call needs to
+    /// add <c>get-hangfire-job-status</c>; later calls can set
+    /// <see cref="HangfireJobStatusOperationsOptions.StatusOperationName"/> to null to skip re-adding it, since a
+    /// single status-lookup operation already works for any job ID regardless of which call created it.
+    /// </para>
     /// </remarks>
     public static OperationCatalogBuilder AddHangfireJobStatusOperations(
         this OperationCatalogBuilder builder,
@@ -74,8 +89,15 @@ public static class HangfireJobStatusOperationCatalogBuilderExtensions
         var options = new HangfireJobStatusOperationsOptions();
         configure?.Invoke(options);
 
+        if (string.IsNullOrWhiteSpace(options.ContinuationOperationName))
+        {
+            throw new ArgumentException(
+                $"{nameof(HangfireJobStatusOperationsOptions.ContinuationOperationName)} must not be null or blank.",
+                nameof(configure));
+        }
+
         builder.Add(
-            "continue-hangfire-job",
+            options.ContinuationOperationName,
             "Enqueues a follow-up background job that runs once the background job identified by " +
             "'parentJobId' reaches a matching state (succeeded, by default). Returns the continuation job's " +
             "own ID, which is created immediately but stays in the 'Awaiting' state until the parent " +
@@ -87,18 +109,22 @@ public static class HangfireJobStatusOperationCatalogBuilderExtensions
                 operation.SafetyLevel = options.ContinuationSafetyLevel;
             });
 
-        builder.Add(
-            "get-hangfire-job-status",
-            "Looks up the current status of a background job by its Hangfire job ID, for example one " +
-            "returned by enqueuing or continuing a job through this catalog. Returns null if no job with " +
-            "that ID exists in storage (it may have already been expired and removed), but throws if " +
-            "'jobId' itself is missing or blank.",
-            (Func<string, HangfireJobStatus?>)(jobId => GetJobStatus(storage, jobId, options)),
-            operation =>
-            {
-                operation.Category = options.Category;
-                operation.SafetyLevel = options.StatusSafetyLevel;
-            });
+        var statusOperationName = options.StatusOperationName;
+        if (!string.IsNullOrWhiteSpace(statusOperationName))
+        {
+            builder.Add(
+                statusOperationName!,
+                "Looks up the current status of a background job by its Hangfire job ID, for example one " +
+                "returned by enqueuing or continuing a job through this catalog. Returns null if no job with " +
+                "that ID exists in storage (it may have already been expired and removed), but throws if " +
+                "'jobId' itself is missing or blank.",
+                (Func<string, HangfireJobStatus?>)(jobId => GetJobStatus(storage, jobId, options)),
+                operation =>
+                {
+                    operation.Category = options.Category;
+                    operation.SafetyLevel = options.StatusSafetyLevel;
+                });
+        }
 
         return builder;
     }

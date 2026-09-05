@@ -68,8 +68,9 @@ listed. Each entry links the pull request(s) that shipped it.
   "find the public Execute/ExecuteAsync method by convention" discovery
   `RegisterJobs<TJobBase>` uses internally, instead of requiring callers to
   hand-roll `GetMethod(...)` plus a null-coalescing throw at every call site.
-  Throws `InvalidOperationException` if the job type has no matching method or
-  more than one candidate, matching `RegisterJobs`'s existing error semantics.
+  Throws `InvalidOperationException` unconditionally if the job type has no matching method or
+  more than one candidate; unlike `RegisterJobs` (which only fails hard under `StrictValidation`),
+  `ForJob` has no discovery-report/strict-mode concept and immediately surfaces ambiguity as an error.
 - `HangfireJobStatusOperationsOptions.ContinuationOperationName` and
   `StatusOperationName`, letting a consumer register more than one
   continuation target from `AddHangfireJobStatusOperations` in the same

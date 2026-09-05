@@ -244,6 +244,32 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     }
 
     [Fact]
+    public void RegisterAllOptionsJobs_excludes_ambiguous_job_types_before_checking_ambiguity()
+    {
+        // An excluded job type that implements multiple closed IHangfireJob<TOptions> interfaces
+        // should NOT trigger a strict-validation failure; it should be skipped silently (reported as excluded).
+        var client = new RecordingBackgroundJobClient();
+        HangfireJobRegistrationOptions? observed = null;
+
+        // This should NOT throw even in strict mode because the ambiguous job is excluded.
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(
+                client,
+                [typeof(AmbiguousOptionsJob).Assembly],
+                options =>
+                {
+                    options.Exclude = type => type == typeof(AmbiguousOptionsJob) || type == typeof(ScanMultiOptions);
+                    options.StrictValidation = true;
+                    observed = options;
+                })
+            .Build();
+
+        // AmbiguousOptionsJob should be reported as excluded (not ambiguous), even with multiple IHangfireJob<TOptions> interfaces.
+        var diagnostic = Assert.Single(observed!.Diagnostics, d => d.JobType == typeof(AmbiguousOptionsJob));
+        Assert.Contains("excluded", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void RegisterJobs_allows_metadata_enrichment_but_does_not_downgrade_dangerous_defaults()
     {
         var client = new RecordingBackgroundJobClient();
@@ -302,6 +328,80 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
 
         var exception = Assert.Throws<ArgumentException>(() => new OperationCatalogBuilder()
             .RegisterJobs<DiscoveredJobBase>(new RecordingBackgroundJobClient(), assemblies!));
+
+        Assert.Equal("assemblies", exception.ParamName);
+    }
+
+    [Fact]
+    public async Task RegisterAllOptionsJobs_discovers_every_closed_options_type_in_one_call()
+    {
+        var client = new RecordingBackgroundJobClient();
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(client, [typeof(ScanA).Assembly], options => options.Exclude = type =>
+                type != typeof(ScanA) && type != typeof(ScanB))
+            .Build();
+
+        var operationA = Assert.Single(catalog.Operations, operation => operation.Name == "scan-a");
+        var operationB = Assert.Single(catalog.Operations, operation => operation.Name == "scan-b");
+
+        var inputsA = new Dictionary<string, JsonElement> { ["options"] = JsonDocument.Parse("{\"batchSize\":3}").RootElement.Clone() };
+        var resultA = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationA, inputsA);
+        Assert.True(resultA.Succeeded);
+        var createdA = Assert.Single(client.CreatedJobs);
+        Assert.Equal(typeof(ScanA), createdA.Job.Type);
+        Assert.Equal(3, Assert.IsType<ScanOptionsA>(createdA.Job.Args[0]).BatchSize);
+
+        var inputsB = new Dictionary<string, JsonElement> { ["options"] = JsonDocument.Parse("{\"label\":\"x\"}").RootElement.Clone() };
+        var resultB = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationB, inputsB);
+        Assert.True(resultB.Succeeded);
+        var createdB = client.CreatedJobs.Single(created => created.Job.Type == typeof(ScanB));
+        Assert.Equal("x", Assert.IsType<ScanOptionsB>(createdB.Job.Args[0]).Label);
+    }
+
+    [Fact]
+    public void RegisterAllOptionsJobs_reports_a_job_with_multiple_options_interfaces_as_ambiguous()
+    {
+        HangfireJobRegistrationOptions? observed = null;
+
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(
+                new RecordingBackgroundJobClient(),
+                [typeof(ScanMultiOptions).Assembly],
+                options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type != typeof(ScanMultiOptions);
+                })
+            .Build();
+
+        Assert.DoesNotContain(catalog.Operations, operation => operation.Name == "scan-multi-options");
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(ScanMultiOptions) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason.StartsWith("Multiple closed IHangfireJob<TOptions> interfaces were found;", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RegisterAllOptionsJobs_rejects_ambiguous_options_interfaces_in_strict_mode()
+    {
+        Assert.Throws<OperationCatalogException>(() => new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(
+                new RecordingBackgroundJobClient(),
+                [typeof(ScanMultiOptions).Assembly],
+                options =>
+                {
+                    options.Exclude = type => type != typeof(ScanMultiOptions);
+                    options.StrictValidation = true;
+                }));
+    }
+
+    [Fact]
+    public void RegisterAllOptionsJobs_rejects_null_assemblies()
+    {
+        var assemblies = new Assembly?[] { typeof(ScanA).Assembly, null };
+
+        var exception = Assert.Throws<ArgumentException>(() => new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(new RecordingBackgroundJobClient(), assemblies!));
 
         Assert.Equal("assemblies", exception.ParamName);
     }
@@ -413,6 +513,30 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     }
 
     private sealed class BrownfieldOptions { public int BatchSize { get; set; } }
+
+    private sealed class ScanOptionsA { public int BatchSize { get; set; } }
+    private sealed class ScanOptionsB { public string? Label { get; set; } }
+    private sealed class ScanA : HangfireJobWithOptions<ScanOptionsA>
+    {
+        public override Task ExecuteAsync(ScanOptionsA options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class ScanB : HangfireJobWithOptions<ScanOptionsB>
+    {
+        public override Task ExecuteAsync(ScanOptionsB options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class ScanMultiOptions : IHangfireJob<ScanOptionsA>, IHangfireJob<ScanOptionsB>
+    {
+        public Task ExecuteAsync(ScanOptionsA options, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ExecuteAsync(ScanOptionsB options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class AmbiguousOptionsJob : IHangfireJob<ScanOptionsA>, IHangfireJob<ScanOptionsB>
+    {
+        public Task ExecuteAsync(ScanOptionsA options, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ExecuteAsync(ScanOptionsB options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     /// <summary>A brownfield options-bearing base class taking a constructor parameter.</summary>
     private abstract class BrownfieldOptionsJobBase<TSelf> : IHangfireJob<BrownfieldOptions>

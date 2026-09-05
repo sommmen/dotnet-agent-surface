@@ -39,7 +39,15 @@ DotNetAgentSurface, without duplicating any operation definitions.
   discovery satellite, plus predicate-based ad-hoc job discovery
   (`AddHangfireJobTypes`) and attributed base-class job discovery
   (`RegisterJobs<TJobBase>()` / `RegisterJobs<TJobBase, TOptions>()`), then
-  invokes them as agent operations.
+  invokes them as agent operations. Because it deliberately demonstrates all
+  four Hangfire discovery satellites side by side, its `Program.cs` is
+  several hundred lines — a real consumer wiring up that many satellites
+  plus its own custom operations should expect a similarly sized
+  composition root. `DotNetAgentSurface.Samples.Hangfire.Cli` (below) is the
+  representative size for a CLI that only needs one satellite: its
+  `Program.cs` is ~50 lines end to end, most of which is composition-root
+  boilerplate shared by every sample CLI in this repository, not
+  Hangfire-specific.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI

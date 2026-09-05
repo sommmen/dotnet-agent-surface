@@ -200,21 +200,53 @@ Attach `DangerousOperationConfirmationPolicy` to every CLI and MCP host. It neve
 |---|---|---|
 | List or trigger existing recurring definitions without rebuilding the catalog | `AddHangfireRecurringOperations(...)` | Primary recurring API; runtime storage access preserves stable operation names and generated skills. |
 | Conventionally discover attributed `HangfireJob` subclasses and enqueue one-off work | `RegisterJobs<TJobBase>(...)` | Primary class-discovery API; conventional base type, execution method, options binding, and diagnostics. Returns the enqueued Hangfire job ID. |
+| Discover every options-based `IHangfireJob<TOptions>` implementation across assemblies | `RegisterAllOptionsJobs(...)` | One-call alternative to one `RegisterJobs<TJobBase, TOptions>(...)` call per closed options family; newly added job/options pairs are discovered automatically. |
 | Control candidate types, method selection, argument binding, or generated metadata | `AddHangfireJobTypes(...)` | Advanced generic discovery API for exceptional integrations; not a recurring-job replacement. Returns the enqueued Hangfire job ID. |
 | Enqueue a follow-up job that only runs once a known job ID succeeds, or look up any job's current status by ID | `AddHangfireJobStatusOperations(...)` | Adds the `continue-hangfire-job` and `get-hangfire-job-status` operations; independent of `RegisterJobs`/`AddHangfireJobTypes` and can be composed with either. |
 
-`RegisterJobs<TJobBase>(...)` and `AddHangfireJobTypes(...)` register operations whose delegate returns the `string` job ID produced by `IBackgroundJobClient.Create(...)`, so invoking them yields a usable ID instead of `null`. Use that ID with `continue-hangfire-job` (as `parentJobId`) or `get-hangfire-job-status` (as `jobId`):
+For an options-based hierarchy with several closed `TOptions` types, use the scanning API instead of one explicit registration call per options family:
 
 ```csharp
-using Hangfire.Common;
+var catalog = new OperationCatalogBuilder()
+    .RegisterAllOptionsJobs(backgroundJobs, [typeof(MyOptionsJob).Assembly])
+    .Build();
+```
 
-var continuationJob = new Job(typeof(MyFollowUpJob), typeof(MyFollowUpJob).GetMethod(nameof(MyFollowUpJob.Execute)));
+It discovers every concrete class that implements exactly one closed `IHangfireJob<TOptions>` interface, including `HangfireJobWithOptions<TOptions>` subclasses, and creates an operation with that options type as its input. A job implementing multiple closed options interfaces is reported as ambiguous and skipped; register that exceptional job with `RegisterJobs<TJobBase, TOptions>(...)` instead.
+
+`RegisterJobs<TJobBase>(...)`, `RegisterAllOptionsJobs(...)`, and `AddHangfireJobTypes(...)` register operations whose delegate returns the `string` job ID produced by `IBackgroundJobClient.Create(...)`, so invoking them yields a usable ID instead of `null`. Use that ID with `continue-hangfire-job` (as `parentJobId`) or `get-hangfire-job-status` (as `jobId`):
+
+```csharp
+using DotNetAgentSurface.Hangfire;
+
+// HangfireJobStatusOperations.ForJob<TJob>() builds the continuation Job via the same
+// convention-based method discovery RegisterJobs<TJobBase>() uses internally (public
+// Execute/ExecuteAsync method, by name), instead of requiring GetMethod(...) plus a
+// null-coalescing throw at every call site. Use the ForJob<TJob, TOptions>(options) overload
+// for jobs whose execution method also takes an options argument.
+var continuationJob = HangfireJobStatusOperations.ForJob<MyFollowUpJob>();
 
 var catalog = new OperationCatalogBuilder()
     .AddHangfireJobTypes(backgroundJobs, options => { /* ... */ })
     .AddHangfireJobStatusOperations(backgroundJobs, storage, continuationJob, options =>
     {
         options.DashboardBaseUrl = "https://ops.example.com/hangfire";
+    })
+    .Build();
+```
+
+If a CLI needs to expose more than one continuation target, call `AddHangfireJobStatusOperations` once per target and give each a distinct `ContinuationOperationName` (every operation in a catalog must have a unique name, so registering the default `continue-hangfire-job` name twice throws when the catalog is built). Only the first call needs `get-hangfire-job-status` — set `StatusOperationName = null` on later calls to skip re-adding it, since a single status-lookup operation already works for any job ID regardless of which call created it:
+
+```csharp
+var catalog = new OperationCatalogBuilder()
+    .AddHangfireJobStatusOperations(backgroundJobs, storage, HangfireJobStatusOperations.ForJob<SendReportJob>(), options =>
+    {
+        options.ContinuationOperationName = "continue-with-report-job";
+    })
+    .AddHangfireJobStatusOperations(backgroundJobs, storage, HangfireJobStatusOperations.ForJob<PurgeCacheJob, PurgeCacheOptions>(new PurgeCacheOptions(30)), options =>
+    {
+        options.ContinuationOperationName = "continue-with-purge-cache-job";
+        options.StatusOperationName = null;
     })
     .Build();
 ```

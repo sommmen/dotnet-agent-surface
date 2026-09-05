@@ -110,10 +110,17 @@ public static class HangfireJobStatusOperationCatalogBuilderExtensions
             });
 
         var statusOperationName = options.StatusOperationName;
-        if (!string.IsNullOrWhiteSpace(statusOperationName))
+        if (statusOperationName is not null)
         {
+            if (string.IsNullOrWhiteSpace(statusOperationName))
+            {
+                throw new ArgumentException(
+                    $"{nameof(HangfireJobStatusOperationsOptions.StatusOperationName)} must not be blank when non-null.",
+                    nameof(configure));
+            }
+
             builder.Add(
-                statusOperationName!,
+                statusOperationName,
                 "Looks up the current status of a background job by its Hangfire job ID, for example one " +
                 "returned by enqueuing or continuing a job through this catalog. Returns null if no job with " +
                 "that ID exists in storage (it may have already been expired and removed), but throws if " +

@@ -29,6 +29,46 @@ public sealed class HangfireJobStatusOperationCatalogBuilderExtensionsTests
     }
 
     [Fact]
+    public void AddHangfireJobStatusOperations_throws_when_status_operation_name_is_blank_but_non_null()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var job = Job.FromExpression(() => TestJobs.CleanUp());
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+        {
+            new OperationCatalogBuilder()
+                .AddHangfireJobStatusOperations(client, storage, job, options =>
+                {
+                    options.StatusOperationName = "   "; // Blank but non-null
+                })
+                .Build();
+        });
+
+        Assert.Equal("configure", exception.ParamName);
+        Assert.Contains("must not be blank", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AddHangfireJobStatusOperations_skips_status_operation_when_name_is_null()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var job = Job.FromExpression(() => TestJobs.CleanUp());
+
+        var catalog = new OperationCatalogBuilder()
+            .AddHangfireJobStatusOperations(client, storage, job, options =>
+            {
+                options.StatusOperationName = null;
+            })
+            .Build();
+
+        var continuation = Assert.Single(catalog.Operations, operation => operation.Name == "continue-hangfire-job");
+        Assert.Equal("Hangfire", continuation.Category);
+        Assert.DoesNotContain(catalog.Operations, operation => operation.Name == "get-hangfire-job-status");
+    }
+
+    [Fact]
     public async Task ContinueHangfireJob_creates_a_job_awaiting_the_parent_job()
     {
         using var storage = new InMemoryStorage();

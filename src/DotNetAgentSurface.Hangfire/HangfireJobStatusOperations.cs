@@ -72,12 +72,14 @@ public sealed class HangfireJobStatusOperationsOptions
     public string ContinuationOperationName { get; set; } = "continue-hangfire-job";
 
     /// <summary>
-    /// Gets or sets the name of the operation added for looking up a job's status, or null to skip adding it.
-    /// Defaults to <c>"get-hangfire-job-status"</c>. When calling <c>AddHangfireJobStatusOperations</c> more
-    /// than once to expose several continuation targets, set this to null on every call after the first — a
-    /// single shared <c>get-hangfire-job-status</c> operation works for any job ID regardless of which call
-    /// registered the continuation used to create it, and re-adding it under the same default name on a second
-    /// call throws an <see cref="OperationCatalogException"/> when the catalog is built.
+    /// Gets or sets the name of the operation added for looking up a job's status. Set to null to skip adding it,
+    /// or to a non-blank string to register an operation with that name. Defaults to <c>"get-hangfire-job-status"</c>.
+    /// When calling <c>AddHangfireJobStatusOperations</c> more than once to expose several continuation targets, set
+    /// this to null on every call after the first — a single shared <c>get-hangfire-job-status</c> operation works
+    /// for any job ID regardless of which call registered the continuation used to create it, and re-adding it under
+    /// the same default name on a second call throws an <see cref="OperationCatalogException"/> when the catalog is
+    /// built. When non-null, the value must not be blank or contain only whitespace; blank values throw
+    /// <see cref="ArgumentException"/>.
     /// </summary>
     public string? StatusOperationName { get; set; } = "get-hangfire-job-status";
 }

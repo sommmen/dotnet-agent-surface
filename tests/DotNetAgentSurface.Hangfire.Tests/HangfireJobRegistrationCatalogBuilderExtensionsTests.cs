@@ -244,6 +244,32 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     }
 
     [Fact]
+    public void RegisterAllOptionsJobs_excludes_ambiguous_job_types_before_checking_ambiguity()
+    {
+        // An excluded job type that implements multiple closed IHangfireJob<TOptions> interfaces
+        // should NOT trigger a strict-validation failure; it should be skipped silently (reported as excluded).
+        var client = new RecordingBackgroundJobClient();
+        HangfireJobRegistrationOptions? observed = null;
+
+        // This should NOT throw even in strict mode because the ambiguous job is excluded.
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(
+                client,
+                [typeof(AmbiguousOptionsJob).Assembly],
+                options =>
+                {
+                    options.Exclude = type => type == typeof(AmbiguousOptionsJob) || type == typeof(ScanMultiOptions);
+                    options.StrictValidation = true;
+                    observed = options;
+                })
+            .Build();
+
+        // AmbiguousOptionsJob should be reported as excluded (not ambiguous), even with multiple IHangfireJob<TOptions> interfaces.
+        var diagnostic = Assert.Single(observed!.Diagnostics, d => d.JobType == typeof(AmbiguousOptionsJob));
+        Assert.Contains("excluded", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void RegisterJobs_allows_metadata_enrichment_but_does_not_downgrade_dangerous_defaults()
     {
         var client = new RecordingBackgroundJobClient();
@@ -501,6 +527,12 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     }
 
     private sealed class ScanMultiOptions : IHangfireJob<ScanOptionsA>, IHangfireJob<ScanOptionsB>
+    {
+        public Task ExecuteAsync(ScanOptionsA options, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ExecuteAsync(ScanOptionsB options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class AmbiguousOptionsJob : IHangfireJob<ScanOptionsA>, IHangfireJob<ScanOptionsB>
     {
         public Task ExecuteAsync(ScanOptionsA options, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task ExecuteAsync(ScanOptionsB options, CancellationToken cancellationToken) => Task.CompletedTask;

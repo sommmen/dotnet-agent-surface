@@ -132,6 +132,14 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
         var candidates = new List<(Type Type, Type OptionsInterface)>();
         foreach (var jobType in GetLoadableTypes(assemblyList, options).Where(IsConcreteClosedClass).Distinct())
         {
+            // Check Exclude predicate first, before inspecting interfaces, so an excluded type
+            // is skipped silently (or reported as excluded) and never triggers ambiguity checks.
+            if (options.Exclude?.Invoke(jobType) == true)
+            {
+                Report(options, jobType, "The job type was excluded by the configured predicate.", HangfireJobDiscoveryDisposition.Skipped);
+                continue;
+            }
+
             var optionsInterfaces = jobType.GetInterfaces()
                 .Where(static candidate => candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(IHangfireJob<>))
                 .Distinct()
@@ -153,12 +161,6 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
             .OrderBy(pair => NormalizeName(options.NameFactory?.Invoke(pair.Type) ?? ToKebabCase(pair.Type.Name), options.Category), StringComparer.Ordinal)
             .ThenBy(pair => pair.Type.FullName, StringComparer.Ordinal))
         {
-            if (options.Exclude?.Invoke(jobType) == true)
-            {
-                Report(options, jobType, "The job type was excluded by the configured predicate.", HangfireJobDiscoveryDisposition.Skipped);
-                continue;
-            }
-
             var method = SelectMethod(jobType, optionsInterface, options);
             if (method is null)
             {

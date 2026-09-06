@@ -29,6 +29,46 @@ public sealed class HangfireJobStatusOperationCatalogBuilderExtensionsTests
     }
 
     [Fact]
+    public void AddHangfireJobStatusOperations_throws_when_status_operation_name_is_blank_but_non_null()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var job = Job.FromExpression(() => TestJobs.CleanUp());
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+        {
+            new OperationCatalogBuilder()
+                .AddHangfireJobStatusOperations(client, storage, job, options =>
+                {
+                    options.StatusOperationName = "   "; // Blank but non-null
+                })
+                .Build();
+        });
+
+        Assert.Equal("configure", exception.ParamName);
+        Assert.Contains("must not be blank", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AddHangfireJobStatusOperations_skips_status_operation_when_name_is_null()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var job = Job.FromExpression(() => TestJobs.CleanUp());
+
+        var catalog = new OperationCatalogBuilder()
+            .AddHangfireJobStatusOperations(client, storage, job, options =>
+            {
+                options.StatusOperationName = null;
+            })
+            .Build();
+
+        var continuation = Assert.Single(catalog.Operations, operation => operation.Name == "continue-hangfire-job");
+        Assert.Equal("Hangfire", continuation.Category);
+        Assert.DoesNotContain(catalog.Operations, operation => operation.Name == "get-hangfire-job-status");
+    }
+
+    [Fact]
     public async Task ContinueHangfireJob_creates_a_job_awaiting_the_parent_job()
     {
         using var storage = new InMemoryStorage();
@@ -179,6 +219,92 @@ public sealed class HangfireJobStatusOperationCatalogBuilderExtensionsTests
             new OperationCatalogBuilder().AddHangfireJobStatusOperations(client, storage, null!));
     }
 
+    [Fact]
+    public void AddHangfireJobStatusOperations_can_register_multiple_continuation_targets_under_distinct_names()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var reportJob = HangfireJobStatusOperations.ForJob<ParameterlessJob>();
+        var cleanupJob = HangfireJobStatusOperations.ForJob<OptionsJob, ReportOptions>(new ReportOptions("weekly"));
+
+        var catalog = new OperationCatalogBuilder()
+            .AddHangfireJobStatusOperations(client, storage, reportJob, options =>
+            {
+                options.ContinuationOperationName = "continue-with-report-job";
+            })
+            .AddHangfireJobStatusOperations(client, storage, cleanupJob, options =>
+            {
+                options.ContinuationOperationName = "continue-with-cleanup-job";
+                options.StatusOperationName = null;
+            })
+            .Build();
+
+        Assert.Single(catalog.Operations, operation => operation.Name == "continue-with-report-job");
+        Assert.Single(catalog.Operations, operation => operation.Name == "continue-with-cleanup-job");
+        Assert.Single(catalog.Operations, operation => operation.Name == "get-hangfire-job-status");
+    }
+
+    [Fact]
+    public void AddHangfireJobStatusOperations_registering_the_default_continuation_name_twice_throws_on_build()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var job = Job.FromExpression(() => TestJobs.CleanUp());
+
+        var builder = new OperationCatalogBuilder()
+            .AddHangfireJobStatusOperations(client, storage, job)
+            .AddHangfireJobStatusOperations(client, storage, job, options => options.StatusOperationName = null);
+
+        Assert.Throws<OperationCatalogException>(() => builder.Build());
+    }
+
+    [Fact]
+    public void AddHangfireJobStatusOperations_rejects_a_blank_continuation_operation_name()
+    {
+        using var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var job = Job.FromExpression(() => TestJobs.CleanUp());
+
+        Assert.Throws<ArgumentException>(() =>
+            new OperationCatalogBuilder().AddHangfireJobStatusOperations(client, storage, job, options => options.ContinuationOperationName = "   "));
+    }
+
+    [Fact]
+    public void ForJob_builds_a_job_for_a_parameterless_execution_method()
+    {
+        var job = HangfireJobStatusOperations.ForJob<ParameterlessJob>();
+
+        Assert.Equal(typeof(ParameterlessJob), job.Type);
+        Assert.Equal(nameof(ParameterlessJob.ExecuteAsync), job.Method.Name);
+        Assert.Equal([CancellationToken.None], job.Args);
+    }
+
+    [Fact]
+    public void ForJob_builds_a_job_for_an_options_based_execution_method()
+    {
+        var options = new ReportOptions("weekly");
+
+        var job = HangfireJobStatusOperations.ForJob<OptionsJob, ReportOptions>(options);
+
+        Assert.Equal(typeof(OptionsJob), job.Type);
+        Assert.Equal(nameof(OptionsJob.ExecuteAsync), job.Method.Name);
+        Assert.Equal([options, CancellationToken.None], job.Args);
+    }
+
+    [Fact]
+    public void ForJob_throws_when_no_matching_execution_method_exists()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => HangfireJobStatusOperations.ForJob<NoExecuteMethodJob>());
+        Assert.Contains(nameof(NoExecuteMethodJob), exception.Message);
+    }
+
+    [Fact]
+    public void ForJob_throws_when_multiple_matching_execution_methods_exist()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => HangfireJobStatusOperations.ForJob<AmbiguousJob>());
+        Assert.Contains(nameof(AmbiguousJob), exception.Message);
+    }
+
     private static Task<OperationInvocationResult> InvokeAsync(OperationCatalog catalog, string operationName, string? parentJobId = null)
     {
         var operation = Assert.Single(catalog.Operations, operation => operation.Name == operationName);
@@ -207,6 +333,33 @@ public sealed class HangfireJobStatusOperationCatalogBuilderExtensionsTests
     private static class TestJobs
     {
         public static void CleanUp()
+        {
+        }
+    }
+
+    private sealed class ParameterlessJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed record ReportOptions(string Name);
+
+    private sealed class OptionsJob
+    {
+        public Task ExecuteAsync(ReportOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class NoExecuteMethodJob
+    {
+        public void SomethingElse()
+        {
+        }
+    }
+
+    private sealed class AmbiguousJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public void Execute(CancellationToken cancellationToken)
         {
         }
     }

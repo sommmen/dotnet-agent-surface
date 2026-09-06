@@ -31,6 +31,11 @@ DotNetAgentSurface, without duplicating any operation definitions.
   (`DotNetAgentSurface.AspNetCore`). It uses ASP.NET Core dependency
   injection and delegates discovery and invocation to `OperationCatalog` and
   `OperationInvoker`.
+- **DotNetAgentSurface.Samples.SignalR** — a hosted SignalR sample that maps
+  `NotificationsHub` at `/notifications` and exposes the four stable
+  server-to-client send operations through HTTP at `/operations/{name}`. It
+  demonstrates the `IHubContext<NotificationsHub>` composition boundary and
+  keeps the confirmation policy explicit for demonstration purposes.
 - **DotNetAgentSurface.Samples.Hangfire** (`hangfire-sample`) — a
   self-contained console sample (using `Hangfire.InMemory`, no external
   backend required) that registers two Hangfire recurring jobs and catalogs
@@ -51,6 +56,28 @@ DotNetAgentSurface, without duplicating any operation definitions.
   `RegisterWorkflowTests<TJobBase, TOptions>` so an agent can run a job
   directly and capture its full `ILogger` transcript — see "Running a
   Hangfire job directly and capturing its log transcript" below.
+
+### Running the SignalR sample
+
+Start the hosted sample:
+
+```powershell
+dotnet run --project samples/DotNetAgentSurface.Samples.SignalR
+```
+
+Connect a SignalR client to `http://localhost:<port>/notifications`, then use
+an HTTP client to send a named client method. For example, this sends a
+`notification` invocation to every connected client:
+
+```powershell
+Invoke-RestMethod -Method Post "http://localhost:<port>/operations/send-signalr-all" -ContentType "application/json" -Body '{"methodName":"notification","arguments":[{"text":"Maintenance begins soon"}]}'
+```
+
+The other endpoints are `send-signalr-group`, `send-signalr-user`, and
+`send-signalr-client`; add `groupName`, `userId`, or `connectionId`,
+respectively, to the JSON body. These operations report only SignalR's
+acceptance of the outbound send. They do not enumerate clients, wait for a
+client acknowledgement, or override host authorization requirements.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI

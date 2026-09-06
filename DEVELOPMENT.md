@@ -17,11 +17,13 @@ src/
   DotNetAgentSurface.Mcp/          MCP adapter
   DotNetAgentSurface.AspNetCore/   ApiExplorer discovery satellite
   DotNetAgentSurface.Hangfire/     Hangfire recurring-job discovery satellite
+  DotNetAgentSurface.SignalR/      SignalR server-to-client messaging satellite
 tests/
   DotNetAgentSurface.Core.Tests/         Core, MCP, and cross-adapter test suite
   DotNetAgentSurface.CommandLine.Tests/  CLI/AXI output contract tests
   DotNetAgentSurface.AspNetCore.Tests/   ApiExplorer satellite tests
   DotNetAgentSurface.Hangfire.Tests/     Hangfire satellite tests
+  DotNetAgentSurface.SignalR.Tests/      SignalR satellite tests
 samples/
   DotNetAgentSurface.Samples.TaskTracker/    Shared sample service
   DotNetAgentSurface.Samples.Cli/            tasktracker-cli host
@@ -30,6 +32,7 @@ samples/
   DotNetAgentSurface.Samples.LegacyDesktop/  legacy-desktop-cli (net472) host
   DotNetAgentSurface.Samples.AspNetCore/     ApiExplorer-discovered minimal API host
   DotNetAgentSurface.Samples.Hangfire/       Hangfire recurring-job sample
+  DotNetAgentSurface.Samples.SignalR/        SignalR server-to-client messaging sample
 docs/
   development/  Design slices and the ongoing-work tracker (linked below)
 features/
@@ -61,6 +64,7 @@ The design is split by module/feature so each slice stays focused:
 - [Testing strategy and open design decisions](docs/development/testing-and-open-decisions.md) — cross-surface testing goals, resolved/open design decisions (including the fluent `OperationCatalogBuilder` and discovery satellites), and the definition of an initial usable release.
 - [Discovery satellites](features/discovery-satellites.md) — the Hangfire, ASP.NET Core, and native MCP-SDK discovery satellite designs referenced from the open design decisions above.
 - [Hangfire vNext](features/hangfire-vnext.md) — the P0 plan for live recurring-job operations, class-based job discovery, safety, host composition, and migration.
+- [SignalR integration](features/signalr-vnext.md) — the stable server-to-client send operations, their authorization/safety boundary, and host composition.
 
 ## Ongoing work
 

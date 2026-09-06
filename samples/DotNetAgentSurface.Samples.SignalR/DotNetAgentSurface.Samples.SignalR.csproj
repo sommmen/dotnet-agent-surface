@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.Core\DotNetAgentSurface.Core.csproj" />
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.SignalR\DotNetAgentSurface.SignalR.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -54,6 +54,44 @@ persistence layer), so state does not carry over between separate CLI
 invocations. Run multiple operations in the same process (e.g. through the
 MCP host, which stays alive) to see state changes reflected.
 
+## Generating a CLI skill file
+
+`DotNetAgentSurface.Samples.Cli` is the complete CLI skill-generation sample.
+It derives its command catalog from `TaskTrackerService` and supplies explicit
+skill metadata, so the checked-in skill documents the actual
+`tasktracker-cli` executable rather than the output-folder name. The generated
+files include the concise agent entry point, a detailed operation reference,
+and machine-readable parameter schemas:
+
+- [`SKILL.md`](DotNetAgentSurface.Samples.Cli/skill/SKILL.md) — instructions,
+  command index, and representative invocations for an agent.
+- [`commands.md`](DotNetAgentSurface.Samples.Cli/skill/references/commands.md)
+  — generated operation commentary, parameters, idempotency, safety level,
+  and operation examples.
+- [`schemas.json`](DotNetAgentSurface.Samples.Cli/skill/references/schemas.json)
+  — generated JSON schemas for programmatic consumers.
+
+Regenerate these committed artifacts from the repository root after changing
+an `[AgentOperation]` declaration:
+
+```powershell
+# Write the generated skill files included with this sample.
+dotnet run --project samples\DotNetAgentSurface.Samples.Cli -- generate --output samples\DotNetAgentSurface.Samples.Cli\skill
+
+# Fail when the checked-in files drift from the operation catalog; suitable for CI.
+dotnet run --project samples\DotNetAgentSurface.Samples.Cli -- check --output samples\DotNetAgentSurface.Samples.Cli\skill
+```
+
+The generated reference makes `remove-task` visibly `Dangerous`, but the
+current output does not state the CLI's exact non-interactive confirmation
+syntax; agents must still follow the host's confirmation policy. The
+example's state is also process-local, so separate CLI commands cannot form a
+persisted create/list/complete workflow. Finally, generation and drift checks
+are explicit commands: there is no built-in MSBuild target or install command
+to copy a generated skill into an agent-specific skills directory. A consumer
+should add the `check` invocation to its own CI and choose its agent's skill
+installation location.
+
 ## Running the ASP.NET Core sample
 
 ```powershell

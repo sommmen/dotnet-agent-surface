@@ -5,11 +5,15 @@ using DotNetAgentSurface.Samples.TaskTracker;
 var services = new SingleServiceProvider(new TaskTrackerService());
 var catalog = OperationCatalog.Discover(typeof(TaskTrackerService));
 var adapter = new OperationCommandLineAdapter(catalog, new OperationInvoker(services), new ToonAgentOutputRenderer());
+var skillOptions = new SkillGenerationOptions(
+    skillName: "tasktracker-cli",
+    skillDescription: "Manage the task tracker through its generated CLI operations.",
+    executableName: "tasktracker-cli");
 
 // "generate"/"check" are dispatched to the standalone skill reference command surface before falling
 // through to the operation adapter, so this host demonstrates both without restructuring either.
 var result = SkillGeneratorCommand.CanHandle(args)
-    ? await SkillGeneratorCommand.ExecuteAsync(args, catalog, outputDirectoryDefault: "skill")
+    ? await SkillGeneratorCommand.ExecuteAsync(args, catalog, outputDirectoryDefault: "skill", generationOptions: skillOptions)
     : await adapter.ExecuteAsync(args);
 if (!string.IsNullOrEmpty(result.Output))
 {

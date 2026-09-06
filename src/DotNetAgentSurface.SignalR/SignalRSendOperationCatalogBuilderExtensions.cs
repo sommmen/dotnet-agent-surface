@@ -98,7 +98,7 @@ public static class SignalRSendOperationCatalogBuilderExtensions
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new ArgumentException("A value is required.", parameterName);
+            throw new ArgumentException($"A value is required for '{parameterName}'.", parameterName);
         }
 
         return value;

@@ -16,7 +16,7 @@ public sealed class SignalRSendOperationCatalogBuilderExtensionsTests
 
         Assert.Equal(
             ["send-signalr-all", "send-signalr-client", "send-signalr-group", "send-signalr-user"],
-            catalog.Operations.Select(operation => operation.Name).Order());
+            catalog.Operations.Select(operation => operation.Name).Order(StringComparer.Ordinal));
         Assert.All(catalog.Operations, operation =>
         {
             Assert.Equal("SignalR", operation.Category);

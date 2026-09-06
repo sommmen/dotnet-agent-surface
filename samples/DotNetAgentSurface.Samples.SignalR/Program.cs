@@ -52,7 +52,7 @@ static IReadOnlyDictionary<string, JsonElement>? ToInputs(JsonElement? value)
         return null;
     }
 
-    return objectValue.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+    return objectValue.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone(), StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class NotificationsHub : Hub;

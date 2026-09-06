@@ -24,7 +24,7 @@ public static class SignalRSendOperationCatalogBuilderExtensions
 
         if (string.IsNullOrWhiteSpace(options.Category))
         {
-            throw new ArgumentException("The SignalR operation category must not be empty.", nameof(configure));
+            throw new ArgumentException("The SignalR operation category must not be empty.", nameof(SignalROperationsOptions.Category));
         }
 
         builder.Add(

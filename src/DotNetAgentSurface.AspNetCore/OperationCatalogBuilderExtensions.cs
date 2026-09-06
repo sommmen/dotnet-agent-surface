@@ -260,11 +260,7 @@ internal sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string metho
     }
 
     /// <summary>Invokes the endpoint with the provided parameter values.</summary>
-    /// <remarks>
-    /// This method is public to allow dynamically generated wrapper delegates (created via Reflection.Emit in separate assemblies)
-    /// to call it via reflection. It is not intended as a public API contract and should not be called directly by consumers.
-    /// </remarks>
-    public async Task<AspNetCoreEndpointResponse> InvokeAsync(object?[] inputs, CancellationToken cancellationToken)
+    private async Task<AspNetCoreEndpointResponse> InvokeAsync(object?[] inputs, CancellationToken cancellationToken)
     {
         await using var scope = applicationServices.CreateAsyncScope();
         var context = new DefaultHttpContext { RequestServices = scope.ServiceProvider };

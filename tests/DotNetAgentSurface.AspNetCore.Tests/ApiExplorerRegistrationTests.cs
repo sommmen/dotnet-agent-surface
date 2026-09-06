@@ -37,6 +37,60 @@ public sealed class ApiExplorerRegistrationTests
     }
 
     [Fact]
+    public async Task Invokes_parameterized_minimal_api_endpoint_with_route_and_query_inputs()
+    {
+        await using var app = CreateApplication();
+        app.MapGet("/items/{id}", (string id, [FromQuery] string q) => Results.Ok(new { id, q }));
+        await app.StartAsync();
+        var catalog = Register(app);
+
+        var operation = Assert.Single(catalog.Operations);
+        Assert.Collection(
+            operation.Parameters,
+            parameter => Assert.Equal("id", parameter.Name),
+            parameter => Assert.Equal("q", parameter.Name),
+            parameter => Assert.True(parameter.IsCancellationToken));
+
+        var result = await new OperationInvoker(app.Services).InvokeAsync(
+            operation,
+            new Dictionary<string, JsonElement>
+            {
+                ["id"] = JsonSerializer.SerializeToElement("42"),
+                ["q"] = JsonSerializer.SerializeToElement("hello world")
+            });
+
+        Assert.True(result.Succeeded, result.Error);
+        var response = Assert.IsType<AspNetCoreEndpointResponse>(result.Value);
+        Assert.Equal(200, response.StatusCode);
+        Assert.Contains("\"id\":\"42\"", response.Body);
+        Assert.Contains("\"q\":\"hello world\"", response.Body);
+    }
+
+    [Fact]
+    public async Task Invokes_parameterized_mvc_endpoint_with_route_input()
+    {
+        await using var app = CreateApplication();
+        app.MapControllers();
+        await app.StartAsync();
+        var catalog = Register(app);
+
+        var operation = catalog.Operations.Single(o => o.Name == "aspnet_get_controller__id");
+        Assert.Collection(
+            operation.Parameters,
+            parameter => Assert.Equal("id", parameter.Name),
+            parameter => Assert.True(parameter.IsCancellationToken));
+
+        var result = await new OperationInvoker(app.Services).InvokeAsync(
+            operation,
+            new Dictionary<string, JsonElement> { ["id"] = JsonSerializer.SerializeToElement("42") });
+
+        Assert.True(result.Succeeded, result.Error);
+        var response = Assert.IsType<AspNetCoreEndpointResponse>(result.Value);
+        Assert.Equal(200, response.StatusCode);
+        Assert.Contains("\"id\":\"42\"", response.Body);
+    }
+
+    [Fact]
     public async Task Invokes_mvc_controller_endpoint_whose_route_pattern_has_no_leading_slash()
     {
         // Controller route patterns (e.g. "controller") are reported by ApiExplorer/RouteEndpoint without a
@@ -52,6 +106,31 @@ public sealed class ApiExplorerRegistrationTests
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Equal(200, Assert.IsType<AspNetCoreEndpointResponse>(result.Value).StatusCode);
+    }
+
+    [Fact]
+    public async Task Fallback_registration_excludes_parameterized_minimal_api_endpoints()
+    {
+        // Parameterized endpoints like /items/{id} require route parameters from API Explorer descriptions.
+        // The fallback mechanism only registers parameterless endpoints, so /items/{id} should not appear.
+        // This test verifies that parameterized routes are omitted and don't mislead consumers.
+        // We mark both endpoints ExcludeFromDescription() so ApiExplorer genuinely does not describe them,
+        // forcing the test to exercise the fallback registration code path.
+        await using var app = CreateApplication();
+        app.MapGet("/items", () => Results.Ok(new { items = new[] { 1, 2, 3 } })).ExcludeFromDescription(); // Parameterless
+        app.MapGet("/items/{id}", (string id) => Results.Ok(new { id })).ExcludeFromDescription(); // Parameterized (should be excluded)
+        await app.StartAsync();
+
+        var catalog = Register(app);
+
+        // /items (parameterless) should be registered via fallback since it has no route parameters
+        var parameterless = catalog.Operations.FirstOrDefault(op => op.Name == "aspnet_get_items");
+        Assert.NotNull(parameterless);
+
+        // /items/{id} should NOT be registered via fallback because it has a route parameter
+        // Verify by checking that no operation with a parameterized-route-like name is present
+        var operation = Assert.Single(catalog.Operations);
+        Assert.Equal("aspnet_get_items", operation.Name);
     }
 
     [Fact]
@@ -140,4 +219,7 @@ public sealed class ControllerEndpoints : ControllerBase
 {
     [HttpGet("controller")]
     public IActionResult Get() => Ok();
+
+    [HttpGet("controller/{id}")]
+    public IActionResult GetById(string id) => Ok(new { id });
 }

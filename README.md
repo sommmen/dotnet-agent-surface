@@ -37,6 +37,24 @@ The catalog will discover only explicitly annotated operations and describe thei
 
 Adapters will use that metadata to expose equivalent behavior over MCP and the CLI and to render deterministic skill files. The generated CLI will also target the [Agent eXperience Interface (AXI)](https://github.com/kunchenguid/axi/blob/main/.agents/skills/axi/SKILL.md) conventions so agents can discover and consume operations with fewer calls and fewer tokens.
 
+## ASP.NET Core API Explorer
+
+Register the ASP.NET Core satellite after `AddEndpointsApiExplorer()` and map every route before resolving the catalog. The registration is lazy, so this is naturally true for routes mapped before `app.RunAgentSurfaceCliAsync` or a request that injects `OperationCatalog`.
+
+```csharp
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddAgentSurfaceFromApiExplorer(catalog =>
+    catalog.AddFromType<CustomerOperations>());
+
+var app = builder.Build();
+app.MapControllers();
+app.MapGet("/health", () => Results.Ok());
+
+return await app.RunAgentSurfaceCliAsync(args);
+```
+
+`AddAgentSurfaceFromApiExplorer` registers both `OperationCatalog` and `OperationInvoker`. API Explorer operations expose body, route, and query parameters, then invoke the mapped endpoint in-process; no Kestrel listener is started by `RunAgentSurfaceCliAsync`. API Explorer publishes Minimal API descriptions during host startup, so the runner also discovers otherwise-undescribed **parameterless** Minimal API routes from the mapped route data. Parameterized Minimal API operations require API Explorer descriptions and therefore are not available until ASP.NET Core has populated them. Hosts can check `AgentSurfaceCliInvocation.IsInProgress` from the current asynchronous flow while a CLI command is being dispatched; use a separate early host-construction signal for decisions made before the runner starts.
+
 ## Proposed usage
 
 ```csharp

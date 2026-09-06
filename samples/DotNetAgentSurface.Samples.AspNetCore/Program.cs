@@ -2,26 +2,13 @@ using System.Text.Json;
 using DotNetAgentSurface.AspNetCore;
 using DotNetAgentSurface.Core;
 using DotNetAgentSurface.Samples.TaskTracker;
-using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using Microsoft.AspNetCore.Routing;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<TaskTrackerService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddAuthorization();
 
-// The catalog is resolved lazily on first request (from the /operations endpoints below), which happens
-// after the routes mapped further down have been added to the application's EndpointDataSource. This lets
-// a single catalog combine attribute-discovered TaskTracker operations with ApiExplorer-discovered minimal
-// API routes without needing to start the host manually before building the catalog.
-builder.Services.AddSingleton(sp => new OperationCatalogBuilder()
-    .AddFromType<TaskTrackerService>()
-    .AddFromApiExplorer(
-        sp.GetRequiredService<IApiDescriptionGroupCollectionProvider>(),
-        sp.GetServices<EndpointDataSource>(),
-        sp)
-    .Build());
-builder.Services.AddSingleton<OperationInvoker>();
+builder.Services.AddAgentSurfaceFromApiExplorer(catalog => catalog.AddFromType<TaskTrackerService>());
 
 var app = builder.Build();
 
@@ -65,7 +52,7 @@ app.MapPost("/operations/{name}", async (string name, JsonElement? inputs, Opera
             : Results.BadRequest(new { error = result.Error });
 });
 
-app.Run();
+return await app.RunAgentSurfaceCliAsync(args);
 
 static IReadOnlyDictionary<string, JsonElement>? ToInputs(JsonElement? inputs)
 {

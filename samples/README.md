@@ -47,7 +47,10 @@ DotNetAgentSurface, without duplicating any operation definitions.
   representative size for a CLI that only needs one satellite: its
   `Program.cs` is ~50 lines end to end, most of which is composition-root
   boilerplate shared by every sample CLI in this repository, not
-  Hangfire-specific.
+  Hangfire-specific. It also registers a `DamageSyncJob` example through
+  `RegisterWorkflowTests<TJobBase, TOptions>` so an agent can run a job
+  directly and capture its full `ILogger` transcript — see "Running a
+  Hangfire job directly and capturing its log transcript" below.
 
 Each host process starts with an empty, in-memory task list (there is no
 persistence layer), so state does not carry over between separate CLI
@@ -189,6 +192,52 @@ storage wiring to configuration—never put a credential in source.
 See the [recurring-job migration guide](../docs/development/hangfire-recurring-migration.md)
 and [non-interactive confirmation contract](../docs/development/operation-confirmation.md)
 for the consumer contract demonstrated here.
+
+## Running a Hangfire job directly and capturing its log transcript
+
+`RegisterWorkflowTests<TJobBase>()` / `RegisterWorkflowTests<TJobBase, TOptions>()`
+(in `DotNetAgentSurface.Hangfire`) let an agent run one class-based job directly —
+no `BackgroundJobServer`, no configured storage, no full host app — and get back
+its complete `ILogger` transcript as the operation result. This is the feature
+this section demonstrates via the sample's `DamageSyncJob`, a stand-in for a
+real, larger sync job (e.g. a "sync everything changed in the last N minutes"
+job):
+
+```powershell
+# Discover the generated per-job operation (nested under "Hangfire workflow tests").
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire.Cli -- Hangfire workflow tests --help
+
+# Run it directly. Options are bound as a single JSON object matching the job's
+# options record — here, WorkflowJobOptions(TimeSpan TillAgo).
+dotnet run --project samples\DotNetAgentSurface.Samples.Hangfire.Cli -- `
+  Hangfire workflow tests damage-sync-job `
+  --workflowOptions '{"tillAgo":"00:15:00"}' `
+  --confirm --yes
+```
+
+The result is a JSON `HangfireWorkflowTestResult` with the job's full log
+transcript inline (`Transcript`), how it ended (`Status`: `Succeeded`,
+`Failed`, `TimedOut`, or `Cancelled`), elapsed time, and — when
+`options.ArtifactDirectory` is configured (see `Program.cs`) — a path to the
+same transcript persisted as a `.log` file, so it can be retrieved as an
+artifact after the process exits (e.g. from CI, or from a long-lived agent
+workspace that wants to `cat` the file instead of re-running the job).
+
+Two important limitations to know before relying on this for debugging:
+
+- **Timeout/cancellation is cooperative only.** `options.Timeout` (default
+  five minutes) and Ctrl+C both cancel the `CancellationToken` passed to the
+  job's `ExecuteAsync`; a job that ignores the token (no `await` yielding
+  back to the runtime, no `cancellationToken.ThrowIfCancellationRequested()`)
+  keeps running past the deadline. The harness cannot forcibly abort a
+  runaway job's thread.
+- **The job is activated directly, not resolved from a running app's DI
+  container.** Constructor dependencies are resolved from the
+  `IServiceProvider` you pass to `RegisterWorkflowTests` when registered
+  there, and anything else (including `ILogger<T>`) is activated via
+  `ActivatorUtilities`, so a job with unregistered dependencies (e.g. a real
+  `DbContext` or an external API client) needs those registered in that
+  service provider, or the job's constructor will fail to activate.
 
 ## Running the Hangfire sample
 

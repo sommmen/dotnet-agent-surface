@@ -1,7 +1,7 @@
-using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using DotNetAgentSurface.Core;
@@ -13,6 +13,9 @@ using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+
+[assembly: InternalsVisibleTo("DotNetAgentSurface.AspNetCore.Tests")]
+[assembly: InternalsVisibleTo("DotNetAgentSurface.AspNetCore.Invocation.*")]
 
 namespace DotNetAgentSurface.AspNetCore;
 
@@ -88,7 +91,8 @@ public static class OperationCatalogBuilderExtensions
 
         // Minimal API descriptions are populated when the host starts. The in-process CLI deliberately
         // avoids starting Kestrel, so register simple endpoint fallbacks that API Explorer has not yet exposed.
-        foreach (var endpoint in endpoints.Where(endpoint => !discoveredEndpoints.Contains(endpoint)))
+        // Only register parameterless endpoints; parameterized routes require API Explorer descriptions.
+        foreach (var endpoint in endpoints.Where(endpoint => !discoveredEndpoints.Contains(endpoint) && !endpoint.RoutePattern.Parameters.Any()))
         {
             var methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods;
             if (methods is null)
@@ -144,12 +148,26 @@ public static class OperationCatalogBuilderExtensions
 /// <summary>Response returned by an in-process anonymous endpoint invocation.</summary>
 public sealed record AspNetCoreEndpointResponse(int StatusCode, string? ContentType, string Body);
 
-public sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string method, IServiceProvider applicationServices)
+internal sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string method, IServiceProvider applicationServices)
 {
     private IReadOnlyList<InvocationInput> _inputs = [];
 
-    public Delegate CreateDelegate(IList<ApiParameterDescription> parameters)
+   /// <summary>Creates a wrapper delegate that can be called from dynamically generated code to invoke this endpoint.</summary>
+    internal Func<object?[], CancellationToken, Task<AspNetCoreEndpointResponse>> CreateInvocationWrapper()
     {
+        return async (inputs, ct) => await InvokeAsync(inputs, ct);
+    }
+
+    /// <summary>Creates a delegate for this endpoint that accepts JsonElement parameters and returns AspNetCoreEndpointResponse.</summary>
+    internal Delegate CreateDelegate(IList<ApiParameterDescription> parameters)
+    {
+        if (!RuntimeFeature.IsDynamicCodeSupported)
+        {
+            throw new PlatformNotSupportedException(
+                $"Cannot create delegate for endpoint '{endpoint.DisplayName}': dynamic code generation is not supported in this runtime environment (e.g., Native AOT, constrained hosts). " +
+                "Ensure the application runs in an environment that supports System.Reflection.Emit.");
+        }
+
         var inputs = parameters
             .Where(static parameter => !string.IsNullOrWhiteSpace(parameter.Name))
             .Select(static parameter => InvocationInput.Create(parameter))
@@ -183,20 +201,20 @@ public sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string method,
         var typeBuilder = module.DefineType(
             "EndpointInvocation",
             TypeAttributes.Public | TypeAttributes.Sealed);
-        var invocationField = typeBuilder.DefineField(
-            "_invocation",
-            typeof(ApiEndpointInvocation),
+        var wrapperDelegateField = typeBuilder.DefineField(
+            "_wrapperDelegate",
+            typeof(Func<object?[], CancellationToken, Task<AspNetCoreEndpointResponse>>),
             FieldAttributes.Private | FieldAttributes.InitOnly);
         var constructor = typeBuilder.DefineConstructor(
             MethodAttributes.Public,
             CallingConventions.Standard,
-            [typeof(ApiEndpointInvocation)]);
+            [typeof(Func<object?[], CancellationToken, Task<AspNetCoreEndpointResponse>>)]);
         var constructorIl = constructor.GetILGenerator();
         constructorIl.Emit(OpCodes.Ldarg_0);
         constructorIl.Emit(OpCodes.Call, typeof(object).GetConstructor(Type.EmptyTypes)!);
         constructorIl.Emit(OpCodes.Ldarg_0);
         constructorIl.Emit(OpCodes.Ldarg_1);
-        constructorIl.Emit(OpCodes.Stfld, invocationField);
+        constructorIl.Emit(OpCodes.Stfld, wrapperDelegateField);
         constructorIl.Emit(OpCodes.Ret);
 
         var methodBuilder = typeBuilder.DefineMethod(
@@ -211,8 +229,12 @@ public sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string method,
 
         methodBuilder.DefineParameter(parameterTypes.Length, ParameterAttributes.None, "cancellationToken");
         var il = methodBuilder.GetILGenerator();
+
+        // Load the delegate from the field
         il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Ldfld, invocationField);
+        il.Emit(OpCodes.Ldfld, wrapperDelegateField);
+
+        // Build the inputs array
         il.Emit(OpCodes.Ldc_I4, inputs.Length);
         il.Emit(OpCodes.Newarr, typeof(object));
         for (var index = 0; index < inputs.Length; index++)
@@ -224,15 +246,25 @@ public sealed class ApiEndpointInvocation(RouteEndpoint endpoint, string method,
             il.Emit(OpCodes.Stelem_Ref);
         }
 
+        // Load the cancellation token
         il.Emit(OpCodes.Ldarg, parameterTypes.Length);
-        il.Emit(OpCodes.Callvirt, typeof(ApiEndpointInvocation).GetMethod(nameof(InvokeAsync), BindingFlags.Instance | BindingFlags.Public)!);
+
+        // Call the wrapper delegate's Invoke method
+        // Stack: delegate, object[], CancellationToken -> awaitable Task<AspNetCoreEndpointResponse>
+        il.Emit(OpCodes.Callvirt, typeof(Func<object?[], CancellationToken, Task<AspNetCoreEndpointResponse>>).GetMethod("Invoke")!);
         il.Emit(OpCodes.Ret);
 
         var wrapperType = typeBuilder.CreateType()!;
-        var wrapper = Activator.CreateInstance(wrapperType, this)!;
+        var invocationWrapper = CreateInvocationWrapper();
+        var wrapper = Activator.CreateInstance(wrapperType, invocationWrapper)!;
         return Delegate.CreateDelegate(delegateType, wrapper, wrapperType.GetMethod("InvokeAsync")!);
     }
 
+    /// <summary>Invokes the endpoint with the provided parameter values.</summary>
+    /// <remarks>
+    /// This method is public to allow dynamically generated wrapper delegates (created via Reflection.Emit in separate assemblies)
+    /// to call it via reflection. It is not intended as a public API contract and should not be called directly by consumers.
+    /// </remarks>
     public async Task<AspNetCoreEndpointResponse> InvokeAsync(object?[] inputs, CancellationToken cancellationToken)
     {
         await using var scope = applicationServices.CreateAsyncScope();

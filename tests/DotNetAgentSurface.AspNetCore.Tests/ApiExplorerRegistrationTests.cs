@@ -109,6 +109,28 @@ public sealed class ApiExplorerRegistrationTests
     }
 
     [Fact]
+    public async Task Fallback_registration_excludes_parameterized_minimal_api_endpoints()
+    {
+        // Parameterized endpoints like /items/{id} require route parameters from API Explorer descriptions.
+        // The fallback mechanism only registers parameterless endpoints, so /items/{id} should not appear.
+        // This test verifies that parameterized routes are omitted and don't mislead consumers.
+        await using var app = CreateApplication();
+        app.MapGet("/items", () => Results.Ok(new { items = new[] { 1, 2, 3 } })); // Parameterless
+        app.MapGet("/items/{id}", (string id) => Results.Ok(new { id })); // Parameterized (should be excluded)
+        await app.StartAsync();
+
+        var catalog = Register(app);
+        
+        // /items (parameterless) should be registered via fallback
+        var parameterless = catalog.Operations.FirstOrDefault(op => op.Name == "aspnet_get_items");
+        Assert.NotNull(parameterless);
+        
+        // /items/{id} should NOT be registered via fallback; it requires API Explorer
+        var parameterized = catalog.Operations.FirstOrDefault(op => op.Name == "aspnet_get_itemsid");
+        Assert.Null(parameterized);
+    }
+
+    [Fact]
     public async Task Denies_authorized_endpoint_without_allowing_direct_handler_execution()
     {
         await using var app = CreateApplication();

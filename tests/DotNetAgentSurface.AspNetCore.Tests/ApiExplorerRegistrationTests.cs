@@ -114,20 +114,23 @@ public sealed class ApiExplorerRegistrationTests
         // Parameterized endpoints like /items/{id} require route parameters from API Explorer descriptions.
         // The fallback mechanism only registers parameterless endpoints, so /items/{id} should not appear.
         // This test verifies that parameterized routes are omitted and don't mislead consumers.
+        // We mark both endpoints ExcludeFromDescription() so ApiExplorer genuinely does not describe them,
+        // forcing the test to exercise the fallback registration code path.
         await using var app = CreateApplication();
-        app.MapGet("/items", () => Results.Ok(new { items = new[] { 1, 2, 3 } })); // Parameterless
-        app.MapGet("/items/{id}", (string id) => Results.Ok(new { id })); // Parameterized (should be excluded)
+        app.MapGet("/items", () => Results.Ok(new { items = new[] { 1, 2, 3 } })).ExcludeFromDescription(); // Parameterless
+        app.MapGet("/items/{id}", (string id) => Results.Ok(new { id })).ExcludeFromDescription(); // Parameterized (should be excluded)
         await app.StartAsync();
 
         var catalog = Register(app);
-        
-        // /items (parameterless) should be registered via fallback
+
+        // /items (parameterless) should be registered via fallback since it has no route parameters
         var parameterless = catalog.Operations.FirstOrDefault(op => op.Name == "aspnet_get_items");
         Assert.NotNull(parameterless);
-        
-        // /items/{id} should NOT be registered via fallback; it requires API Explorer
-        var parameterized = catalog.Operations.FirstOrDefault(op => op.Name == "aspnet_get_itemsid");
-        Assert.Null(parameterized);
+
+        // /items/{id} should NOT be registered via fallback because it has a route parameter
+        // Verify by checking that no operation with a parameterized-route-like name is present
+        var operation = Assert.Single(catalog.Operations);
+        Assert.Equal("aspnet_get_items", operation.Name);
     }
 
     [Fact]

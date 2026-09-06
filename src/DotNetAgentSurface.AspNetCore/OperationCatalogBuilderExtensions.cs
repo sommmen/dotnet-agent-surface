@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
 [assembly: InternalsVisibleTo("DotNetAgentSurface.AspNetCore.Tests")]
-[assembly: InternalsVisibleTo("DotNetAgentSurface.AspNetCore.Invocation.*")]
 
 namespace DotNetAgentSurface.AspNetCore;
 

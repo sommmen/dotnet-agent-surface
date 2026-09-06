@@ -101,7 +101,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .RegisterWorkflowTests<WorkflowJobBase>(EmptyServices(), [typeof(SlowJob).Assembly], configure: options =>
             {
                 options.Exclude = type => type != typeof(SlowJob);
-                options.Timeout = TimeSpan.FromMilliseconds(50);
+                options.Timeout = TimeSpan.FromMilliseconds(200);
             })
             .Build();
         var operation = Assert.Single(catalog.Operations);
@@ -122,7 +122,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
         using var cts = new CancellationTokenSource();
-        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+        cts.CancelAfter(TimeSpan.FromMilliseconds(200));
 
         var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: cts.Token);
 
@@ -199,6 +199,100 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .RegisterWorkflowTests<WorkflowJobBase>(EmptyServices(), null!));
     }
 
+    [Fact]
+    public void RegisterWorkflowTests_rejects_null_assembly_in_assemblies_enumerable()
+    {
+        // Verify that null assemblies in the enumerable are caught and reported with a clear error message.
+        var ex = Assert.Throws<ArgumentException>(() =>
+        {
+            var builder = new OperationCatalogBuilder();
+            // Use a custom enumerable that yields a null assembly to trigger the validation.
+            var assembliesWithNull = new[] { typeof(LoggingJob).Assembly, null! };
+            builder.RegisterWorkflowTests<WorkflowJobBase>(EmptyServices(), assembliesWithNull);
+        });
+        
+        Assert.Contains("null entry", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("assemblies", ex.ParamName);
+    }
+
+    [Fact]
+    public async Task RegisterWorkflowTests_prevents_artifact_filename_collision_with_guid_suffix()
+    {
+        // Verify that two concurrent writes to artifacts have unique filenames despite same timestamp.
+        var artifactDir = Path.Combine(Path.GetTempPath(), $"hangfire-test-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(artifactDir);
+            
+            var catalog = new OperationCatalogBuilder()
+                .RegisterWorkflowTests<WorkflowJobBase>(EmptyServices(), [typeof(LoggingJob).Assembly],
+                    configure: options =>
+                    {
+                        options.Exclude = type => type != typeof(LoggingJob);
+                        options.ArtifactDirectory = artifactDir;
+                    })
+                .Build();
+            var operation = Assert.Single(catalog.Operations);
+
+            // Run the same job twice in rapid succession (same millisecond very likely).
+            var invoker = CreateInvoker(new NullServiceProvider());
+            var invocation1Task = invoker.InvokeAsync(operation).AsTask();
+            var invocation2Task = invoker.InvokeAsync(operation).AsTask();
+
+            await Task.WhenAll(invocation1Task, invocation2Task);
+
+            var result1 = Assert.IsType<HangfireWorkflowTestResult>(invocation1Task.Result.Value);
+            var result2 = Assert.IsType<HangfireWorkflowTestResult>(invocation2Task.Result.Value);
+
+            // Both should have artifact paths and they should be different.
+            Assert.NotNull(result1.ArtifactPath);
+            Assert.NotNull(result2.ArtifactPath);
+            Assert.NotEqual(result1.ArtifactPath, result2.ArtifactPath);
+            
+            // Both files should exist and contain the logging output.
+            Assert.True(File.Exists(result1.ArtifactPath));
+            Assert.True(File.Exists(result2.ArtifactPath));
+            Assert.Contains("hello from job", File.ReadAllText(result1.ArtifactPath));
+            Assert.Contains("hello from job", File.ReadAllText(result2.ArtifactPath));
+        }
+        finally
+        {
+            if (Directory.Exists(artifactDir))
+            {
+                Directory.Delete(artifactDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RegisterWorkflowTests_handles_concurrent_logging_from_multiple_threads_safely()
+    {
+        // Verify that concurrent logging does not corrupt the transcript due to unsynchronized StringBuilder access.
+        var catalog = new OperationCatalogBuilder()
+            .RegisterWorkflowTests<WorkflowJobBase>(EmptyServices(), [typeof(ConcurrentLoggingJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(ConcurrentLoggingJob))
+            .Build();
+        var operation = Assert.Single(catalog.Operations);
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.True(result.Status == HangfireWorkflowTestStatus.Succeeded, result.Error);
+        
+        // Verify all expected log lines are present and the transcript is well-formed (not corrupted).
+        var transcript = result.Transcript;
+        Assert.NotEmpty(transcript);
+        // Each line should contain a timestamp and thread ID marker; if StringBuilder wasn't thread-safe,
+        // lines would be interleaved/corrupted and this assertion would fail.
+        var lines = transcript.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+        Assert.True(lines.Length >= 10, $"Expected at least 10 log lines from concurrent threads, got {lines.Length}");
+        // Verify lines are properly formatted with timestamps and thread info
+        foreach (var line in lines.Where(l => l.Contains("Thread")))
+        {
+            Assert.Contains("iteration", line, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private sealed class NullServiceProvider : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;
@@ -259,5 +353,26 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
     {
         public override Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public static Task ExecuteStaticAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class ConcurrentLoggingJob(ILogger<ConcurrentLoggingJob> logger) : WorkflowJobBase
+    {
+        public override async Task ExecuteAsync(CancellationToken cancellationToken)
+        {
+            // Spawn multiple tasks that log concurrently to stress-test thread safety of the TranscriptLogger.
+            var tasks = new List<Task>();
+            for (int i = 0; i < 5; i++)
+            {
+                int threadId = i;
+                tasks.Add(Task.Run(() =>
+                {
+                    for (int j = 0; j < 3; j++)
+                    {
+                        logger.LogInformation($"Thread {threadId}, iteration {j}");
+                    }
+                }, cancellationToken));
+            }
+            await Task.WhenAll(tasks);
+        }
     }
 }

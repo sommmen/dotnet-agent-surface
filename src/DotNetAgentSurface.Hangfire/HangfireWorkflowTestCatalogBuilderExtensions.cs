@@ -142,6 +142,11 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
     {
         foreach (var assembly in assemblies.Distinct())
         {
+            if (assembly is null)
+            {
+                throw new ArgumentException("The supplied assemblies enumerable contains a null entry.", nameof(assemblies));
+            }
+
             Type[] types;
             try
             {
@@ -252,7 +257,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
             }
 
             Directory.CreateDirectory(options.ArtifactDirectory);
-            var path = Path.Combine(options.ArtifactDirectory, $"{ToKebabCase(jobType.Name)}-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}.log");
+            var path = Path.Combine(options.ArtifactDirectory, $"{ToKebabCase(jobType.Name)}-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}.log");
             File.WriteAllText(path, transcript);
             return path;
         }
@@ -274,23 +279,28 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
 
     private sealed class TranscriptLoggerProvider(StringBuilder transcript) : ILoggerProvider
     {
-        public ILogger CreateLogger(string categoryName) => new TranscriptLogger(categoryName, transcript);
+        private readonly object _lock = new();
+
+        public ILogger CreateLogger(string categoryName) => new TranscriptLogger(categoryName, transcript, _lock);
         public void Dispose() { }
     }
 
-    private sealed class TranscriptLogger(string categoryName, StringBuilder transcript) : ILogger
+    private sealed class TranscriptLogger(string categoryName, StringBuilder transcript, object transcriptLock) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            transcript.Append(DateTimeOffset.UtcNow.ToString("O"))
-                .Append(' ').Append(logLevel).Append(' ').Append(categoryName).Append(": ")
-                .AppendLine(formatter(state, exception));
-            if (exception is not null)
+            lock (transcriptLock)
             {
-                transcript.AppendLine(exception.ToString());
+                transcript.Append(DateTimeOffset.UtcNow.ToString("O"))
+                    .Append(' ').Append(logLevel).Append(' ').Append(categoryName).Append(": ")
+                    .AppendLine(formatter(state, exception));
+                if (exception is not null)
+                {
+                    transcript.AppendLine(exception.ToString());
+                }
             }
         }
     }

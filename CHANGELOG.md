@@ -62,6 +62,33 @@ listed. Each entry links the pull request(s) that shipped it.
   (looks up a background job's current state by ID via `JobStorage`, returning
   `null` for an unknown ID, and an optional dashboard URL when a base URL is
   configured).
+- `HangfireJobStatusOperations.ForJob<TJob>()` and
+  `ForJob<TJob, TOptions>(TOptions?)` in `DotNetAgentSurface.Hangfire`, building
+  the continuation `Job` for `AddHangfireJobStatusOperations` via the same
+  "find the public Execute/ExecuteAsync method by convention" discovery
+  `RegisterJobs<TJobBase>` uses internally, instead of requiring callers to
+  hand-roll `GetMethod(...)` plus a null-coalescing throw at every call site.
+  Throws `InvalidOperationException` unconditionally if the job type has no matching method or
+  more than one candidate; unlike `RegisterJobs` (which only fails hard under `StrictValidation`),
+  `ForJob` has no discovery-report/strict-mode concept and immediately surfaces ambiguity as an error.
+- `HangfireJobStatusOperationsOptions.ContinuationOperationName` and
+  `StatusOperationName`, letting a consumer register more than one
+  continuation target from `AddHangfireJobStatusOperations` in the same
+  catalog (for example one per distinct job type) by giving each call's
+  `continue-hangfire-job` operation a distinct name. `StatusOperationName` can
+  be set to `null` on every call after the first, since a single
+  `get-hangfire-job-status` operation already looks up any job ID regardless
+  of which call created it. Previously, calling `AddHangfireJobStatusOperations`
+  more than once always attempted to register the same two hardcoded operation
+  names and threw `OperationCatalogException` from `OperationCatalogBuilder.Build()`.
+- `RegisterAllOptionsJobs(...)` in `DotNetAgentSurface.Hangfire`, a one-call,
+  assembly-scanning alternative to repeated `RegisterJobs<TJobBase, TOptions>`
+  calls. It discovers every concrete job that implements one closed
+  `IHangfireJob<TOptions>` interface (including through
+  `HangfireJobWithOptions<TOptions>`) and creates the correctly typed options
+  input operation for it. A job that implements more than one closed options
+  interface is skipped and reported as ambiguous; register those exceptional
+  jobs explicitly with `RegisterJobs<TJobBase, TOptions>`.
 - `IHangfireJob`/`IHangfireJob<TOptions>` interfaces in
   `DotNetAgentSurface.Hangfire`, so a pre-existing ("brownfield") Hangfire job
   hierarchy — including a CRTP-style base class with constructor parameters

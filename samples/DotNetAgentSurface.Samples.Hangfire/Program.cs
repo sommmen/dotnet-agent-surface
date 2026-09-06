@@ -252,7 +252,11 @@ Console.WriteLine(result.Succeeded ? "  Enqueued successfully." : $"  Failed: {r
 // continue-hangfire-job and get-hangfire-job-status are independent of how the parent job was
 // enqueued: any job ID returned by AddHangfireJobTypes, RegisterJobs<>(), or trigger-recurring-hangfire
 // works as the parentId/jobId input below.
-var digestFollowUpJob = new Job(typeof(SampleJobs), typeof(SampleJobs).GetMethod(nameof(SampleJobs.SendReport))!);
+//
+// HangfireJobStatusOperations.ForJob<TJob>() builds the continuation Job via the same "find the
+// public Execute/ExecuteAsync method by convention" discovery RegisterJobs<TJobBase>() uses
+// internally, so no manual GetMethod(...)-plus-null-check boilerplate is needed here.
+var digestFollowUpJob = HangfireJobStatusOperations.ForJob<SendDigestJob>();
 var statusCatalog = new OperationCatalogBuilder()
     .AddHangfireJobStatusOperations(backgroundJobClient, storage, digestFollowUpJob, options =>
     {

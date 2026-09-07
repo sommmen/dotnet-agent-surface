@@ -2,23 +2,25 @@ namespace DotNetAgentSurface.Core;
 
 /// <summary>
 /// Fluent, EF Core-style builder that composes an <see cref="OperationCatalog"/> from attributed service
-/// types (see <see cref="OperationCatalog.Discover"/>) and explicit delegate-based registrations. Delegate
+/// types (see <see cref="OperationCatalog.Discover(Type[])"/>) and explicit delegate-based registrations. Delegate
 /// registrations are useful when a method cannot carry an <see cref="AgentOperationAttribute"/> (third-party
 /// types) or when an operation is assembled ad hoc at runtime.
 /// </summary>
 public sealed class OperationCatalogBuilder
 {
     private readonly List<OperationDescriptor> _operations = [];
+    private IOperationDocumentationSource? _documentation;
+    private OperationDocumentationOptions? _documentationOptions;
 
     /// <summary>
     /// Discovers every <see cref="AgentOperationAttribute"/>-annotated public method on <paramref name="serviceType"/>,
-    /// identical to how <see cref="OperationCatalog.Discover"/> treats a single type.
+    /// identical to how <see cref="OperationCatalog.Discover(Type[])"/> treats a single type.
     /// </summary>
     public OperationCatalogBuilder AddFromType(Type serviceType)
     {
         Guard.ThrowIfNull(serviceType);
 
-        _operations.AddRange(OperationCatalog.DiscoverOperations(serviceType));
+        _operations.AddRange(OperationCatalog.DiscoverOperations(serviceType, _documentation, _documentationOptions));
         return this;
     }
 
@@ -26,6 +28,16 @@ public sealed class OperationCatalogBuilder
     /// Generic convenience overload of <see cref="AddFromType(Type)"/>.
     /// </summary>
     public OperationCatalogBuilder AddFromType<TService>() => AddFromType(typeof(TService));
+
+    public OperationCatalogBuilder UseDocumentation(IOperationDocumentationSource source, OperationDocumentationOptions? options = null)
+    {
+        _documentation = source ?? throw new ArgumentNullException(nameof(source));
+        _documentationOptions = options;
+        return this;
+    }
+
+    public OperationCatalogBuilder UseXmlDocumentation(OperationDocumentationOptions? options = null)
+        => UseDocumentation(XmlOperationDocumentationSource.ProbeAppBaseDirectory(), options);
 
     /// <summary>
     /// Registers an operation directly from a delegate rather than an attributed method. The delegate's
@@ -69,9 +81,9 @@ public sealed class OperationCatalogBuilder
 
     /// <summary>
     /// Sorts, validates, and finalizes the registered operations into an <see cref="OperationCatalog"/>,
-    /// applying the same ordering and name/alias uniqueness guarantees as <see cref="OperationCatalog.Discover"/>.
+    /// applying the same ordering and name/alias uniqueness guarantees as <see cref="OperationCatalog.Discover(Type[])"/>.
     /// </summary>
-    public OperationCatalog Build() => OperationCatalog.CreateCatalog(_operations);
+    public OperationCatalog Build() => OperationCatalog.CreateCatalog(_operations, _documentationOptions);
 }
 
 /// <summary>

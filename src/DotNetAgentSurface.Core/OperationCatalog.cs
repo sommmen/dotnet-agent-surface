@@ -4,36 +4,57 @@ namespace DotNetAgentSurface.Core;
 
 public sealed class OperationCatalog
 {
-    private OperationCatalog(IReadOnlyList<OperationDescriptor> operations)
+    private OperationCatalog(IReadOnlyList<OperationDescriptor> operations, IReadOnlyList<OperationDocumentationDiagnostic> documentationDiagnostics)
     {
         Operations = operations;
+        DocumentationDiagnostics = documentationDiagnostics;
     }
 
     public IReadOnlyList<OperationDescriptor> Operations { get; }
 
+    public IReadOnlyList<OperationDocumentationDiagnostic> DocumentationDiagnostics { get; }
+
     public static OperationCatalog Discover(params Type[] serviceTypes)
+        => Discover(null, null, serviceTypes);
+
+    public static OperationCatalog Discover(IOperationDocumentationSource? documentation, params Type[] serviceTypes)
+        => Discover(documentation, null, serviceTypes);
+
+    public static OperationCatalog Discover(IOperationDocumentationSource? documentation, OperationDocumentationOptions? documentationOptions, params Type[] serviceTypes)
     {
         Guard.ThrowIfNull(serviceTypes);
-
-        return CreateCatalog(serviceTypes.SelectMany(DiscoverOperations));
+        return CreateCatalog(serviceTypes.SelectMany(type => DiscoverOperations(type, documentation, documentationOptions)), documentationOptions);
     }
 
     /// <summary>
     /// Sorts, validates, and finalizes a set of operation descriptors into an <see cref="OperationCatalog"/>.
-    /// Shared by <see cref="Discover"/> and <see cref="OperationCatalogBuilder"/> so both registration paths
+    /// Shared by <see cref="Discover(Type[])"/> and <see cref="OperationCatalogBuilder"/> so both registration paths
     /// enforce the same ordering and uniqueness guarantees.
     /// </summary>
-    internal static OperationCatalog CreateCatalog(IEnumerable<OperationDescriptor> operations)
+    internal static OperationCatalog CreateCatalog(IEnumerable<OperationDescriptor> operations, OperationDocumentationOptions? documentationOptions = null)
     {
         var sorted = operations
             .OrderBy(static operation => operation.Name, StringComparer.Ordinal)
             .ToArray();
 
         ValidateUniqueNames(sorted);
-        return new OperationCatalog(Array.AsReadOnly(sorted));
+        if (documentationOptions?.RequireDescription == true)
+        {
+            var undocumented = sorted.FirstOrDefault(static operation => string.IsNullOrWhiteSpace(operation.Description));
+            if (undocumented is not null)
+            {
+                throw new OperationCatalogException($"Operation '{undocumented.Name}' has an empty description.");
+            }
+        }
+
+        var diagnostics = sorted
+            .Where(static operation => string.IsNullOrWhiteSpace(operation.Description))
+            .Select(static operation => new OperationDocumentationDiagnostic(operation.Name, $"Operation '{operation.Name}' has an empty resolved description."))
+            .ToArray();
+        return new OperationCatalog(Array.AsReadOnly(sorted), Array.AsReadOnly(diagnostics));
     }
 
-    internal static IEnumerable<OperationDescriptor> DiscoverOperations(Type serviceType)
+    internal static IEnumerable<OperationDescriptor> DiscoverOperations(Type serviceType, IOperationDocumentationSource? documentation = null, OperationDocumentationOptions? documentationOptions = null)
     {
         Guard.ThrowIfNull(serviceType);
 
@@ -42,17 +63,17 @@ public sealed class OperationCatalog
             .GetMethods(flags)
             .Select(method => new { Method = method, Attribute = method.GetCustomAttribute<AgentOperationAttribute>() })
             .Where(static item => item.Attribute is not null)
-            .Select(static item => CreateDescriptor(item.Method, item.Attribute!));
+            .Select(item => CreateDescriptor(item.Method, item.Attribute!, documentation, documentationOptions));
     }
 
-    internal static OperationDescriptor CreateDescriptor(MethodInfo method, AgentOperationAttribute attribute)
+    internal static OperationDescriptor CreateDescriptor(MethodInfo method, AgentOperationAttribute attribute, IOperationDocumentationSource? documentation = null, OperationDocumentationOptions? documentationOptions = null)
     {
         if (string.IsNullOrWhiteSpace(attribute.Name))
         {
             throw new OperationCatalogException($"Operation on '{method.DeclaringType?.FullName}.{method.Name}' has an empty name.");
         }
 
-        if (string.IsNullOrWhiteSpace(attribute.Description))
+        if (attribute.Description is not null && string.IsNullOrWhiteSpace(attribute.Description))
         {
             throw new OperationCatalogException($"Operation '{attribute.Name}' has an empty description.");
         }
@@ -89,7 +110,7 @@ public sealed class OperationCatalog
             }
         }
 
-        return new OperationDescriptor(method, attribute);
+        return new OperationDescriptor(method, attribute, documentationSource: documentation, documentationOptions: documentationOptions);
     }
 
     /// <summary>

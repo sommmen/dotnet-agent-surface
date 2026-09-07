@@ -14,7 +14,13 @@ public sealed class OperationSchemaGenerator
 
         foreach (var parameter in operation.Parameters.Where(static parameter => !parameter.IsCancellationToken))
         {
-            properties.Add(parameter.Name, CreateSchema(parameter.ParameterType, parameter.IsNullable));
+            var schema = CreateSchema(parameter.ParameterType, parameter.IsNullable);
+            if (!string.IsNullOrWhiteSpace(parameter.Description))
+            {
+                schema["description"] = parameter.Description;
+            }
+
+            properties.Add(parameter.Name, schema);
             if (!parameter.IsOptional && !parameter.IsNullable)
             {
                 required.Add(parameter.Name);
@@ -30,7 +36,7 @@ public sealed class OperationSchemaGenerator
         });
     }
 
-    private static object CreateSchema(Type type, bool isNullable = false, ISet<Type>? ancestors = null)
+    private static Dictionary<string, object?> CreateSchema(Type type, bool isNullable = false, ISet<Type>? ancestors = null)
     {
         var nullableType = Nullable.GetUnderlyingType(type);
         var effectiveType = nullableType ?? type;

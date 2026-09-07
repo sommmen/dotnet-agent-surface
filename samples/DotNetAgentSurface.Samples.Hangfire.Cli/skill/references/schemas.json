@@ -1,4 +1,90 @@
 {
+  "damage-sync-job": {
+    "type": "object",
+    "properties": {
+      "workflowOptions": {
+        "type": "object",
+        "properties": {
+          "TillAgo": {
+            "type": "object",
+            "properties": {
+              "Days": {
+                "type": "integer"
+              },
+              "Hours": {
+                "type": "integer"
+              },
+              "Microseconds": {
+                "type": "integer"
+              },
+              "Milliseconds": {
+                "type": "integer"
+              },
+              "Minutes": {
+                "type": "integer"
+              },
+              "Nanoseconds": {
+                "type": "integer"
+              },
+              "Seconds": {
+                "type": "integer"
+              },
+              "Ticks": {
+                "type": "integer"
+              },
+              "TotalDays": {
+                "type": "number"
+              },
+              "TotalHours": {
+                "type": "number"
+              },
+              "TotalMicroseconds": {
+                "type": "number"
+              },
+              "TotalMilliseconds": {
+                "type": "number"
+              },
+              "TotalMinutes": {
+                "type": "number"
+              },
+              "TotalNanoseconds": {
+                "type": "number"
+              },
+              "TotalSeconds": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "Days",
+              "Hours",
+              "Microseconds",
+              "Milliseconds",
+              "Minutes",
+              "Nanoseconds",
+              "Seconds",
+              "Ticks",
+              "TotalDays",
+              "TotalHours",
+              "TotalMicroseconds",
+              "TotalMilliseconds",
+              "TotalMinutes",
+              "TotalNanoseconds",
+              "TotalSeconds"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "TillAgo"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "workflowOptions"
+    ],
+    "additionalProperties": false
+  },
   "list-recurring-hangfire": {
     "type": "object",
     "properties": {},

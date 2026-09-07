@@ -12,17 +12,23 @@ public sealed class TaskTrackerService
     private readonly Dictionary<int, TaskItem> _tasks = [];
     private int _nextId = 1;
 
+    /// <summary>
+    /// Lists all tracked tasks in ascending identifier order.
+    /// </summary>
     [AgentOperation(
         "list-tasks",
-        "Lists all tracked tasks in ascending identifier order.",
         Category = "tasks",
         IsIdempotent = true,
         Examples = [""])]
     public IReadOnlyList<TaskItem> ListTasks() => [.. _tasks.Values.OrderBy(task => task.Id)];
 
+    /// <summary>
+    /// Creates an incomplete task with a required title and optional notes.
+    /// </summary>
+    /// <param name="title">The task title.</param>
+    /// <param name="notes">Optional notes about the task.</param>
     [AgentOperation(
         "add-task",
-        "Creates an incomplete task with a required title and optional notes.",
         Category = "tasks",
         Examples = ["--title \"Write docs\" --notes \"Include CLI skill generation\""])]
     public TaskItem AddTask(string title, string? notes = null)
@@ -34,9 +40,12 @@ public sealed class TaskTrackerService
         return task;
     }
 
+    /// <summary>
+    /// Marks the task identified by id as completed.
+    /// </summary>
+    /// <param name="id">The identifier of the task to complete.</param>
     [AgentOperation(
         "complete-task",
-        "Marks the task identified by id as completed.",
         Category = "tasks",
         Examples = ["--id 1"])]
     public TaskItem CompleteTask(int id)
@@ -51,9 +60,12 @@ public sealed class TaskTrackerService
         return completed;
     }
 
+    /// <summary>
+    /// Permanently deletes the task identified by id; invoke only after explicit user confirmation.
+    /// </summary>
+    /// <param name="id">The identifier of the task to remove.</param>
     [AgentOperation(
         "remove-task",
-        "Permanently deletes the task identified by id; invoke only after explicit user confirmation.",
         Category = "tasks",
         SafetyLevel = AgentSafetyLevel.Dangerous,
         Examples = ["--id 1"])]

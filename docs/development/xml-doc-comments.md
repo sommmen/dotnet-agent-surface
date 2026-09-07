@@ -8,10 +8,13 @@ project, [core catalog and abstractions](core-catalog.md) for the metadata
 model this extends, and [skill and reference generation](skill-generation.md)
 for the generator that consumes the resulting text.
 
-## Status: proposed plan
+## Status: partially implemented
 
-Not implemented. Tracked as milestone
-"XML doc comments as operation metadata" in [tracking.md](tracking.md).
+Phase 1 is complete and the core Phase 2 descriptor, rendering, and catalog
+validation work is implemented. Satellite integration, skill-command diagnostic
+reporting, extended size-budget coverage, and the optional source generator
+remain planned. Progress is tracked as the "XML doc comments as operation
+metadata" milestone in [tracking.md](tracking.md).
 
 ## Current state
 
@@ -380,17 +383,19 @@ therefore planned as phase 3, folded into the existing
 
 ## Rollout phases
 
-**Phase 1 — Core reader and optional description.**
+**Phase 1 — Core reader and optional description (implemented).**
 `IOperationDocumentationSource`, `XmlOperationDocumentationSource`,
 documentation comment ID generation, text normalization, the name-only
 `AgentOperationAttribute` constructor, and the resolution precedence in
 `OperationDescriptor`. Default behavior unchanged.
 
-**Phase 2 — Parameter descriptions and surfaces.**
+**Phase 2 — Parameter descriptions and surfaces (partially implemented).**
 `OperationParameterDescriptor.Description`, rendered in `SKILL.md` reference
 parameter tables, CLI option help, and MCP input-schema `description` fields
-(`OperationSchemaGenerator` emits per-property `description`). Diagnostics
-report and `RequireDescription` strict mode.
+(`OperationSchemaGenerator` emits per-property `description`), are implemented.
+`OperationCatalog.DocumentationDiagnostics` and `RequireDescription` strict mode
+are also available. Skill-command warning/report integration and the extended
+XML-sourced size-budget coverage remain planned.
 
 **Phase 3 — Satellites, then the optional source generator.**
 ASP.NET Core, Hangfire class-based jobs, and MCP-native ingestion consume the

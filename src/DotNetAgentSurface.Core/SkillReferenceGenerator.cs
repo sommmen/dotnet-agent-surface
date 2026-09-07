@@ -280,7 +280,7 @@ public sealed class SkillReferenceGenerator
                 builder.AppendLine("### Parameters");
                 foreach (var parameter in parameters)
                 {
-                    builder.AppendLine($"- `--{parameter.Name}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}");
+                    builder.AppendLine($"- `--{parameter.Name}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}{(string.IsNullOrWhiteSpace(parameter.Description) ? string.Empty : $" — {parameter.Description}")}");
                 }
             }
 
@@ -342,7 +342,7 @@ public sealed class SkillReferenceGenerator
                 builder.AppendLine("### Parameters");
                 foreach (var parameter in parameters)
                 {
-                    builder.AppendLine($"- `--{parameter.Name}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}");
+                    builder.AppendLine($"- `--{parameter.Name}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}{(string.IsNullOrWhiteSpace(parameter.Description) ? string.Empty : $" — {parameter.Description}")}");
                 }
             }
 

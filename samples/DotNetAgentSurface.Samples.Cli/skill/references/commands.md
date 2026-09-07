@@ -9,8 +9,8 @@ Creates an incomplete task with a required title and optional notes.
 - Category: `tasks`
 
 ### Parameters
-- `--title` (String), required
-- `--notes` (String), optional
+- `--title` (String), required — The task title.
+- `--notes` (String), optional — Optional notes about the task.
 
 ### Examples
 - `tasktracker-cli tasks add-task --title "Write docs" --notes "Include CLI skill generation"`
@@ -24,7 +24,7 @@ Marks the task identified by id as completed.
 - Category: `tasks`
 
 ### Parameters
-- `--id` (Int32), required
+- `--id` (Int32), required — The identifier of the task to complete.
 
 ### Examples
 - `tasktracker-cli tasks complete-task --id 1`
@@ -49,7 +49,7 @@ Permanently deletes the task identified by id; invoke only after explicit user c
 - Category: `tasks`
 
 ### Parameters
-- `--id` (Int32), required
+- `--id` (Int32), required — The identifier of the task to remove.
 
 ### Examples
 - `tasktracker-cli tasks remove-task --id 1`

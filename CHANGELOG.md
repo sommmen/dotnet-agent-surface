@@ -100,6 +100,17 @@ listed. Each entry links the pull request(s) that shipped it.
 - [`CHANGELOG.md`](CHANGELOG.md) itself, and a PR template checklist item
   reminding contributors to update it for breaking changes.
   ([issue #28](https://github.com/sommmen/dotnet-agent-surface/issues/28))
+- `AgentOperationAttribute(string name)` single-argument constructor and
+  nullable `Description`, so an operation can be annotated with a name only
+  and source its description from XML documentation comments instead of
+  duplicating it in the attribute. `Description` was `string`; it is now
+  `string?`. Existing two-argument call sites keep compiling and behaving
+  identically. Paired with `IOperationDocumentationSource`,
+  `XmlOperationDocumentationSource`, `OperationCatalogBuilder.UseDocumentation(...)`/
+  `UseXmlDocumentation(...)`, `OperationCatalog.Discover(IOperationDocumentationSource?, ...)`
+  overloads, and `OperationCatalog.DocumentationDiagnostics` (surfacing
+  operations that still resolved to an empty description). See
+  [`docs/development/xml-doc-comments.md`](docs/development/xml-doc-comments.md).
 
 ### Changed
 

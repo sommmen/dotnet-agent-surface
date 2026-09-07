@@ -12,6 +12,7 @@ jobManager.AddOrUpdate("nightly-cleanup", Job.FromExpression(() => SampleJobs.Cl
 jobManager.AddOrUpdate("hourly-report", Job.FromExpression(() => SampleJobs.SendReport()), Cron.Hourly());
 
 var catalog = new OperationCatalogBuilder()
+    .UseXmlDocumentation()
     .AddHangfireRecurringOperations(storage, jobManager)
     // Runs class-based jobs directly (no BackgroundJobServer/storage round-trip) and captures their full
     // ILogger transcript, so an agent can debug a job's behavior without spinning up the whole host app.

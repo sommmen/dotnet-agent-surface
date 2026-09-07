@@ -3,7 +3,9 @@ using DotNetAgentSurface.Core;
 using DotNetAgentSurface.Samples.TaskTracker;
 
 var services = new SingleServiceProvider(new TaskTrackerService());
-var catalog = OperationCatalog.Discover(typeof(TaskTrackerService));
+var catalog = OperationCatalog.Discover(
+    XmlOperationDocumentationSource.ProbeAppBaseDirectory(),
+    typeof(TaskTrackerService));
 var adapter = new OperationCommandLineAdapter(catalog, new OperationInvoker(services), new ToonAgentOutputRenderer());
 var skillOptions = new SkillGenerationOptions(
     skillName: "tasktracker-cli",

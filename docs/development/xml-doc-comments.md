@@ -22,8 +22,11 @@ constructor argument**:
 public AgentOperationAttribute(string name, string description)
 ```
 
-`OperationDescriptor` copies it verbatim (`Description = operation.Description`),
-and every surface renders that one string:
+`OperationCatalog.CreateDescriptor(...)` additionally **rejects** a null or
+whitespace-only attribute description with
+`"Operation '<name>' has an empty description."`, and `OperationDescriptor`
+copies the value verbatim (`Description = operation.Description`). Every surface
+renders that one string:
 
 - `SkillReferenceGenerator` writes it under each operation heading in
   `references/commands.md`, and again after the em dash in each `SKILL.md`
@@ -184,6 +187,19 @@ unchanged. It is a source-compatible, pre-1.0-acceptable change; the nullable
 annotation on the attribute property is the only API-surface break, and it is
 noted in `CHANGELOG.md`.
 
+**The existing empty-description guard has to move at the same time.**
+`OperationCatalog.CreateDescriptor(...)` currently throws
+`OperationCatalogException` when `attribute.Description` is null or whitespace,
+which would reject a name-only `[AgentOperation("name")]` during discovery —
+before any documentation source could supply a fallback. Relaxing the attribute
+without relaxing that check would make the new constructor unusable, so the
+validation must be re-pointed at the **resolved** description produced by
+[resolution precedence](#4-resolution-precedence): a still-empty result becomes
+a diagnostic by default, and a hard failure only under the opt-in strict mode
+described in [diagnostics](#7-diagnostics-and-failure-modes). Explicitly passing
+`[AgentOperation("name", "   ")]` should keep failing, because that is a typo
+rather than an opt-in to inference.
+
 ### 2. A documentation-source seam in Core
 
 ```csharp
@@ -310,7 +326,9 @@ required argument. Behavior:
 - An operation ends up with an **empty** description → surfaced through a
   diagnostics report in the same shape the Hangfire satellite already uses for
   registration/skip/warning reports, and reported as a warning by the
-  `skill generate`/`check` CLI commands.
+  `skill generate`/`check` CLI commands. This replaces today's unconditional
+  `OperationCatalogException` on an empty *attribute* description; the throw
+  survives only for an explicitly supplied blank string and under strict mode.
 - Add an opt-in strict mode (`OperationDocumentationOptions.RequireDescription`)
   that makes an empty resolved description a catalog-build failure, so teams
   can enforce "every operation is documented" in CI.

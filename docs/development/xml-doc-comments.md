@@ -239,7 +239,7 @@ runtime strategy and needs its own focused tests:
   ``` ``n ``` (``` M:Ns.Repo.Get``1(``0) ```).
 - Parameter list is emitted only when the method has parameters, using **fully
   qualified parameter type names**, with generic parameters written positionally
-  (`` `0 ``), (``` ``0 ```).
+  (`` `0 `` for type parameters, ``` ``0 ``` for method parameters).
 - Arrays are `[]` / `[0:,0:]` for multi-dimensional, pointers `*`, and `ref`,
   `out`, and `in` parameters get a trailing `@`.
 - Conversion operators append `~ReturnType`.

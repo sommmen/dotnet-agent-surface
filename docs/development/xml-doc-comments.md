@@ -235,11 +235,11 @@ runtime strategy and needs its own focused tests:
 
 - `M:` prefix for methods; the declaring type is written with `.` for
   namespaces and `+` replaced by `.` for nested types.
-- Generic types use `` `n `` arity (`M:Ns.Repo`1.Get`), generic methods use
-  ``` ``n ``` (`M:Ns.Repo.Get``1(``0)`).
+- Generic types use `` `n `` arity (`` M:Ns.Repo`1.Get ``), generic methods use
+  ``` ``n ``` (``` M:Ns.Repo.Get``1(``0) ```).
 - Parameter list is emitted only when the method has parameters, using **fully
   qualified parameter type names**, with generic parameters written positionally
-  (`` `0 ``, ``` ``0 ```).
+  (`` `0 ``), (``` ``0 ```).
 - Arrays are `[]` / `[0:,0:]` for multi-dimensional, pointers `*`, and `ref`,
   `out`, and `in` parameters get a trailing `@`.
 - Conversion operators append `~ReturnType`.

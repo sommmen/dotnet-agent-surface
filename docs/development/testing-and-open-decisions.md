@@ -89,6 +89,7 @@ Explore an optional source-generation path for statically known, explicitly anno
 4. Add AXI-oriented projections, configurable truncation, `--fields`, `--full`, total counts, and structured empty/error output.
 5. Add overload and alias support with deterministic naming rules.
 6. Add an explicit generator CLI command; evaluate optional MSBuild integration later.
+7. Source operation and parameter descriptions from C# XML documentation comments so annotations stop duplicating text the code already carries — see [XML documentation comments as operation metadata](xml-doc-comments.md).
 
 ### AXI best-effort compliance
 

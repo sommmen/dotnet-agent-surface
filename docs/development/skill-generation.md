@@ -74,8 +74,11 @@ that has to hold as the catalog grows:
 - Generating natural-language skill content with an LLM at build time
   (already an explicit non-goal for the whole project — see
   [core catalog and abstractions](core-catalog.md)). Skill/operation
-  descriptions remain whatever the developer wrote in
-  `[AgentOperation(...)]`; the generator only rearranges and formats them.
+  descriptions remain whatever the developer wrote — either in
+  `[AgentOperation(...)]` or, once
+  [XML documentation comments as operation metadata](xml-doc-comments.md)
+  lands, in the method's `/// <summary>`; the generator only rearranges and
+  formats them.
 - Runtime/dynamic skill loading. This generator produces static files; how
   an agent host discovers and loads a `skills/<skill-name>/` directory is
   out of scope here.

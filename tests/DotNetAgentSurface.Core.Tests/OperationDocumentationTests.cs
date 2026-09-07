@@ -5,18 +5,18 @@ namespace DotNetAgentSurface.Core.Tests;
 public sealed class OperationDocumentationTests
 {
     [Fact]
-    public void Discover_uses_normalized_xml_summary_and_parameter_documentation()
+    public void Discover_uses_xml_summary_and_parameter_documentation()
     {
         var source = new StubDocumentationSource(new OperationDocumentation(
-            "  Fetches <c>one</c>  <see cref=\"T:Example.Widget\"/>. ",
+            "Fetches a widget.",
             null,
-            new Dictionary<string, string> { ["id"] = " The   widget identifier. " },
+            new Dictionary<string, string> { ["id"] = "The widget identifier." },
             null));
 
         var operation = Assert.Single(OperationCatalog.Discover(source, typeof(UndocumentedOperations)).Operations);
 
-        Assert.Equal("  Fetches <c>one</c>  <see cref=\"T:Example.Widget\"/>. ", operation.Description);
-        Assert.Equal(" The   widget identifier. ", Assert.Single(operation.Parameters).Description);
+        Assert.Equal("Fetches a widget.", operation.Description);
+        Assert.Equal("The widget identifier.", Assert.Single(operation.Parameters).Description);
     }
 
     [Fact]

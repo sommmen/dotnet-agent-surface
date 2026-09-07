@@ -161,6 +161,7 @@ public sealed class XmlOperationDocumentationSource : IOperationDocumentationSou
             ? _paths
             : [Path.Combine(AppContext.BaseDirectory, assembly.GetName().Name + ".xml")];
         var loaded = new Dictionary<string, XElement>(StringComparer.Ordinal);
+        var assemblyName = assembly.GetName().Name;
         foreach (var path in paths)
         {
             try
@@ -171,12 +172,23 @@ public sealed class XmlOperationDocumentationSource : IOperationDocumentationSou
                 }
 
                 var document = XDocument.Load(path, LoadOptions.None);
+                
+                // Filter members to only those from the requested assembly when assembly identity is present
+                var assemblyElement = document.Element("doc")?.Element("assembly");
+                var docAssemblyName = assemblyElement?.Element("name")?.Value;
+                
                 foreach (var member in document.Descendants("member"))
                 {
                     var name = (string?)member.Attribute("name");
                     if (!string.IsNullOrWhiteSpace(name))
                     {
-                        loaded[name!] = member;
+                        // Only include this member if:
+                        // - No assembly identity in the XML file (we assume it's for this assembly), OR
+                        // - The XML file's assembly name matches the requested assembly
+                        if (docAssemblyName is null || docAssemblyName == assemblyName)
+                        {
+                            loaded[name!] = member;
+                        }
                     }
                 }
             }

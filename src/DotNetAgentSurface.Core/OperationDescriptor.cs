@@ -25,7 +25,11 @@ public sealed class OperationDescriptor
         IsIdempotent = operation.IsIdempotent;
         PolicyMetadata = Array.AsReadOnly((policyMetadata ?? []).ToArray());
         InvocationPolicies = Array.AsReadOnly((invocationPolicies ?? []).ToArray());
-        Parameters = Array.AsReadOnly(method.GetParameters().Select(parameter => new OperationParameterDescriptor(parameter, documentation?.Parameters.TryGetValue(parameter.Name!, out var description) == true ? description : null)).ToArray());
+        Parameters = Array.AsReadOnly(method.GetParameters().Select(parameter =>
+        {
+            var paramName = parameter.Name ?? throw new ArgumentException($"Method parameter at index {Array.IndexOf(method.GetParameters(), parameter)} has no name.");
+            return new OperationParameterDescriptor(parameter, documentation?.Parameters.TryGetValue(paramName, out var description) == true ? description : null);
+        }).ToArray());
     }
 
     private static string ResolveDescription(string? explicitDescription, OperationDocumentation? documentation, OperationDocumentationOptions? options)

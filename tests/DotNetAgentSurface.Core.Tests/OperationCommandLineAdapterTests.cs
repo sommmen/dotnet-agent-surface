@@ -50,6 +50,23 @@ public sealed class OperationCommandLineAdapterTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_operation_help_renders_parameter_descriptions()
+    {
+        var source = new StubDocumentationSource(new OperationDocumentation(
+            null,
+            null,
+            new Dictionary<string, string> { ["value"] = "The value to echo back." },
+            null));
+        var catalog = OperationCatalog.Discover(source, typeof(CliOperations));
+        var adapter = new OperationCommandLineAdapter(catalog, new OperationInvoker(new SingleServiceProvider(new CliOperations())));
+
+        var result = await adapter.ExecuteAsync(["echo", "--help"]);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--value <String> - The value to echo back.", result.Output);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_resolves_operation_by_alias()
     {
         var invocation = await CreateAdapter().ExecuteAsync(["say", "--value", "hello"]);
@@ -217,5 +234,10 @@ public sealed class OperationCommandLineAdapterTests
     private sealed class SingleServiceProvider(object service) : IServiceProvider
     {
         public object? GetService(Type serviceType) => serviceType.IsInstanceOfType(service) ? service : null;
+    }
+
+    private sealed class StubDocumentationSource(OperationDocumentation documentation) : IOperationDocumentationSource
+    {
+        public OperationDocumentation? GetDocumentation(System.Reflection.MethodInfo method) => documentation;
     }
 }

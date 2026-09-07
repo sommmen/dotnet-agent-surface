@@ -3,7 +3,11 @@ namespace DotNetAgentSurface.Core;
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
 public sealed class AgentOperationAttribute : Attribute
 {
-    public AgentOperationAttribute(string name, string description)
+    public AgentOperationAttribute(string name) : this(name, null)
+    {
+    }
+
+    public AgentOperationAttribute(string name, string? description)
     {
         Name = name;
         Description = description;
@@ -11,7 +15,7 @@ public sealed class AgentOperationAttribute : Attribute
 
     public string Name { get; }
 
-    public string Description { get; }
+    public string? Description { get; }
 
     public string? Category { get; init; }
 

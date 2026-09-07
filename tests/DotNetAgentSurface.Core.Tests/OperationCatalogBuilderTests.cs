@@ -103,6 +103,61 @@ public sealed class OperationCatalogBuilderTests
     }
 
     [Fact]
+    public void UseDocumentation_applies_to_subsequently_added_types_only()
+    {
+        var source = new StubDocumentationSource(new OperationDocumentation("From documentation.", null, new Dictionary<string, string>(), null));
+
+        var builder = new OperationCatalogBuilder()
+            .AddFromType(typeof(UndocumentedOperations))
+            .UseDocumentation(source)
+            .AddFromType(typeof(OtherUndocumentedOperations));
+        var catalog = builder.Build();
+
+        Assert.Equal(string.Empty, catalog.Operations.Single(static operation => operation.Name == "before").Description);
+        Assert.Equal("From documentation.", catalog.Operations.Single(static operation => operation.Name == "after").Description);
+    }
+
+    [Fact]
+    public void UseDocumentation_throws_on_null_source()
+    {
+        Assert.Throws<ArgumentNullException>(() => new OperationCatalogBuilder().UseDocumentation(null!));
+    }
+
+    [Fact]
+    public void UseXmlDocumentation_wires_an_xml_documentation_source_probing_the_app_base_directory()
+    {
+        // XmlOperationDocumentationSource.ProbeAppBaseDirectory() has no configurable directory; it always
+        // reads "{AppContext.BaseDirectory}/{assembly name}.xml", so this test writes there directly.
+        var id = "M:DotNetAgentSurface.Core.Tests.OperationCatalogBuilderTests.UndocumentedOperations.Before";
+        var path = Path.Combine(AppContext.BaseDirectory, typeof(UndocumentedOperations).Assembly.GetName().Name + ".xml");
+        var existed = File.Exists(path);
+        var backup = existed ? File.ReadAllText(path) : null;
+        try
+        {
+            File.WriteAllText(path, $"<doc><members><member name=\"{id}\"><summary>From XML.</summary></member></members></doc>");
+
+            var catalog = new OperationCatalogBuilder()
+                .UseXmlDocumentation()
+                .AddFromType(typeof(UndocumentedOperations))
+                .Build();
+
+            var operation = Assert.Single(catalog.Operations);
+            Assert.Equal("From XML.", operation.Description);
+        }
+        finally
+        {
+            if (existed)
+            {
+                File.WriteAllText(path, backup);
+            }
+            else
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
     public void Build_combines_type_discovery_and_delegate_registrations()
     {
         var catalog = new OperationCatalogBuilder()
@@ -168,6 +223,27 @@ public sealed class OperationCatalogBuilderTests
     {
         [AgentOperation("alpha", "Alpha operation")]
         public static void Alpha()
+        {
+        }
+    }
+
+    private sealed class StubDocumentationSource(OperationDocumentation documentation) : IOperationDocumentationSource
+    {
+        public OperationDocumentation? GetDocumentation(System.Reflection.MethodInfo method) => documentation;
+    }
+
+    private sealed class UndocumentedOperations
+    {
+        [AgentOperation("before")]
+        public static void Before()
+        {
+        }
+    }
+
+    private sealed class OtherUndocumentedOperations
+    {
+        [AgentOperation("after")]
+        public static void After()
         {
         }
     }

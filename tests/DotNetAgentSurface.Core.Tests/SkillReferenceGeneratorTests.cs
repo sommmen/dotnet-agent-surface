@@ -24,6 +24,53 @@ public sealed class SkillReferenceGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void Generate_is_byte_identical_regardless_of_xml_doc_line_endings_and_whitespace()
+    {
+        var method = typeof(XmlDocumentedOperations).GetMethod(nameof(XmlDocumentedOperations.Greet))!;
+        var id = "M:DotNetAgentSurface.Core.Tests.SkillReferenceGeneratorTests.XmlDocumentedOperations.Greet(System.String)";
+
+        var crlfPath = Path.Combine(_outputDirectory, "crlf.xml");
+        var lfPath = Path.Combine(_outputDirectory, "lf.xml");
+        Directory.CreateDirectory(_outputDirectory);
+        try
+        {
+            File.WriteAllText(crlfPath,
+                $"<doc><members><member name=\"{id}\">\r\n<summary>\r\n  Greets   a\r\n  person.\r\n</summary>\r\n<param name=\"name\"> The person's   name. </param>\r\n</member></members></doc>");
+            File.WriteAllText(lfPath,
+                $"<doc><members><member name=\"{id}\"><summary>Greets a person.</summary><param name=\"name\">The person's name.</param></member></members></doc>");
+
+            var crlfCatalog = OperationCatalog.Discover(new XmlOperationDocumentationSource(crlfPath), typeof(XmlDocumentedOperations));
+            var lfCatalog = OperationCatalog.Discover(new XmlOperationDocumentationSource(lfPath), typeof(XmlDocumentedOperations));
+
+            var crlfOutput = Path.Combine(_outputDirectory, "crlf-output");
+            var lfOutput = Path.Combine(_outputDirectory, "lf-output");
+            var generator = new SkillReferenceGenerator();
+            var options = new SkillGenerationOptions("xml-doc-determinism", "Determinism probe", "xml-doc-determinism");
+            generator.Generate(crlfCatalog, crlfOutput, options);
+            generator.Generate(lfCatalog, lfOutput, options);
+
+            Assert.Equal(
+                File.ReadAllBytes(Path.Combine(crlfOutput, "SKILL.md")),
+                File.ReadAllBytes(Path.Combine(lfOutput, "SKILL.md")));
+            Assert.Equal(
+                File.ReadAllBytes(Path.Combine(crlfOutput, "references", "commands.md")),
+                File.ReadAllBytes(Path.Combine(lfOutput, "references", "commands.md")));
+
+            // The CRLF/whitespace-heavy source is the one actually generated against; the LF-generated
+            // output must still be considered current, proving normalization collapses both variants to
+            // the same canonical, byte-exact description text before it reaches the descriptor.
+            Assert.True(generator.IsCurrent(lfCatalog, crlfOutput, options));
+        }
+        finally
+        {
+            if (Directory.Exists(_outputDirectory))
+            {
+                Directory.Delete(_outputDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void Generate_renders_examples_with_full_category_prefixed_command_path()
     {
         var catalog = OperationCatalog.Discover(typeof(CategorizedOperations));
@@ -169,5 +216,11 @@ public sealed class SkillReferenceGeneratorTests : IDisposable
     {
         [AgentOperation("archive", "Archives a project", Category = "projects archived", Examples = ["--id 42"])]
         public string Archive(int id) => $"Archived {id}";
+    }
+
+    private sealed class XmlDocumentedOperations
+    {
+        [AgentOperation("greet")]
+        public string Greet(string name) => $"Hello, {name}";
     }
 }

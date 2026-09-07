@@ -9,12 +9,15 @@ public sealed class OperationDescriptor
         AgentOperationAttribute operation,
         object? boundTarget = null,
         IReadOnlyList<object>? policyMetadata = null,
-        IReadOnlyList<IOperationInvocationPolicy>? invocationPolicies = null)
+        IReadOnlyList<IOperationInvocationPolicy>? invocationPolicies = null,
+        IOperationDocumentationSource? documentationSource = null,
+        OperationDocumentationOptions? documentationOptions = null)
     {
         Method = method;
         BoundTarget = boundTarget;
         Name = operation.Name;
-        Description = operation.Description;
+        var documentation = documentationSource?.GetDocumentation(method);
+        Description = ResolveDescription(operation.Description, documentation, documentationOptions);
         Category = operation.Category;
         SafetyLevel = operation.SafetyLevel;
         Examples = Array.AsReadOnly(operation.Examples);
@@ -22,7 +25,24 @@ public sealed class OperationDescriptor
         IsIdempotent = operation.IsIdempotent;
         PolicyMetadata = Array.AsReadOnly((policyMetadata ?? []).ToArray());
         InvocationPolicies = Array.AsReadOnly((invocationPolicies ?? []).ToArray());
-        Parameters = Array.AsReadOnly(method.GetParameters().Select(static parameter => new OperationParameterDescriptor(parameter)).ToArray());
+        Parameters = Array.AsReadOnly(method.GetParameters().Select(parameter => new OperationParameterDescriptor(parameter, documentation?.Parameters.TryGetValue(parameter.Name!, out var description) == true ? description : null)).ToArray());
+    }
+
+    private static string ResolveDescription(string? explicitDescription, OperationDocumentation? documentation, OperationDocumentationOptions? options)
+    {
+        if (explicitDescription is not null)
+        {
+            return explicitDescription;
+        }
+
+        var summary = documentation?.Summary;
+        var remarks = documentation?.Remarks;
+        if (options?.IncludeRemarks == true && !string.IsNullOrWhiteSpace(remarks))
+        {
+            return string.IsNullOrWhiteSpace(summary) ? remarks! : summary + " " + remarks;
+        }
+
+        return summary ?? string.Empty;
     }
 
     public string Name { get; }
@@ -63,9 +83,10 @@ public sealed class OperationDescriptor
 
 public sealed class OperationParameterDescriptor
 {
-    internal OperationParameterDescriptor(ParameterInfo parameter)
+    internal OperationParameterDescriptor(ParameterInfo parameter, string? description = null)
     {
         Name = parameter.Name ?? throw new ArgumentException("Operation parameters must have names.", nameof(parameter));
+        Description = description;
         ParameterType = parameter.ParameterType;
         IsOptional = parameter.IsOptional;
         DefaultValue = parameter.IsOptional ? parameter.DefaultValue : null;
@@ -74,6 +95,8 @@ public sealed class OperationParameterDescriptor
     }
 
     public string Name { get; }
+
+    public string? Description { get; }
 
     public Type ParameterType { get; }
 

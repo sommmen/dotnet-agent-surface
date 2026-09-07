@@ -11,8 +11,8 @@ Run `skill --help` to list available commands, then read the detailed reference 
 
 ## Command index
 
-- [`list-recurring-hangfire`](references/commands.md) — Lists the recurring jobs currently registered in Hangfire storage.
-- [`trigger-recurring-hangfire`](references/commands.md) — Requests that a currently registered recurring job be triggered. By default the job is enqueued on the application's configured Hangfire storage; the acknowledgement never claims that execution completed. When configured for isolated execution, the job runs to completion or failure on a short-lived in-memory Hangfire server that never touches configured storage.
+- [Hangfire](commands/hangfire.md) — 2 operations
+- [Hangfire / Workflow / Tests](commands/hangfire-workflow-tests.md) — 1 operation
 
 ## Examples
 

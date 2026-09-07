@@ -4,10 +4,12 @@
     "properties": {
       "notes": {
         "type": "string",
-        "nullable": true
+        "nullable": true,
+        "description": "Optional notes about the task."
       },
       "title": {
-        "type": "string"
+        "type": "string",
+        "description": "The task title."
       }
     },
     "required": [
@@ -19,7 +21,8 @@
     "type": "object",
     "properties": {
       "id": {
-        "type": "integer"
+        "type": "integer",
+        "description": "The identifier of the task to complete."
       }
     },
     "required": [
@@ -37,7 +40,8 @@
     "type": "object",
     "properties": {
       "id": {
-        "type": "integer"
+        "type": "integer",
+        "description": "The identifier of the task to remove."
       }
     },
     "required": [

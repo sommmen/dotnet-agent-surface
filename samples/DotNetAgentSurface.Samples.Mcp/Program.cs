@@ -4,7 +4,12 @@ using DotNetAgentSurface.Samples.TaskTracker;
 
 var services = new SingleServiceProvider(new TaskTrackerService());
 var catalog = OperationCatalog.Discover(typeof(TaskTrackerService));
-var server = new McpOperationServer(new McpOperationAdapter(catalog, new OperationInvoker(services)));
+
+// serverInstructions is optional guidance for MCP clients that honor
+// McpServerOptions.ServerInstructions (typically folded into the model's system prompt).
+var server = new McpOperationServer(
+    new McpOperationAdapter(catalog, new OperationInvoker(services)),
+    serverInstructions: "Use the task tracker tools to list, create, and complete tasks instead of tracking them in free text.");
 
 await server.RunStdioAsync();
 

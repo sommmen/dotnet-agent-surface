@@ -12,6 +12,12 @@ public sealed class McpOperationServer
     private readonly string? _serverInstructions;
 
     /// <param name="adapter">Adapts a catalog to MCP tool descriptors and invocations.</param>
+    public McpOperationServer(McpOperationAdapter adapter)
+        : this(adapter, null)
+    {
+    }
+
+    /// <param name="adapter">Adapts a catalog to MCP tool descriptors and invocations.</param>
     /// <param name="serverInstructions">
     /// Free-form guidance surfaced to MCP clients via <see cref="McpServerOptions.ServerInstructions"/>
     /// during initialization. Clients that honor it typically fold it into the model's system prompt (per
@@ -20,7 +26,7 @@ public sealed class McpOperationServer
     /// operation over another, or ordering/workflow expectations — rather than repeating text already
     /// present in individual tool descriptions.
     /// </param>
-    public McpOperationServer(McpOperationAdapter adapter, string? serverInstructions = null)
+    public McpOperationServer(McpOperationAdapter adapter, string? serverInstructions)
     {
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _serverInstructions = serverInstructions;

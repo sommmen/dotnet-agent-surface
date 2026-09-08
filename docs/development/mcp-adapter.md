@@ -28,11 +28,14 @@ MCP hosting should be provided as a separate executable or an easy-to-compose ho
 ### Custom server instructions
 
 Consumers can pass free-form `serverInstructions` to `McpOperationServer`'s
-constructor. This flows straight through to `McpServerOptions.ServerInstructions`,
-which the MCP C# SDK returns to clients during `initialize`. Per the MCP spec
-this is advisory: a compliant client *may* fold it into the model's system
-prompt, but is not required to (some hosts already read a server's
-instructions automatically, see [ModelContextProtocol.Client.McpClient.ServerInstructions](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClient.html)).
+constructor using the two-argument overload. This flows straight through to
+`McpServerOptions.ServerInstructions`, which the MCP C# SDK returns to clients
+during `initialize`. Per the MCP spec this is advisory: a compliant client *may*
+fold it into the model's system prompt, but is not required to (some hosts
+already read a server's instructions automatically, see
+[ModelContextProtocol.Client.McpClient.ServerInstructions](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClient.html)).
+A single-argument constructor overload is available for cases where
+`serverInstructions` is not needed.
 
 Use it to describe *how* to use the tools on this server (ordering, when to
 prefer one operation over another), not to restate text already present in

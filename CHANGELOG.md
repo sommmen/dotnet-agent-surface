@@ -43,6 +43,13 @@ listed. Each entry links the pull request(s) that shipped it.
 
 ### Added
 
+- `McpOperationServer`'s constructor now accepts an optional
+  `serverInstructions` parameter, forwarded to `McpServerOptions.ServerInstructions`
+  so consumers can inject custom guidance on how MCP clients should use the
+  hosted tools. Purely additive: it defaults to `null`, matching prior
+  behavior, for every existing caller. See
+  [`docs/development/mcp-adapter.md`](docs/development/mcp-adapter.md#custom-server-instructions).
+
 - `RegisterJobs<TJobBase>`/`RegisterJobs<TJobBase, TOptions>`'s generic
   constraints were relaxed (not tightened) from the concrete
   `HangfireJob`/`HangfireJobWithOptions<TOptions>` base classes to the new

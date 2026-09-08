@@ -9,14 +9,32 @@ namespace DotNetAgentSurface.Mcp;
 public sealed class McpOperationServer
 {
     private readonly McpOperationAdapter _adapter;
+    private readonly string? _serverInstructions;
 
+    /// <param name="adapter">Adapts a catalog to MCP tool descriptors and invocations.</param>
     public McpOperationServer(McpOperationAdapter adapter)
+        : this(adapter, null)
+    {
+    }
+
+    /// <param name="adapter">Adapts a catalog to MCP tool descriptors and invocations.</param>
+    /// <param name="serverInstructions">
+    /// Free-form guidance surfaced to MCP clients via <see cref="McpServerOptions.ServerInstructions"/>
+    /// during initialization. Clients that honor it typically fold it into the model's system prompt (per
+    /// the MCP spec, this is advisory: a client may add it to context, but is not required to). Use it to
+    /// describe how the tools on this server are meant to be used — for example, when to prefer one
+    /// operation over another, or ordering/workflow expectations — rather than repeating text already
+    /// present in individual tool descriptions.
+    /// </param>
+    public McpOperationServer(McpOperationAdapter adapter, string? serverInstructions)
     {
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
+        _serverInstructions = serverInstructions;
     }
 
     public McpServerOptions CreateOptions() => new()
     {
+        ServerInstructions = _serverInstructions,
         Handlers = new McpServerHandlers
         {
             ListToolsHandler = (context, cancellationToken) => new ValueTask<ListToolsResult>(new ListToolsResult

@@ -168,6 +168,32 @@ public sealed class McpOperationAdapterTests
         }
     }
 
+    [Fact]
+    public void CreateOptions_surfaces_server_instructions_when_supplied()
+    {
+        var adapter = new McpOperationAdapter(
+            OperationCatalog.Discover(typeof(GreetingOperations)),
+            new OperationInvoker(new SingleServiceProvider(new GreetingOperations())));
+        var server = new McpOperationServer(adapter, serverInstructions: "Prefer 'greet' over ad hoc text replies.");
+
+        var options = server.CreateOptions();
+
+        Assert.Equal("Prefer 'greet' over ad hoc text replies.", options.ServerInstructions);
+    }
+
+    [Fact]
+    public void CreateOptions_leaves_server_instructions_null_by_default()
+    {
+        var adapter = new McpOperationAdapter(
+            OperationCatalog.Discover(typeof(GreetingOperations)),
+            new OperationInvoker(new SingleServiceProvider(new GreetingOperations())));
+        var server = new McpOperationServer(adapter);
+
+        var options = server.CreateOptions();
+
+        Assert.Null(options.ServerInstructions);
+    }
+
     private static Dictionary<string, JsonElement> ArgumentsFor(string name) => new()
     {
         ["name"] = JsonDocument.Parse(JsonSerializer.Serialize(name)).RootElement.Clone()

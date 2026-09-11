@@ -33,7 +33,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         Validate(options);
 
         var jobBaseType = typeof(TJobBase);
-        foreach (var jobType in GetLoadableTypes(assemblies, options)
+        foreach (var jobType in GetLoadableTypes(assemblies)
                      .Where(type => IsConcreteClosedClass(type) && jobBaseType.IsAssignableFrom(type))
                      .Where(type => options.Exclude?.Invoke(type) != true)
                      .OrderBy(type => NormalizeName(options.NameFactory?.Invoke(type) ?? ToKebabCase(type.Name), options.Category), StringComparer.Ordinal))
@@ -70,7 +70,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         Validate(options);
 
         var jobBaseType = typeof(TJobBase);
-        foreach (var jobType in GetLoadableTypes(assemblies, options)
+        foreach (var jobType in GetLoadableTypes(assemblies)
                      .Where(type => IsConcreteClosedClass(type) && jobBaseType.IsAssignableFrom(type))
                      .Where(type => options.Exclude?.Invoke(type) != true)
                      .OrderBy(type => NormalizeName(options.NameFactory?.Invoke(type) ?? ToKebabCase(type.Name), options.Category), StringComparer.Ordinal))
@@ -349,6 +349,38 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         return interfaceType?.GetGenericArguments()[0];
     }
 
+    // The closed-generic RegisterWorkflowTests overloads document that they always throw on an invalid method
+    // and do not consult StrictValidation/DiscoveryReports, so they use this non-reporting variant and keep
+    // their existing behavior of silently continuing with only the loadable types.
+    private static IEnumerable<Type> GetLoadableTypes(IEnumerable<Assembly> assemblies)
+    {
+        foreach (var assembly in assemblies.Distinct())
+        {
+            if (assembly is null)
+            {
+                throw new ArgumentException("The supplied assemblies enumerable contains a null entry.", nameof(assemblies));
+            }
+
+            Type[] types;
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException exception)
+            {
+                types = exception.Types.Where(static type => type is not null).Cast<Type>().ToArray();
+            }
+
+            foreach (var type in types)
+            {
+                yield return type;
+            }
+        }
+    }
+
+    // RegisterAllOptionsJobs and RegisterAttributeWorkflowTests consult StrictValidation/DiscoveryReports, so
+    // this variant mirrors the enqueue-oriented discovery and reports an assembly-load failure (honoring strict
+    // mode) instead of silently continuing with only the loadable types.
     private static IEnumerable<Type> GetLoadableTypes(IEnumerable<Assembly> assemblies, HangfireWorkflowTestRegistrationOptions options)
     {
         foreach (var assembly in assemblies.Distinct())
@@ -365,8 +397,6 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
             }
             catch (ReflectionTypeLoadException exception)
             {
-                // Mirror the enqueue-oriented discovery: report the assembly-load failure (and honor strict mode)
-                // instead of silently continuing with only the loadable types.
                 Report(
                     options,
                     null,

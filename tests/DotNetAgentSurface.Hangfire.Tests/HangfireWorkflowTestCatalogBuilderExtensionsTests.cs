@@ -376,6 +376,59 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
                 }));
     }
 
+    [Fact]
+    public async Task RegisterAllOptionsJobs_with_services_discovers_every_closed_options_type_in_one_call()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(EmptyServices(), [typeof(WorkflowScanA).Assembly],
+                options => options.Exclude = type => type != typeof(WorkflowScanA) && type != typeof(WorkflowScanB))
+            .Build();
+
+        var operationA = Assert.Single(catalog.Operations, operation => operation.Name == "workflow-scan-a");
+        Assert.Single(catalog.Operations, operation => operation.Name == "workflow-scan-b");
+
+        var inputs = new Dictionary<string, JsonElement> { ["options"] = JsonDocument.Parse("{\"message\":\"hi\"}").RootElement.Clone() };
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationA, inputs);
+
+        Assert.True(invocation.Succeeded);
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+    }
+
+    [Fact]
+    public void RegisterAllOptionsJobs_with_services_skips_and_reports_a_job_with_no_valid_execution_method()
+    {
+        HangfireWorkflowTestRegistrationOptions? observed = null;
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(EmptyServices(), [typeof(WorkflowNoValidMethodJob).Assembly],
+                options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type != typeof(WorkflowNoValidMethodJob);
+                })
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(WorkflowNoValidMethodJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason.Contains("No supported public ExecuteAsync or Execute method", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RegisterAllOptionsJobs_with_services_rejects_a_job_with_no_valid_execution_method_in_strict_mode()
+    {
+        var exception = Assert.Throws<OperationCatalogException>(() => new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(EmptyServices(), [typeof(WorkflowNoValidMethodJob).Assembly],
+                options =>
+                {
+                    options.Exclude = type => type != typeof(WorkflowNoValidMethodJob);
+                    options.StrictValidation = true;
+                }));
+
+        Assert.Contains("No supported public ExecuteAsync or Execute method", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class NullServiceProvider : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;
@@ -431,6 +484,31 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
 
     public sealed record WorkflowOptions(string Message);
     public sealed record Dependency(string Value);
+
+    // --- RegisterAllOptionsJobs(IServiceProvider, ...) fixtures --------------------------------
+    //
+    // These exercise the closed-generic IHangfireJob<TOptions> scanning path (not attribute-based), mirroring
+    // HangfireJobRegistrationCatalogBuilderExtensionsTests' enqueue-side ScanA/ScanB/no-valid-method coverage,
+    // to prove the workflow-test overload reports/rejects an invalid candidate instead of throwing unconditionally.
+
+    private sealed class WorkflowScanA : IHangfireJob<WorkflowOptions>
+    {
+        public Task ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class WorkflowScanB : IHangfireJob<WorkflowScanBOptions>
+    {
+        public Task ExecuteAsync(WorkflowScanBOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    public sealed record WorkflowScanBOptions(string Label);
+
+    // Implements IHangfireJob<TOptions> so it is discovered as a candidate, but its only ExecuteAsync method is an
+    // explicit interface implementation (not public), so no valid execution method can be selected for it.
+    internal sealed class WorkflowNoValidMethodJob : IHangfireJob<WorkflowOptions>
+    {
+        Task IHangfireJob<WorkflowOptions>.ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     private abstract class WorkflowJobBase : HangfireJob { }
     private abstract class OptionsWorkflowJobBase : HangfireJobWithOptions<WorkflowOptions> { }

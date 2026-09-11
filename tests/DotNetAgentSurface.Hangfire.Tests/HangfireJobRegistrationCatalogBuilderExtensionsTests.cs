@@ -258,7 +258,12 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
                 [typeof(AmbiguousOptionsJob).Assembly],
                 options =>
                 {
-                    options.Exclude = type => type == typeof(AmbiguousOptionsJob) || type == typeof(ScanMultiOptions);
+                    // This scans the entire test assembly, so it must also exclude the unrelated
+                    // HangfireWorkflowTestCatalogBuilderExtensionsTests.WorkflowNoValidMethodJob fixture, which
+                    // implements IHangfireJob<TOptions> but has no valid public execution method and would
+                    // otherwise trip strict validation for a type this test isn't exercising.
+                    options.Exclude = type => type == typeof(AmbiguousOptionsJob) || type == typeof(ScanMultiOptions) ||
+                        type == typeof(HangfireWorkflowTestCatalogBuilderExtensionsTests.WorkflowNoValidMethodJob);
                     options.StrictValidation = true;
                     observed = options;
                 })

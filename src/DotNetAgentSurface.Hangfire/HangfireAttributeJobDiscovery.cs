@@ -101,15 +101,21 @@ internal static class HangfireAttributeJobDiscovery
 
     private static bool IsValidExecutionMethod(MethodInfo method, Type jobType, Type? optionsType)
     {
+        if (method.Name is not ("Execute" or "ExecuteAsync"))
+        {
+            return false;
+        }
+
         if (!method.IsPublic || method.IsStatic || method.ContainsGenericParameters || method.DeclaringType is null || !method.DeclaringType.IsAssignableFrom(jobType))
         {
             return false;
         }
 
-        // A by-ref options type (for example, a method taking `ref`/`in`/`out TOptions`) cannot be used as a
-        // generic type argument when constructing the invocation delegate, so reject it here rather than letting
-        // an explicitly-selected method reach that failure at catalog-construction time.
-        if (optionsType is { IsByRef: true })
+        // A by-ref, pointer, or byref-like options type (for example, a method taking `ref`/`in`/`out TOptions`,
+        // a pointer parameter, or a ref struct such as Span<T>) cannot be used as a generic type argument when
+        // constructing the invocation delegate, so reject it here rather than letting an explicitly-selected
+        // method reach that failure at catalog-construction time.
+        if (!IsUsableAsGenericArgument(optionsType))
         {
             return false;
         }
@@ -124,6 +130,17 @@ internal static class HangfireAttributeJobDiscovery
             ? parameters.Length == 1 && parameters[0].ParameterType == typeof(CancellationToken)
             : parameters.Length == 2 && parameters[0].ParameterType == optionsType && parameters[1].ParameterType == typeof(CancellationToken);
     }
+
+    /// <summary>Gets whether <paramref name="type"/> can be used as a generic type argument (for example, when constructing a strongly-typed invocation delegate).</summary>
+    private static bool IsUsableAsGenericArgument(Type? type) => type is null || (!type.IsByRef && !type.IsPointer && !IsByRefLike(type));
+
+    /// <summary>
+    /// Gets whether <paramref name="type"/> is a byref-like type (a `ref struct` such as <c>Span&lt;T&gt;</c>).
+    /// Checked by the compiler-emitted "IsByRefLikeAttribute" marker's name rather than <c>Type.IsByRefLike</c> or
+    /// <c>typeof(IsByRefLikeAttribute)</c>, neither of which is available on the netstandard2.0 target framework.
+    /// </summary>
+    private static bool IsByRefLike(Type type) =>
+        type.CustomAttributes.Any(static attribute => attribute.AttributeType.FullName == "System.Runtime.CompilerServices.IsByRefLikeAttribute");
 
     private static List<(MethodInfo Method, Type? OptionsType)> FindShapedMethods(Type jobType, Type? explicitOptionsType)
     {
@@ -160,9 +177,10 @@ internal static class HangfireAttributeJobDiscovery
                 continue;
             }
 
-            // A by-ref options type (`ref`/`in`/`out TOptions`) cannot be used as a generic type argument when
-            // constructing the invocation delegate, so it is not a valid structural candidate.
-            if (optionsType is { IsByRef: true })
+            // A by-ref, pointer, or byref-like options type (`ref`/`in`/`out TOptions`, a pointer parameter, or a
+            // ref struct such as Span<T>) cannot be used as a generic type argument when constructing the
+            // invocation delegate, so it is not a valid structural candidate.
+            if (!IsUsableAsGenericArgument(optionsType))
             {
                 continue;
             }

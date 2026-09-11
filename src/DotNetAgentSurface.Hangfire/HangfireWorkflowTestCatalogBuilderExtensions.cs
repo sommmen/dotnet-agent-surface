@@ -151,7 +151,12 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
                      .OrderBy(pair => NormalizeName(options.NameFactory?.Invoke(pair.JobType) ?? ToKebabCase(pair.JobType.Name), options.Category), StringComparer.Ordinal)
                      .ThenBy(pair => pair.JobType.FullName, StringComparer.Ordinal))
         {
-            var method = SelectMethod(jobType, optionsInterface, options);
+            var method = SelectMethodOrReport(jobType, optionsInterface, options);
+            if (method is null)
+            {
+                continue;
+            }
+
             var name = options.NameFactory?.Invoke(jobType) ?? ToKebabCase(jobType.Name);
             var runner = new WorkflowTestRunner(services, jobType, method, options);
             var implementation = (Delegate)CreateWorkflowTestDelegateMethod
@@ -324,6 +329,47 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         return method is not null && IsValidExecutionMethod(method, jobType, jobBaseType)
             ? method
             : throw new InvalidOperationException($"No supported public ExecuteAsync or Execute method was found on Hangfire job '{jobType.FullName}'.");
+    }
+
+    /// <summary>
+    /// Selects the execution method for <paramref name="jobType"/> the same way <see cref="SelectMethod"/> does, but
+    /// reports a diagnosable failure (honoring <see cref="HangfireWorkflowTestRegistrationOptions.StrictValidation"/>)
+    /// instead of unconditionally throwing when no valid, unambiguous method is found. Used by
+    /// <see cref="RegisterAllOptionsJobs"/>, which discovers many job types in one call and must be able to skip an
+    /// individual candidate in permissive mode rather than aborting the whole registration.
+    /// </summary>
+    private static MethodInfo? SelectMethodOrReport(Type jobType, Type jobBaseType, HangfireWorkflowTestRegistrationOptions options)
+    {
+        var selected = options.MethodSelector?.Invoke(jobType);
+        if (selected is not null)
+        {
+            if (IsValidExecutionMethod(selected, jobType, jobBaseType))
+            {
+                return selected;
+            }
+
+            Report(options, jobType, "The selected execution method must be a public instance Execute or ExecuteAsync method with the expected parameters.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+            return null;
+        }
+
+        var candidates = jobType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Where(method => (method.Name == "Execute" || method.Name == "ExecuteAsync") && IsValidExecutionMethod(method, jobType, jobBaseType))
+            .OrderByDescending(method => method.Name == "ExecuteAsync")
+            .ThenBy(method => method.MetadataToken)
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            Report(options, jobType, "No supported public ExecuteAsync or Execute method was found.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+            return null;
+        }
+
+        if (candidates.Length > 1)
+        {
+            Report(options, jobType, "Multiple valid Execute or ExecuteAsync methods were found; the deterministic conventional method was selected.", HangfireJobDiscoveryDisposition.Warning, failInStrictMode: true);
+        }
+
+        return candidates[0];
     }
 
     private static bool IsValidExecutionMethod(MethodInfo method, Type jobType, Type jobBaseType)

@@ -42,4 +42,15 @@ public sealed class HangfireWorkflowTestRegistrationOptions
     /// Gets or sets a predicate that excludes a discovered job type.
     /// </summary>
     public Func<Type, bool>? Exclude { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether discovery diagnostics should cause registration to fail. Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool StrictValidation { get; set; }
+
+    /// <summary>Gets a first-class report for every skipped, warning, and registered discovery outcome.</summary>
+    public ICollection<HangfireJobDiscoveryReport> DiscoveryReports { get; } = new List<HangfireJobDiscoveryReport>();
+
+    /// <summary>Gets the legacy diagnostics produced while types are inspected.</summary>
+    public ICollection<HangfireJobRegistrationDiagnostic> Diagnostics { get; } = new List<HangfireJobRegistrationDiagnostic>();
 }

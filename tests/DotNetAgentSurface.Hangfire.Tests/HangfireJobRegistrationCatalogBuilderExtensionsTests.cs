@@ -406,6 +406,136 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
         Assert.Equal("assemblies", exception.ParamName);
     }
 
+    [Fact]
+    public async Task RegisterAttributeJobs_discovers_a_parameterless_job_implementing_only_a_foreign_interface()
+    {
+        var client = new RecordingBackgroundJobClient();
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeJobs(client, [typeof(AttributeMarkedForeignJob).Assembly],
+                options => options.Exclude = type => type != typeof(AttributeMarkedForeignJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations, operation => operation.Name == "attribute-marked-foreign-job");
+
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        Assert.True(result.Succeeded);
+        var created = Assert.Single(client.CreatedJobs);
+        Assert.Equal(typeof(AttributeMarkedForeignJob), created.Job.Type);
+        Assert.Equal(nameof(IForeignJob.ExecuteAsync), created.Job.Method.Name);
+        Assert.Single(created.Job.Args);
+    }
+
+    [Fact]
+    public async Task RegisterAttributeJobs_discovers_an_options_based_job_implementing_only_a_foreign_interface()
+    {
+        var client = new RecordingBackgroundJobClient();
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeJobs(client, [typeof(AttributeMarkedForeignOptionsJob).Assembly],
+                options => options.Exclude = type => type != typeof(AttributeMarkedForeignOptionsJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations, operation => operation.Name == "attribute-marked-foreign-options-job");
+        var inputs = new Dictionary<string, JsonElement>
+        {
+            ["options"] = JsonDocument.Parse("{\"batchSize\":11}").RootElement.Clone()
+        };
+
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+
+        Assert.True(result.Succeeded);
+        var created = Assert.Single(client.CreatedJobs);
+        Assert.Equal(typeof(AttributeMarkedForeignOptionsJob), created.Job.Type);
+        var boundOptions = Assert.IsType<AttributeOptions>(created.Job.Args[0]);
+        Assert.Equal(11, boundOptions.BatchSize);
+    }
+
+    [Fact]
+    public void RegisterAttributeJobs_does_not_discover_an_unmarked_type_implementing_only_a_foreign_interface()
+    {
+        var client = new RecordingBackgroundJobClient();
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeJobs(client, [typeof(UnmarkedForeignJob).Assembly],
+                options => options.Exclude = type => type != typeof(UnmarkedForeignJob))
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+    }
+
+    [Fact]
+    public void RegisterAttributeJobs_skips_and_reports_a_type_with_ambiguously_shaped_execution_methods()
+    {
+        HangfireJobRegistrationOptions? observed = null;
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeJobs(new RecordingBackgroundJobClient(), [typeof(AmbiguousShapedAttributeJob).Assembly],
+                options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type != typeof(AmbiguousShapedAttributeJob);
+                })
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(AmbiguousShapedAttributeJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason.Contains("differently-shaped", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RegisterAttributeJobs_rejects_ambiguously_shaped_types_in_strict_mode()
+    {
+        Assert.Throws<OperationCatalogException>(() => new OperationCatalogBuilder()
+            .RegisterAttributeJobs(new RecordingBackgroundJobClient(), [typeof(AmbiguousShapedAttributeJob).Assembly],
+                options =>
+                {
+                    options.Exclude = type => type != typeof(AmbiguousShapedAttributeJob);
+                    options.StrictValidation = true;
+                }));
+    }
+
+    // --- Attribute-based fixtures -------------------------------------------------------------
+    //
+    // These simulate a pre-existing production job base class implementing its own unrelated marker
+    // interface (see issue description: OPG Platform's IOpgJob<TOptions>/OpgJobBase<TOptions, TSelf>).
+    // None of these types implement IHangfireJob/IHangfireJob<TOptions>.
+
+    private interface IForeignJob
+    {
+        Task ExecuteAsync(CancellationToken cancellationToken);
+    }
+
+    private interface IForeignOptionsJob<TOptions>
+    {
+        Task ExecuteAsync(TOptions options, CancellationToken cancellationToken);
+    }
+
+    private sealed class AttributeOptions { public int BatchSize { get; set; } }
+
+    [HangfireJob]
+    private sealed class AttributeMarkedForeignJob : IForeignJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [HangfireJob]
+    private sealed class AttributeMarkedForeignOptionsJob : IForeignOptionsJob<AttributeOptions>
+    {
+        public Task ExecuteAsync(AttributeOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class UnmarkedForeignJob : IForeignJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [HangfireJob]
+    private sealed class AmbiguousShapedAttributeJob : IForeignJob, IForeignOptionsJob<AttributeOptions>
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ExecuteAsync(AttributeOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     private sealed class RecordingBackgroundJobClient : IBackgroundJobClient
     {
         public List<(Job Job, IState State)> CreatedJobs { get; } = [];

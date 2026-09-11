@@ -293,9 +293,140 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
         }
     }
 
+    [Fact]
+    public async Task RegisterAttributeWorkflowTests_runs_an_attribute_marked_job_implementing_only_a_foreign_interface()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AttributeMarkedForeignLoggingJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(AttributeMarkedForeignLoggingJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations, operation => operation.Name == "attribute-marked-foreign-logging-job");
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        Assert.True(invocation.Succeeded);
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+        Assert.Contains("hello from attribute job", result.Transcript);
+    }
+
+    [Fact]
+    public async Task RegisterAttributeWorkflowTests_runs_an_options_based_attribute_marked_job()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AttributeMarkedForeignOptionsLoggingJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(AttributeMarkedForeignOptionsLoggingJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations);
+        var inputs = new Dictionary<string, JsonElement>
+        {
+            ["workflowOptions"] = JsonDocument.Parse("{\"message\":\"agent options hi\"}").RootElement.Clone()
+        };
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+
+        Assert.True(invocation.Succeeded);
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+        Assert.Contains("agent options hi", result.Transcript);
+    }
+
+    [Fact]
+    public void RegisterAttributeWorkflowTests_does_not_discover_an_unmarked_type_implementing_only_a_foreign_interface()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(UnmarkedForeignLoggingJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(UnmarkedForeignLoggingJob))
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+    }
+
+    [Fact]
+    public void RegisterAttributeWorkflowTests_skips_and_reports_a_type_with_ambiguously_shaped_execution_methods()
+    {
+        HangfireWorkflowTestRegistrationOptions? observed = null;
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AmbiguousShapedAttributeWorkflowJob).Assembly],
+                configure: options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type != typeof(AmbiguousShapedAttributeWorkflowJob);
+                })
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(AmbiguousShapedAttributeWorkflowJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason.Contains("differently-shaped", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RegisterAttributeWorkflowTests_rejects_ambiguously_shaped_types_in_strict_mode()
+    {
+        Assert.Throws<OperationCatalogException>(() => new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AmbiguousShapedAttributeWorkflowJob).Assembly],
+                configure: options =>
+                {
+                    options.Exclude = type => type != typeof(AmbiguousShapedAttributeWorkflowJob);
+                    options.StrictValidation = true;
+                }));
+    }
+
     private sealed class NullServiceProvider : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;
+    }
+
+    // --- Attribute-based fixtures -------------------------------------------------------------
+    //
+    // These simulate a pre-existing production job base class implementing its own unrelated marker
+    // interface (see issue description: OPG Platform's IOpgJob<TOptions>/OpgJobBase<TOptions, TSelf>).
+    // None of these types implement IHangfireJob/IHangfireJob<TOptions>.
+
+    private interface IForeignWorkflowJob
+    {
+        Task ExecuteAsync(CancellationToken cancellationToken);
+    }
+
+    private interface IForeignOptionsWorkflowJob<TOptions>
+    {
+        Task ExecuteAsync(TOptions options, CancellationToken cancellationToken);
+    }
+
+    [HangfireJob]
+    private sealed class AttributeMarkedForeignLoggingJob(ILogger<AttributeMarkedForeignLoggingJob> logger) : IForeignWorkflowJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken)
+        {
+            logger.LogInformation("hello from attribute job");
+            return Task.CompletedTask;
+        }
+    }
+
+    [HangfireJob]
+    private sealed class AttributeMarkedForeignOptionsLoggingJob(ILogger<AttributeMarkedForeignOptionsLoggingJob> logger) : IForeignOptionsWorkflowJob<WorkflowOptions>
+    {
+        public Task ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken)
+        {
+            logger.LogInformation("{Message}", options.Message);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class UnmarkedForeignLoggingJob : IForeignWorkflowJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [HangfireJob]
+    private sealed class AmbiguousShapedAttributeWorkflowJob : IForeignWorkflowJob, IForeignOptionsWorkflowJob<WorkflowOptions>
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     public sealed record WorkflowOptions(string Message);

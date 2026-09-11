@@ -15,7 +15,7 @@
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
     <!-- Hangfire.Core 1.8.25 still selects vulnerable Newtonsoft.Json 11.0.1 transitively; pin the
          same remediated version DotNetAgentSurface.Hangfire already carries. -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- Provisions a throwaway SQL Server container for opt-in local/CI compatibility runs. -->
     <PackageReference Include="Testcontainers.MsSql" Version="4.14.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

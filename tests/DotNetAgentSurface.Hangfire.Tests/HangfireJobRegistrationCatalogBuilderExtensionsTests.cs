@@ -494,6 +494,44 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
                 }));
     }
 
+    [Fact]
+    public void RegisterAttributeJobs_skips_and_reports_a_type_whose_only_candidate_takes_a_by_ref_parameter()
+    {
+        HangfireJobRegistrationOptions? observed = null;
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeJobs(new RecordingBackgroundJobClient(), [typeof(ByRefParameterAttributeJob).Assembly],
+                options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type != typeof(ByRefParameterAttributeJob);
+                })
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(ByRefParameterAttributeJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason.Contains("No valid public Execute or ExecuteAsync method", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RegisterAttributeJobs_rejects_a_by_ref_only_candidate_in_strict_mode_without_throwing_from_delegate_construction()
+    {
+        // Before the by-ref rejection fix, a by-ref-shaped candidate would pass structural shape matching and
+        // only fail later when the catalog attempted to construct a strongly-typed invocation delegate for it
+        // (byref types cannot be used as generic type arguments). The fix rejects the candidate during method
+        // selection instead, so strict mode surfaces the expected, diagnosable "no valid method" failure.
+        var exception = Assert.Throws<OperationCatalogException>(() => new OperationCatalogBuilder()
+            .RegisterAttributeJobs(new RecordingBackgroundJobClient(), [typeof(ByRefParameterAttributeJob).Assembly],
+                options =>
+                {
+                    options.Exclude = type => type != typeof(ByRefParameterAttributeJob);
+                    options.StrictValidation = true;
+                }));
+
+        Assert.Contains("No valid public Execute or ExecuteAsync method", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     // --- Attribute-based fixtures -------------------------------------------------------------
     //
     // These simulate a pre-existing production job base class implementing its own unrelated marker
@@ -534,6 +572,15 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     {
         public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task ExecuteAsync(AttributeOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    // Its only candidate method takes `ref AttributeOptions`, which cannot be used as a generic type argument
+    // when constructing an invocation delegate; discovery must reject this shape rather than surface that
+    // failure later at catalog-construction time.
+    [HangfireJob]
+    private sealed class ByRefParameterAttributeJob
+    {
+        public Task ExecuteAsync(ref AttributeOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class RecordingBackgroundJobClient : IBackgroundJobClient

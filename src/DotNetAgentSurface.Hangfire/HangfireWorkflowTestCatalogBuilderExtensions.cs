@@ -33,7 +33,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         Validate(options);
 
         var jobBaseType = typeof(TJobBase);
-        foreach (var jobType in GetLoadableTypes(assemblies)
+        foreach (var jobType in GetLoadableTypes(assemblies, options)
                      .Where(type => IsConcreteClosedClass(type) && jobBaseType.IsAssignableFrom(type))
                      .Where(type => options.Exclude?.Invoke(type) != true)
                      .OrderBy(type => NormalizeName(options.NameFactory?.Invoke(type) ?? ToKebabCase(type.Name), options.Category), StringComparer.Ordinal))
@@ -70,7 +70,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         Validate(options);
 
         var jobBaseType = typeof(TJobBase);
-        foreach (var jobType in GetLoadableTypes(assemblies)
+        foreach (var jobType in GetLoadableTypes(assemblies, options)
                      .Where(type => IsConcreteClosedClass(type) && jobBaseType.IsAssignableFrom(type))
                      .Where(type => options.Exclude?.Invoke(type) != true)
                      .OrderBy(type => NormalizeName(options.NameFactory?.Invoke(type) ?? ToKebabCase(type.Name), options.Category), StringComparer.Ordinal))
@@ -120,7 +120,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         }
 
         var candidates = new List<(Type JobType, Type OptionsInterface)>();
-        foreach (var jobType in GetLoadableTypes(assemblyList).Where(IsConcreteClosedClass).Distinct())
+        foreach (var jobType in GetLoadableTypes(assemblyList, options).Where(IsConcreteClosedClass).Distinct())
         {
             // Check Exclude predicate first, before inspecting interfaces, so an excluded type
             // is skipped silently and never triggers an ambiguity report.
@@ -207,7 +207,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         }
 
         var candidates = new List<(Type JobType, MethodInfo Method, Type? OptionsType)>();
-        foreach (var jobType in GetLoadableTypes(assemblyList).Where(IsConcreteClosedClass).Distinct())
+        foreach (var jobType in GetLoadableTypes(assemblyList, options).Where(IsConcreteClosedClass).Distinct())
         {
             var attribute = HangfireAttributeJobDiscovery.GetAttribute(jobType);
             if (attribute is null)
@@ -349,7 +349,7 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         return interfaceType?.GetGenericArguments()[0];
     }
 
-    private static IEnumerable<Type> GetLoadableTypes(IEnumerable<Assembly> assemblies)
+    private static IEnumerable<Type> GetLoadableTypes(IEnumerable<Assembly> assemblies, HangfireWorkflowTestRegistrationOptions options)
     {
         foreach (var assembly in assemblies.Distinct())
         {
@@ -365,6 +365,14 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
             }
             catch (ReflectionTypeLoadException exception)
             {
+                // Mirror the enqueue-oriented discovery: report the assembly-load failure (and honor strict mode)
+                // instead of silently continuing with only the loadable types.
+                Report(
+                    options,
+                    null,
+                    $"Could not load all types from assembly '{assembly.FullName}': {exception.Message}",
+                    HangfireJobDiscoveryDisposition.Warning,
+                    failInStrictMode: true);
                 types = exception.Types.Where(static type => type is not null).Cast<Type>().ToArray();
             }
 

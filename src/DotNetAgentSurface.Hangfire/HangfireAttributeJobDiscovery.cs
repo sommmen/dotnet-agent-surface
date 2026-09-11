@@ -106,6 +106,14 @@ internal static class HangfireAttributeJobDiscovery
             return false;
         }
 
+        // A by-ref options type (for example, a method taking `ref`/`in`/`out TOptions`) cannot be used as a
+        // generic type argument when constructing the invocation delegate, so reject it here rather than letting
+        // an explicitly-selected method reach that failure at catalog-construction time.
+        if (optionsType is { IsByRef: true })
+        {
+            return false;
+        }
+
         if (method.ReturnType != typeof(Task) && method.ReturnType != typeof(ValueTask))
         {
             return false;
@@ -148,6 +156,13 @@ internal static class HangfireAttributeJobDiscovery
                 optionsType = parameters[0].ParameterType;
             }
             else
+            {
+                continue;
+            }
+
+            // A by-ref options type (`ref`/`in`/`out TOptions`) cannot be used as a generic type argument when
+            // constructing the invocation delegate, so it is not a valid structural candidate.
+            if (optionsType is { IsByRef: true })
             {
                 continue;
             }

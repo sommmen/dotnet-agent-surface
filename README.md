@@ -239,7 +239,8 @@ It discovers every concrete class that implements exactly one closed `IHangfireJ
 
 ```csharp
 // A pre-existing, brownfield job base class — note it implements its own IOpgJob<TOptions>,
-// not this package's IHangfireJob<TOptions>, and never references DotNetAgentSurface.Hangfire types.
+// not this package's IHangfireJob<TOptions>, and never references DotNetAgentSurface.Hangfire's
+// job interfaces (the [HangfireJob] attribute is the only reference to this package).
 [HangfireJob]
 public abstract class OpgJobBase<TOptions, TSelf> : IOpgJob<TOptions>
     where TSelf : OpgJobBase<TOptions, TSelf>
@@ -252,7 +253,7 @@ var catalog = new OperationCatalogBuilder()
     .Build();
 ```
 
-`[HangfireJob]` is `Inherited`, so annotating a shared base class (as above) is enough to make every concrete subclass discoverable — annotate an individual concrete job type instead when there is no shared base class to mark. Discovery inspects every public `Execute`/`ExecuteAsync` method returning `Task`/`ValueTask`: a single `(CancellationToken)` parameter registers a parameterless job, and a single `(TOptions, CancellationToken)` pair registers an options-based job with `TOptions` inferred from the method's first parameter — no closed generic interface argument required. A type exposing more than one differently-shaped candidate (for example, both a parameterless and an options-based method) is skipped and reported as ambiguous; disambiguate it with `[HangfireJob(typeof(TOptions))]` or a `MethodSelector`. `RegisterAttributeWorkflowTests(...)` is the equivalent attribute-based entry point for direct, in-process workflow-test execution (see below) — both are purely additive; existing `IHangfireJob`/`IHangfireJob<TOptions>`-based discovery is unaffected.
+`[HangfireJob]` is `Inherited`, so annotating a shared base class (as above) is enough to make every concrete subclass discoverable — annotate an individual concrete job type instead when there is no shared base class to mark. Discovery inspects every public `Execute`/`ExecuteAsync` method returning `Task`/`ValueTask`: a single `(CancellationToken)` parameter registers a parameterless job, and a single `(TOptions, CancellationToken)` pair registers an options-based job with `TOptions` inferred from the method's first parameter — no closed generic interface argument required. A type exposing more than one differently-shaped candidate (for example, both a parameterless and an options-based method) is skipped and reported as ambiguous; disambiguate it with `[HangfireJob(typeof(TOptions))]` or a `MethodSelector`. `RegisterAttributeWorkflowTests(services, assemblies, ...)` on `OperationCatalogBuilder` is the equivalent attribute-based entry point for direct, in-process workflow-test execution, mirroring `RegisterAttributeJobs` but invoking the job directly and capturing an `ILogger` transcript instead of enqueueing through `IBackgroundJobClient` — both are purely additive; existing `IHangfireJob`/`IHangfireJob<TOptions>`-based discovery is unaffected.
 
 `RegisterJobs<TJobBase>(...)`, `RegisterAllOptionsJobs(...)`, `RegisterAttributeJobs(...)`, and `AddHangfireJobTypes(...)` register operations whose delegate returns the `string` job ID produced by `IBackgroundJobClient.Create(...)`, so invoking them yields a usable ID instead of `null`. Use that ID with `continue-hangfire-job` (as `parentJobId`) or `get-hangfire-job-status` (as `jobId`):
 

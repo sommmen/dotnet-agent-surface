@@ -293,13 +293,222 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
         }
     }
 
+    [Fact]
+    public async Task RegisterAttributeWorkflowTests_runs_an_attribute_marked_job_implementing_only_a_foreign_interface()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AttributeMarkedForeignLoggingJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(AttributeMarkedForeignLoggingJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations, operation => operation.Name == "attribute-marked-foreign-logging-job");
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        Assert.True(invocation.Succeeded);
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+        Assert.Contains("hello from attribute job", result.Transcript);
+    }
+
+    [Fact]
+    public async Task RegisterAttributeWorkflowTests_runs_an_options_based_attribute_marked_job()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AttributeMarkedForeignOptionsLoggingJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(AttributeMarkedForeignOptionsLoggingJob))
+            .Build();
+
+        var operation = Assert.Single(catalog.Operations);
+        var inputs = new Dictionary<string, JsonElement>
+        {
+            ["workflowOptions"] = JsonDocument.Parse("{\"message\":\"agent options hi\"}").RootElement.Clone()
+        };
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+
+        Assert.True(invocation.Succeeded);
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+        Assert.Contains("agent options hi", result.Transcript);
+    }
+
+    [Fact]
+    public void RegisterAttributeWorkflowTests_does_not_discover_an_unmarked_type_implementing_only_a_foreign_interface()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(UnmarkedForeignLoggingJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(UnmarkedForeignLoggingJob))
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+    }
+
+    [Fact]
+    public void RegisterAttributeWorkflowTests_skips_and_reports_a_type_with_ambiguously_shaped_execution_methods()
+    {
+        HangfireWorkflowTestRegistrationOptions? observed = null;
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AmbiguousShapedAttributeWorkflowJob).Assembly],
+                configure: options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type != typeof(AmbiguousShapedAttributeWorkflowJob);
+                })
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(AmbiguousShapedAttributeWorkflowJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason.Contains("differently-shaped", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RegisterAttributeWorkflowTests_rejects_ambiguously_shaped_types_in_strict_mode()
+    {
+        Assert.Throws<OperationCatalogException>(() => new OperationCatalogBuilder()
+            .RegisterAttributeWorkflowTests(EmptyServices(), [typeof(AmbiguousShapedAttributeWorkflowJob).Assembly],
+                configure: options =>
+                {
+                    options.Exclude = type => type != typeof(AmbiguousShapedAttributeWorkflowJob);
+                    options.StrictValidation = true;
+                }));
+    }
+
+    [Fact]
+    public async Task RegisterAllOptionsJobs_with_services_discovers_every_closed_options_type_in_one_call()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(EmptyServices(), [typeof(WorkflowScanA).Assembly],
+                options => options.Exclude = type => type != typeof(WorkflowScanA) && type != typeof(WorkflowScanB))
+            .Build();
+
+        var operationA = Assert.Single(catalog.Operations, operation => operation.Name == "workflow-scan-a");
+        Assert.Single(catalog.Operations, operation => operation.Name == "workflow-scan-b");
+
+        var inputs = new Dictionary<string, JsonElement> { ["options"] = JsonDocument.Parse("{\"message\":\"hi\"}").RootElement.Clone() };
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationA, inputs);
+
+        Assert.True(invocation.Succeeded);
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+    }
+
+    [Fact]
+    public void RegisterAllOptionsJobs_with_services_skips_and_reports_a_job_with_no_valid_execution_method()
+    {
+        HangfireWorkflowTestRegistrationOptions? observed = null;
+        var catalog = new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(EmptyServices(), [typeof(WorkflowNoValidMethodJob).Assembly],
+                options =>
+                {
+                    observed = options;
+                    options.Exclude = type => type != typeof(WorkflowNoValidMethodJob);
+                })
+            .Build();
+
+        Assert.Empty(catalog.Operations);
+        Assert.Contains(observed!.DiscoveryReports, report =>
+            report.JobType == typeof(WorkflowNoValidMethodJob) &&
+            report.Disposition == HangfireJobDiscoveryDisposition.Skipped &&
+            report.Reason.Contains("No supported public ExecuteAsync or Execute method", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RegisterAllOptionsJobs_with_services_rejects_a_job_with_no_valid_execution_method_in_strict_mode()
+    {
+        var exception = Assert.Throws<OperationCatalogException>(() => new OperationCatalogBuilder()
+            .RegisterAllOptionsJobs(EmptyServices(), [typeof(WorkflowNoValidMethodJob).Assembly],
+                options =>
+                {
+                    options.Exclude = type => type != typeof(WorkflowNoValidMethodJob);
+                    options.StrictValidation = true;
+                }));
+
+        Assert.Contains("No supported public ExecuteAsync or Execute method", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class NullServiceProvider : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;
     }
 
+    // --- Attribute-based fixtures -------------------------------------------------------------
+    //
+    // These simulate a pre-existing production job base class implementing its own unrelated marker
+    // interface (see issue description: OPG Platform's IOpgJob<TOptions>/OpgJobBase<TOptions, TSelf>).
+    // None of these types implement IHangfireJob/IHangfireJob<TOptions>.
+
+    private interface IForeignWorkflowJob
+    {
+        Task ExecuteAsync(CancellationToken cancellationToken);
+    }
+
+    private interface IForeignOptionsWorkflowJob<TOptions>
+    {
+        Task ExecuteAsync(TOptions options, CancellationToken cancellationToken);
+    }
+
+    [HangfireJob]
+    private sealed class AttributeMarkedForeignLoggingJob(ILogger<AttributeMarkedForeignLoggingJob> logger) : IForeignWorkflowJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken)
+        {
+            logger.LogInformation("hello from attribute job");
+            return Task.CompletedTask;
+        }
+    }
+
+    [HangfireJob]
+    private sealed class AttributeMarkedForeignOptionsLoggingJob(ILogger<AttributeMarkedForeignOptionsLoggingJob> logger) : IForeignOptionsWorkflowJob<WorkflowOptions>
+    {
+        public Task ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken)
+        {
+            logger.LogInformation("{Message}", options.Message);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class UnmarkedForeignLoggingJob : IForeignWorkflowJob
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [HangfireJob]
+    private sealed class AmbiguousShapedAttributeWorkflowJob : IForeignWorkflowJob, IForeignOptionsWorkflowJob<WorkflowOptions>
+    {
+        public Task ExecuteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     public sealed record WorkflowOptions(string Message);
     public sealed record Dependency(string Value);
+
+    // --- RegisterAllOptionsJobs(IServiceProvider, ...) fixtures --------------------------------
+    //
+    // These exercise the closed-generic IHangfireJob<TOptions> scanning path (not attribute-based), mirroring
+    // HangfireJobRegistrationCatalogBuilderExtensionsTests' enqueue-side ScanA/ScanB/no-valid-method coverage,
+    // to prove the workflow-test overload reports/rejects an invalid candidate instead of throwing unconditionally.
+
+    private sealed class WorkflowScanA : IHangfireJob<WorkflowOptions>
+    {
+        public Task ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class WorkflowScanB : IHangfireJob<WorkflowScanBOptions>
+    {
+        public Task ExecuteAsync(WorkflowScanBOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    public sealed record WorkflowScanBOptions(string Label);
+
+    // Implements IHangfireJob<TOptions> so it is discovered as a candidate, but its only ExecuteAsync method is an
+    // explicit interface implementation (not public), so no valid execution method can be selected for it.
+    internal sealed class WorkflowNoValidMethodJob : IHangfireJob<WorkflowOptions>
+    {
+        Task IHangfireJob<WorkflowOptions>.ExecuteAsync(WorkflowOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     private abstract class WorkflowJobBase : HangfireJob { }
     private abstract class OptionsWorkflowJobBase : HangfireJobWithOptions<WorkflowOptions> { }

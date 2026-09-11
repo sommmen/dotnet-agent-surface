@@ -88,6 +88,222 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Discovers every concrete job that implements exactly one closed <see cref="IHangfireJob{TOptions}"/> interface and
+    /// registers a direct workflow-test operation for each job. The operations execute in-process and capture their
+    /// <see cref="ILogger"/> transcript; they do not enqueue a Hangfire job.
+    /// </summary>
+    /// <remarks>
+    /// This overload is intended for a CLI integration-test surface that should automatically include every
+    /// options-based job in the supplied assemblies. A job that implements more than one closed
+    /// <see cref="IHangfireJob{TOptions}"/> interface is skipped because one operation cannot infer which options
+    /// type to expose. Use <see cref="RegisterWorkflowTests{TJobBase, TOptions}"/> for such a job.
+    /// </remarks>
+    public static OperationCatalogBuilder RegisterAllOptionsJobs(
+        this OperationCatalogBuilder builder,
+        IServiceProvider services,
+        IEnumerable<Assembly> assemblies,
+        Action<HangfireWorkflowTestRegistrationOptions>? configure = null)
+    {
+        ThrowIfNull(builder);
+        ThrowIfNull(services);
+        ThrowIfNull(assemblies);
+
+        var options = new HangfireWorkflowTestRegistrationOptions();
+        configure?.Invoke(options);
+        Validate(options);
+
+        var assemblyList = assemblies.ToArray();
+        if (assemblyList.Any(static assembly => assembly is null))
+        {
+            throw new ArgumentException("Assemblies must not contain null values.", nameof(assemblies));
+        }
+
+        var candidates = new List<(Type JobType, Type OptionsInterface)>();
+        foreach (var jobType in GetLoadableTypes(assemblyList, options).Where(IsConcreteClosedClass).Distinct())
+        {
+            // Check Exclude predicate first, before inspecting interfaces, so an excluded type
+            // is skipped silently and never triggers an ambiguity report.
+            if (options.Exclude?.Invoke(jobType) == true)
+            {
+                Report(options, jobType, "The job type was excluded by the configured predicate.", HangfireJobDiscoveryDisposition.Skipped);
+                continue;
+            }
+
+            var optionsInterfaces = jobType.GetInterfaces()
+                .Where(static candidate => candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(IHangfireJob<>))
+                .Distinct()
+                .ToArray();
+
+            if (optionsInterfaces.Length > 1)
+            {
+                Report(options, jobType, "Multiple closed IHangfireJob<TOptions> interfaces were found; use RegisterWorkflowTests<TJobBase, TOptions> to register this job explicitly.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+                continue;
+            }
+
+            if (optionsInterfaces.Length == 1)
+            {
+                candidates.Add((jobType, optionsInterfaces[0]));
+            }
+        }
+
+        foreach (var (jobType, optionsInterface) in candidates
+                     .OrderBy(pair => NormalizeName(options.NameFactory?.Invoke(pair.JobType) ?? ToKebabCase(pair.JobType.Name), options.Category), StringComparer.Ordinal)
+                     .ThenBy(pair => pair.JobType.FullName, StringComparer.Ordinal))
+        {
+            var method = SelectMethodOrReport(jobType, optionsInterface, options);
+            if (method is null)
+            {
+                continue;
+            }
+
+            var name = options.NameFactory?.Invoke(jobType) ?? ToKebabCase(jobType.Name);
+            var runner = new WorkflowTestRunner(services, jobType, method, options);
+            var implementation = (Delegate)CreateWorkflowTestDelegateMethod
+                .MakeGenericMethod(optionsInterface.GetGenericArguments()[0])
+                .Invoke(null, [runner])!;
+
+            builder.Add(name, $"Runs {jobType.FullName ?? jobType.Name} directly and captures its log transcript.", implementation, registration =>
+            {
+                registration.Category = options.Category;
+                registration.SafetyLevel = options.SafetyLevel;
+            });
+
+            Report(options, jobType, "The job type was registered.", HangfireJobDiscoveryDisposition.Registered, method.Name, name);
+        }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Discovers every concrete class across <paramref name="assemblies"/> marked with <see cref="HangfireJobAttribute"/>
+    /// and registers a direct workflow-test operation for each one whose public <c>Execute</c>/<c>ExecuteAsync</c>
+    /// method matches the structurally-typed parameterless or <c>(TOptions, CancellationToken)</c> shape — without
+    /// requiring the type to implement <see cref="IHangfireJob"/> or <see cref="IHangfireJob{TOptions}"/> at all.
+    /// This is the attribute-based, duck-typed counterpart to
+    /// <see cref="RegisterWorkflowTests{TJobBase}"/>/<see cref="RegisterWorkflowTests{TJobBase, TOptions}"/>/
+    /// <see cref="RegisterAllOptionsJobs(OperationCatalogBuilder, IServiceProvider, IEnumerable{Assembly}, Action{HangfireWorkflowTestRegistrationOptions}?)"/>:
+    /// it lets a pre-existing job base class that already implements its own, unrelated marker interface adopt
+    /// discovery by adding <c>[HangfireJob]</c> instead of changing its interface list. <see cref="HangfireJobAttribute"/>
+    /// is <see cref="AttributeUsageAttribute.Inherited"/>, so annotating a shared base class is enough to make every
+    /// concrete subclass discoverable. A job exposing more than one differently-shaped execution method (for
+    /// example, both a parameterless and an options-based method) is skipped and reported as ambiguous; annotate it
+    /// with <c>[HangfireJob(typeof(TOptions))]</c> or configure a <see cref="HangfireWorkflowTestRegistrationOptions.MethodSelector"/>
+    /// to disambiguate.
+    /// </summary>
+    public static OperationCatalogBuilder RegisterAttributeWorkflowTests(
+        this OperationCatalogBuilder builder,
+        IServiceProvider services,
+        IEnumerable<Assembly> assemblies,
+        Action<HangfireWorkflowTestRegistrationOptions>? configure = null)
+    {
+        ThrowIfNull(builder);
+        ThrowIfNull(services);
+        ThrowIfNull(assemblies);
+
+        var options = new HangfireWorkflowTestRegistrationOptions();
+        configure?.Invoke(options);
+        Validate(options);
+
+        var assemblyList = assemblies.ToArray();
+        if (assemblyList.Any(static assembly => assembly is null))
+        {
+            throw new ArgumentException("Assemblies must not contain null values.", nameof(assemblies));
+        }
+
+        var candidates = new List<(Type JobType, MethodInfo Method, Type? OptionsType)>();
+        foreach (var jobType in GetLoadableTypes(assemblyList, options).Where(IsConcreteClosedClass).Distinct())
+        {
+            var attribute = HangfireAttributeJobDiscovery.GetAttribute(jobType);
+            if (attribute is null)
+            {
+                continue;
+            }
+
+            if (options.Exclude?.Invoke(jobType) == true)
+            {
+                Report(options, jobType, "The job type was excluded by the configured predicate.", HangfireJobDiscoveryDisposition.Skipped);
+                continue;
+            }
+
+            var selection = HangfireAttributeJobDiscovery.SelectExecutionMethod(jobType, attribute.OptionsType, options.MethodSelector);
+            if (selection.Method is null)
+            {
+                Report(options, jobType, selection.Reason!, HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+                continue;
+            }
+
+            if (selection.MultipleCandidates)
+            {
+                Report(options, jobType, selection.Reason!, HangfireJobDiscoveryDisposition.Warning, failInStrictMode: true);
+            }
+
+            candidates.Add((jobType, selection.Method, selection.OptionsType));
+        }
+
+        foreach (var (jobType, method, optionsType) in candidates
+                     .OrderBy(candidate => NormalizeName(options.NameFactory?.Invoke(candidate.JobType) ?? ToKebabCase(candidate.JobType.Name), options.Category), StringComparer.Ordinal)
+                     .ThenBy(candidate => candidate.JobType.FullName, StringComparer.Ordinal))
+        {
+            var name = options.NameFactory?.Invoke(jobType) ?? ToKebabCase(jobType.Name);
+            var runner = new WorkflowTestRunner(services, jobType, method, options);
+            var description = $"Runs {jobType.FullName ?? jobType.Name} directly and captures its log transcript.";
+
+            Delegate implementation = optionsType is null
+                ? (Func<CancellationToken, Task<HangfireWorkflowTestResult>>)runner.RunAsync
+                : (Delegate)CreateWorkflowTestDelegateMethod.MakeGenericMethod(optionsType).Invoke(null, [runner])!;
+
+            builder.Add(name, description, implementation, registration =>
+            {
+                registration.Category = options.Category;
+                registration.SafetyLevel = options.SafetyLevel;
+            });
+
+            Report(options, jobType, "The job type was registered.", HangfireJobDiscoveryDisposition.Registered, method.Name, name);
+        }
+
+        return builder;
+    }
+
+    private static readonly MethodInfo CreateWorkflowTestDelegateMethod =
+        typeof(HangfireWorkflowTestCatalogBuilderExtensions).GetMethod(nameof(CreateWorkflowTestDelegate), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+    private static Func<TOptions, CancellationToken, Task<HangfireWorkflowTestResult>> CreateWorkflowTestDelegate<TOptions>(WorkflowTestRunner runner)
+        => runner.RunAsync<TOptions>;
+
+    private static void Report(
+        HangfireWorkflowTestRegistrationOptions options,
+        Type? jobType,
+        string message,
+        HangfireJobDiscoveryDisposition disposition = HangfireJobDiscoveryDisposition.Warning,
+        string? method = null,
+        string? operationName = null,
+        bool failInStrictMode = false)
+    {
+        var effectiveDisposition = options.StrictValidation && failInStrictMode
+            ? HangfireJobDiscoveryDisposition.Failed
+            : disposition;
+
+        options.DiscoveryReports.Add(new HangfireJobDiscoveryReport(
+            jobType?.Assembly,
+            jobType,
+            message,
+            method,
+            operationName,
+            effectiveDisposition,
+            options.StrictValidation));
+
+        if (disposition is not HangfireJobDiscoveryDisposition.Registered)
+        {
+            options.Diagnostics.Add(new HangfireJobRegistrationDiagnostic(jobType, message));
+        }
+
+        if (options.StrictValidation && failInStrictMode)
+        {
+            throw new OperationCatalogException($"Hangfire workflow test discovery failed for '{jobType?.FullName ?? "assembly"}': {message}");
+        }
+    }
+
     private static void Validate(HangfireWorkflowTestRegistrationOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.Category))
@@ -115,6 +331,47 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
             : throw new InvalidOperationException($"No supported public ExecuteAsync or Execute method was found on Hangfire job '{jobType.FullName}'.");
     }
 
+    /// <summary>
+    /// Selects the execution method for <paramref name="jobType"/> the same way <see cref="SelectMethod"/> does, but
+    /// reports a diagnosable failure (honoring <see cref="HangfireWorkflowTestRegistrationOptions.StrictValidation"/>)
+    /// instead of unconditionally throwing when no valid, unambiguous method is found. Used by
+    /// <see cref="RegisterAllOptionsJobs"/>, which discovers many job types in one call and must be able to skip an
+    /// individual candidate in permissive mode rather than aborting the whole registration.
+    /// </summary>
+    private static MethodInfo? SelectMethodOrReport(Type jobType, Type jobBaseType, HangfireWorkflowTestRegistrationOptions options)
+    {
+        var selected = options.MethodSelector?.Invoke(jobType);
+        if (selected is not null)
+        {
+            if (IsValidExecutionMethod(selected, jobType, jobBaseType))
+            {
+                return selected;
+            }
+
+            Report(options, jobType, "The selected execution method must be a public instance Execute or ExecuteAsync method with the expected parameters.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+            return null;
+        }
+
+        var candidates = jobType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Where(method => (method.Name == "Execute" || method.Name == "ExecuteAsync") && IsValidExecutionMethod(method, jobType, jobBaseType))
+            .OrderByDescending(method => method.Name == "ExecuteAsync")
+            .ThenBy(method => method.MetadataToken)
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            Report(options, jobType, "No supported public ExecuteAsync or Execute method was found.", HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+            return null;
+        }
+
+        if (candidates.Length > 1)
+        {
+            Report(options, jobType, "Multiple valid Execute or ExecuteAsync methods were found; the deterministic conventional method was selected.", HangfireJobDiscoveryDisposition.Warning, failInStrictMode: true);
+        }
+
+        return candidates[0];
+    }
+
     private static bool IsValidExecutionMethod(MethodInfo method, Type jobType, Type jobBaseType)
     {
         if (!method.IsPublic || method.IsStatic || method.ContainsGenericParameters || method.DeclaringType is null ||
@@ -138,6 +395,9 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         return interfaceType?.GetGenericArguments()[0];
     }
 
+    // The closed-generic RegisterWorkflowTests overloads document that they always throw on an invalid method
+    // and do not consult StrictValidation/DiscoveryReports, so they use this non-reporting variant and keep
+    // their existing behavior of silently continuing with only the loadable types.
     private static IEnumerable<Type> GetLoadableTypes(IEnumerable<Assembly> assemblies)
     {
         foreach (var assembly in assemblies.Distinct())
@@ -154,6 +414,41 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
             }
             catch (ReflectionTypeLoadException exception)
             {
+                types = exception.Types.Where(static type => type is not null).Cast<Type>().ToArray();
+            }
+
+            foreach (var type in types)
+            {
+                yield return type;
+            }
+        }
+    }
+
+    // RegisterAllOptionsJobs and RegisterAttributeWorkflowTests consult StrictValidation/DiscoveryReports, so
+    // this variant mirrors the enqueue-oriented discovery and reports an assembly-load failure (honoring strict
+    // mode) instead of silently continuing with only the loadable types.
+    private static IEnumerable<Type> GetLoadableTypes(IEnumerable<Assembly> assemblies, HangfireWorkflowTestRegistrationOptions options)
+    {
+        foreach (var assembly in assemblies.Distinct())
+        {
+            if (assembly is null)
+            {
+                throw new ArgumentException("The supplied assemblies enumerable contains a null entry.", nameof(assemblies));
+            }
+
+            Type[] types;
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException exception)
+            {
+                Report(
+                    options,
+                    null,
+                    $"Could not load all types from assembly '{assembly.FullName}': {exception.Message}",
+                    HangfireJobDiscoveryDisposition.Warning,
+                    failInStrictMode: true);
                 types = exception.Types.Where(static type => type is not null).Cast<Type>().ToArray();
             }
 

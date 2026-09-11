@@ -27,19 +27,17 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="System.Text.Json" Version="10.0.1" />
   </ItemGroup>
 
   <!--
-    ToonEncoder (Cysharp) only declares a net10.0 dependency group on NuGet (versions 1.0.0-2.0.0); there is no
-    netstandard2.0-compatible build. It is therefore referenced only for the net10.0 target framework.
-    ToonAgentOutputRenderer.cs uses `#if NET10_0` to call it directly on net10.0 and falls back to a small
-    hand-written TOON writer covering the subset of shapes AXI output needs (primitives, objects, arrays of
-    primitives, and flat/uniform object arrays) on netstandard2.0, so TOON stays the default output format on
-    both target frameworks behind the same IAgentOutputRenderer abstraction.
+    Toon.DotNet (https://github.com/CharlesHunt/ToonDotNet) declares dependency groups for net8.0, net9.0,
+    net10.0, net11.0, and netstandard2.0, so it is referenced unconditionally here. ToonAgentOutputRenderer.cs
+    calls it directly on both target frameworks, which is why the netstandard2.0 System.Text.Json reference
+    above is pinned to the same version Toon.DotNet itself depends on for that target framework.
   -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
-    <PackageReference Include="ToonEncoder" Version="2.0.0" />
+  <ItemGroup>
+    <PackageReference Include="Toon.DotNet" Version="1.7.3" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Text.Json;
 using DotNetAgentSurface.Core;
+using Hangfire;
+using Hangfire.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -74,6 +76,56 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
         Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
         Assert.Contains("injected-value", result.Transcript);
+    }
+
+    [Fact]
+    public async Task RegisterWorkflowTests_constructs_a_job_whose_constructor_requires_a_PerformContext()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterWorkflowTests<WorkflowJobBase>(EmptyServices(), [typeof(PerformContextJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(PerformContextJob))
+            .Build();
+        var operation = Assert.Single(catalog.Operations);
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+        Assert.Contains("job id", result.Transcript);
+    }
+
+    [Fact]
+    public async Task RegisterWorkflowTests_constructs_a_job_whose_constructor_requires_a_PerformContext_and_a_di_service()
+    {
+        var services = new ServiceCollection().AddSingleton(new Dependency("injected-value")).BuildServiceProvider();
+        var catalog = new OperationCatalogBuilder()
+            .RegisterWorkflowTests<WorkflowJobBase>(services, [typeof(PerformContextWithDependencyJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(PerformContextWithDependencyJob))
+            .Build();
+        var operation = Assert.Single(catalog.Operations);
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+        Assert.Contains("job id", result.Transcript);
+        Assert.Contains("injected-value", result.Transcript);
+    }
+
+    [Fact]
+    public async Task RegisterWorkflowTests_constructs_a_job_whose_constructor_requires_an_IJobCancellationToken()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .RegisterWorkflowTests<WorkflowJobBase>(EmptyServices(), [typeof(JobCancellationTokenJob).Assembly],
+                configure: options => options.Exclude = type => type != typeof(JobCancellationTokenJob))
+            .Build();
+        var operation = Assert.Single(catalog.Operations);
+
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+
+        var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
+        Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
+        Assert.Contains("shutdown requested: False", result.Transcript);
     }
 
     [Fact]
@@ -537,6 +589,33 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
         {
             await Task.Yield();
             logger.LogInformation("{Value}", dependency.Value);
+        }
+    }
+
+    private sealed class PerformContextJob(PerformContext context, ILogger<PerformContextJob> logger) : WorkflowJobBase
+    {
+        public override Task ExecuteAsync(CancellationToken cancellationToken)
+        {
+            logger.LogInformation("job id {JobId}", context.BackgroundJob.Id);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class PerformContextWithDependencyJob(PerformContext context, Dependency dependency, ILogger<PerformContextWithDependencyJob> logger) : WorkflowJobBase
+    {
+        public override Task ExecuteAsync(CancellationToken cancellationToken)
+        {
+            logger.LogInformation("job id {JobId} with {Value}", context.BackgroundJob.Id, dependency.Value);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class JobCancellationTokenJob(IJobCancellationToken jobCancellationToken, ILogger<JobCancellationTokenJob> logger) : WorkflowJobBase
+    {
+        public override Task ExecuteAsync(CancellationToken cancellationToken)
+        {
+            logger.LogInformation("shutdown requested: {Requested}", jobCancellationToken.ShutdownToken.IsCancellationRequested);
+            return Task.CompletedTask;
         }
     }
 

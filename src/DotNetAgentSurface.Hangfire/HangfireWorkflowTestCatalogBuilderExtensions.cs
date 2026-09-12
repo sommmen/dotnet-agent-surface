@@ -4,6 +4,8 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using DotNetAgentSurface.Core;
+using Hangfire;
+using Hangfire.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -496,9 +498,10 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         {
             var transcript = new StringBuilder();
             using var loggerFactory = LoggerFactory.Create(logging => logging.AddProvider(new TranscriptLoggerProvider(transcript)));
-            var scope = new WorkflowTestServiceProvider(services, loggerFactory);
             using var timeout = new CancellationTokenSource(options.Timeout);
             using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            using var performContext = SyntheticPerformContextFactory.Create(linkedCancellation.Token, jobType.FullName ?? jobType.Name);
+            var scope = new WorkflowTestServiceProvider(services, loggerFactory, performContext);
             var stopwatch = Stopwatch.StartNew();
             HangfireWorkflowTestStatus status;
             string? error = null;
@@ -558,18 +561,46 @@ public static class HangfireWorkflowTestCatalogBuilderExtensions
         }
     }
 
-    // Does not own loggerFactory; the caller (WorkflowTestRunner.RunAsync) creates and disposes it via its own
-    // `using` declaration, so this wrapper does not implement IDisposable.
-    private sealed class WorkflowTestServiceProvider(IServiceProvider inner, ILoggerFactory loggerFactory) : IServiceProvider
+    // Does not own loggerFactory or performContext; the caller (WorkflowTestRunner.RunAsync) creates and disposes
+    // them via its own `using` declarations, so this wrapper does not implement IDisposable.
+    private sealed class WorkflowTestServiceProvider(IServiceProvider inner, ILoggerFactory loggerFactory, SyntheticPerformContext performContext) : IServiceProvider
     {
-        public object? GetService(Type serviceType) => serviceType == typeof(ILoggerFactory)
-            ? loggerFactory
-            : serviceType.IsGenericType && serviceType.GetGenericTypeDefinition() == typeof(ILogger<>)
+        public object? GetService(Type serviceType)
+        {
+            if (serviceType == typeof(ILoggerFactory))
+            {
+                return loggerFactory;
+            }
+
+            if (serviceType.IsGenericType && serviceType.GetGenericTypeDefinition() == typeof(ILogger<>))
+            {
                 // ActivatorUtilities.CreateInstance/constructor injection require the closed ILogger<T> type
                 // itself (not merely something assignable to it), so wrap the factory-created logger in the
                 // concrete Logger<T> the framework normally injects instead of returning a plain ILogger.
-                ? Activator.CreateInstance(typeof(Logger<>).MakeGenericType(serviceType.GetGenericArguments()[0]), loggerFactory)
-                : inner.GetService(serviceType);
+                return Activator.CreateInstance(typeof(Logger<>).MakeGenericType(serviceType.GetGenericArguments()[0]), loggerFactory);
+            }
+
+            // Mirrors the three constructor-parameter types Hangfire's own CoreBackgroundJobPerformer substitutes
+            // when constructing a real job instance for background execution, so job base classes written for
+            // production Hangfire execution (e.g. ones using PerformContext for Hangfire.Console progress
+            // logging) can be constructed here too, without a bespoke IServiceProvider from the caller.
+            if (serviceType == typeof(PerformContext))
+            {
+                return performContext.Context;
+            }
+
+            if (serviceType == typeof(IJobCancellationToken))
+            {
+                return performContext.JobCancellationToken;
+            }
+
+            if (serviceType == typeof(CancellationToken))
+            {
+                return performContext.JobCancellationToken.ShutdownToken;
+            }
+
+            return inner.GetService(serviceType);
+        }
     }
 
     private sealed class TranscriptLoggerProvider(StringBuilder transcript) : ILoggerProvider

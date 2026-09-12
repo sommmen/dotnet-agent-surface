@@ -42,4 +42,38 @@ public sealed class HangfireWorkflowTestRegistrationOptions
     /// Gets or sets a predicate that excludes a discovered job type.
     /// </summary>
     public Func<Type, bool>? Exclude { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether discovery diagnostics should cause registration to fail. Defaults to <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only the type-scanning overloads that enumerate many candidate types — <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterAllOptionsJobs"/>
+    /// and <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterAttributeWorkflowTests"/> — consult this
+    /// property and populate <see cref="DiscoveryReports"/>/<see cref="Diagnostics"/>. The closed-generic overloads,
+    /// <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterWorkflowTests{TJobBase}"/> and
+    /// <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterWorkflowTests{TJobBase, TOptions}"/>, already
+    /// know the exact base type being registered, so an invalid execution method is always an
+    /// <see cref="InvalidOperationException"/> for those overloads regardless of this setting.
+    /// </remarks>
+    public bool StrictValidation { get; set; }
+
+    /// <summary>
+    /// Gets a first-class report for every skipped, warning, and registered discovery outcome.
+    /// </summary>
+    /// <remarks>
+    /// Populated only by <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterAllOptionsJobs"/> and
+    /// <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterAttributeWorkflowTests"/>; see
+    /// <see cref="StrictValidation"/> for why the closed-generic overloads do not use it.
+    /// </remarks>
+    public ICollection<HangfireJobDiscoveryReport> DiscoveryReports { get; } = new List<HangfireJobDiscoveryReport>();
+
+    /// <summary>
+    /// Gets the legacy diagnostics produced while types are inspected.
+    /// </summary>
+    /// <remarks>
+    /// Populated only by <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterAllOptionsJobs"/> and
+    /// <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterAttributeWorkflowTests"/>; see
+    /// <see cref="StrictValidation"/> for why the closed-generic overloads do not use it.
+    /// </remarks>
+    public ICollection<HangfireJobRegistrationDiagnostic> Diagnostics { get; } = new List<HangfireJobRegistrationDiagnostic>();
 }

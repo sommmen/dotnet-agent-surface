@@ -219,6 +219,7 @@ Attach `DangerousOperationConfirmationPolicy` to every CLI and MCP host. It neve
 | List or trigger existing recurring definitions without rebuilding the catalog | `AddHangfireRecurringOperations(...)` | Primary recurring API; runtime storage access preserves stable operation names and generated skills. |
 | Conventionally discover attributed `HangfireJob` subclasses and enqueue one-off work | `RegisterJobs<TJobBase>(...)` | Primary class-discovery API; conventional base type, execution method, options binding, and diagnostics. Returns the enqueued Hangfire job ID. |
 | Discover every options-based `IHangfireJob<TOptions>` implementation across assemblies | `RegisterAllOptionsJobs(...)` | One-call alternative to one `RegisterJobs<TJobBase, TOptions>(...)` call per closed options family; newly added job/options pairs are discovered automatically. |
+| Discover jobs by `[HangfireJob]` attribute instead of an interface, without touching a pre-existing job hierarchy's own interface list | `RegisterAttributeJobs(...)` | Structural (duck-typed) discovery for brownfield job base classes that already implement their own, unrelated marker interface; see below. |
 | Control candidate types, method selection, argument binding, or generated metadata | `AddHangfireJobTypes(...)` | Advanced generic discovery API for exceptional integrations; not a recurring-job replacement. Returns the enqueued Hangfire job ID. |
 | Enqueue a follow-up job that only runs once a known job ID succeeds, or look up any job's current status by ID | `AddHangfireJobStatusOperations(...)` | Adds the `continue-hangfire-job` and `get-hangfire-job-status` operations; independent of `RegisterJobs`/`AddHangfireJobTypes` and can be composed with either. |
 
@@ -232,7 +233,30 @@ var catalog = new OperationCatalogBuilder()
 
 It discovers every concrete class that implements exactly one closed `IHangfireJob<TOptions>` interface, including `HangfireJobWithOptions<TOptions>` subclasses, and creates an operation with that options type as its input. A job implementing multiple closed options interfaces is reported as ambiguous and skipped; register that exceptional job with `RegisterJobs<TJobBase, TOptions>(...)` instead.
 
-`RegisterJobs<TJobBase>(...)`, `RegisterAllOptionsJobs(...)`, and `AddHangfireJobTypes(...)` register operations whose delegate returns the `string` job ID produced by `IBackgroundJobClient.Create(...)`, so invoking them yields a usable ID instead of `null`. Use that ID with `continue-hangfire-job` (as `parentJobId`) or `get-hangfire-job-status` (as `jobId`):
+#### Attribute-based discovery for pre-existing job hierarchies
+
+`RegisterJobs<TJobBase>(...)`/`RegisterAllOptionsJobs(...)` require the discovered type (or a shared base class) to implement `IHangfireJob`/`IHangfireJob<TOptions>` — pure nominal typing via `Type.IsAssignableFrom`. A production job base class often already implements its *own*, unrelated interface with the identical `ExecuteAsync(CancellationToken)`/`ExecuteAsync(TOptions, CancellationToken)` shape, and adding a dependency from that domain library onto this tooling package is undesirable. `[HangfireJob]` opts a type into discovery structurally instead, without requiring any interface at all:
+
+```csharp
+// A pre-existing, brownfield job base class — note it implements its own IOpgJob<TOptions>,
+// not this package's IHangfireJob<TOptions>, and never references DotNetAgentSurface.Hangfire's
+// job interfaces (the [HangfireJob] attribute is the only reference to this package).
+[HangfireJob]
+public abstract class OpgJobBase<TOptions, TSelf> : IOpgJob<TOptions>
+    where TSelf : OpgJobBase<TOptions, TSelf>
+{
+    public async Task ExecuteAsync(TOptions options, CancellationToken cancellationToken) { /* ... */ }
+}
+
+var catalog = new OperationCatalogBuilder()
+    .RegisterAttributeJobs(backgroundJobs, [typeof(MyOpgJob).Assembly])
+    .Build();
+```
+
+`[HangfireJob]` is `Inherited`, so annotating a shared base class (as above) is enough to make every concrete subclass discoverable — annotate an individual concrete job type instead when there is no shared base class to mark. Discovery inspects every public `Execute`/`ExecuteAsync` method returning `Task`/`ValueTask`: a single `(CancellationToken)` parameter registers a parameterless job, and a single `(TOptions, CancellationToken)` pair registers an options-based job with `TOptions` inferred from the method's first parameter — no closed generic interface argument required. A type exposing more than one differently-shaped candidate (for example, both a parameterless and an options-based method) is skipped and reported as ambiguous; disambiguate it with `[HangfireJob(typeof(TOptions))]` or a `MethodSelector`. `RegisterAttributeWorkflowTests(services, assemblies, ...)` on `OperationCatalogBuilder` is the equivalent attribute-based entry point for direct, in-process workflow-test execution, mirroring `RegisterAttributeJobs` but invoking the job directly and capturing an `ILogger` transcript instead of enqueueing through `IBackgroundJobClient` — both are purely additive; existing `IHangfireJob`/`IHangfireJob<TOptions>`-based discovery is unaffected.
+
+`RegisterJobs<TJobBase>(...)`, `RegisterAllOptionsJobs(...)`, `RegisterAttributeJobs(...)`, and `AddHangfireJobTypes(...)` register operations whose delegate returns the `string` job ID produced by `IBackgroundJobClient.Create(...)`, so invoking them yields a usable ID instead of `null`. Use that ID with `continue-hangfire-job` (as `parentJobId`) or `get-hangfire-job-status` (as `jobId`):
+
 
 ```csharp
 using DotNetAgentSurface.Hangfire;

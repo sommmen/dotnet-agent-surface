@@ -200,6 +200,128 @@ public static class HangfireJobRegistrationCatalogBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Discovers every concrete class across <paramref name="assemblies"/> marked with <see cref="HangfireJobAttribute"/>
+    /// and adds an enqueue operation for each one whose public <c>Execute</c>/<c>ExecuteAsync</c> method matches the
+    /// structurally-typed parameterless or <c>(TOptions, CancellationToken)</c> shape — without requiring the type
+    /// to implement <see cref="IHangfireJob"/> or <see cref="IHangfireJob{TOptions}"/> at all. This is the
+    /// attribute-based, duck-typed counterpart to <see cref="RegisterJobs{TJobBase}"/>/<see cref="RegisterAllOptionsJobs"/>:
+    /// it lets a pre-existing job base class that already implements its own, unrelated marker interface adopt
+    /// discovery by adding <c>[HangfireJob]</c> instead of changing its interface list. <see cref="HangfireJobAttribute"/>
+    /// is <see cref="AttributeUsageAttribute.Inherited"/>, so annotating a shared base class is enough to make every
+    /// concrete subclass discoverable. A job exposing more than one differently-shaped execution method (for
+    /// example, both a parameterless and an options-based method) is skipped and reported as ambiguous; annotate it
+    /// with <c>[HangfireJob(typeof(TOptions))]</c> or configure a <see cref="HangfireJobRegistrationOptions.MethodSelector"/>
+    /// to disambiguate.
+    /// </summary>
+    public static OperationCatalogBuilder RegisterAttributeJobs(
+        this OperationCatalogBuilder builder,
+        IBackgroundJobClient backgroundJobClient,
+        IEnumerable<Assembly> assemblies,
+        Action<HangfireJobRegistrationOptions>? configure = null)
+    {
+        if (builder is null)
+        {
+            throw new ArgumentNullException(nameof(builder));
+        }
+
+        if (backgroundJobClient is null)
+        {
+            throw new ArgumentNullException(nameof(backgroundJobClient));
+        }
+
+        if (assemblies is null)
+        {
+            throw new ArgumentNullException(nameof(assemblies));
+        }
+
+        var options = new HangfireJobRegistrationOptions();
+        configure?.Invoke(options);
+
+        var assemblyList = assemblies.ToArray();
+        if (assemblyList.Any(static assembly => assembly is null))
+        {
+            throw new ArgumentException("Assemblies must not contain null values.", nameof(assemblies));
+        }
+
+        var candidates = new List<(Type Type, MethodInfo Method, Type? OptionsType)>();
+        foreach (var jobType in GetLoadableTypes(assemblyList, options).Where(IsConcreteClosedClass).Distinct())
+        {
+            var attribute = HangfireAttributeJobDiscovery.GetAttribute(jobType);
+            if (attribute is null)
+            {
+                continue;
+            }
+
+            // Check Exclude predicate first, before selecting a method, so an excluded type is skipped
+            // silently and never triggers an ambiguity report.
+            if (options.Exclude?.Invoke(jobType) == true)
+            {
+                Report(options, jobType, "The job type was excluded by the configured predicate.", HangfireJobDiscoveryDisposition.Skipped);
+                continue;
+            }
+
+            var selection = HangfireAttributeJobDiscovery.SelectExecutionMethod(jobType, attribute.OptionsType, options.MethodSelector);
+            if (selection.Method is null)
+            {
+                Report(options, jobType, selection.Reason!, HangfireJobDiscoveryDisposition.Skipped, failInStrictMode: true);
+                continue;
+            }
+
+            if (selection.MultipleCandidates)
+            {
+                Report(options, jobType, selection.Reason!, HangfireJobDiscoveryDisposition.Warning, failInStrictMode: true);
+            }
+
+            candidates.Add((jobType, selection.Method, selection.OptionsType));
+        }
+
+        foreach (var (jobType, method, optionsType) in candidates
+            .OrderBy(candidate => NormalizeName(options.NameFactory?.Invoke(candidate.Type) ?? ToKebabCase(candidate.Type.Name), options.Category), StringComparer.Ordinal)
+            .ThenBy(candidate => candidate.Type.FullName, StringComparer.Ordinal))
+        {
+            var name = options.NameFactory?.Invoke(jobType) ?? ToKebabCase(jobType.Name);
+            var description = $"Enqueues a single execution of {jobType.FullName ?? jobType.Name}.";
+            var metadata = new HangfireJobRegistrationMetadata(name, description, options.Category, options.SafetyLevel);
+            options.Enrich?.Invoke(jobType, metadata);
+            if (string.IsNullOrWhiteSpace(metadata.Name))
+            {
+                throw new InvalidOperationException($"Metadata enrichment produced an empty operation name for '{jobType.FullName}'.");
+            }
+
+            if (options.SafetyLevel == AgentSafetyLevel.Dangerous && metadata.SafetyLevel != AgentSafetyLevel.Dangerous)
+            {
+                metadata.SafetyLevel = AgentSafetyLevel.Dangerous;
+            }
+
+            var implementation = optionsType is null
+                ? (Delegate)CreateParameterlessEnqueueDelegate(backgroundJobClient, jobType, method)
+                : (Delegate)CreateEnqueueDelegateMethod.MakeGenericMethod(optionsType).Invoke(null, new object[] { backgroundJobClient, jobType, method })!;
+
+            builder.Add(metadata.Name, metadata.Description, implementation, operation =>
+            {
+                operation.Category = metadata.Category;
+                operation.SafetyLevel = metadata.SafetyLevel;
+                operation.Aliases.AddRange(metadata.Aliases);
+                operation.Examples.AddRange(metadata.Examples);
+            });
+
+            Report(options, jobType, "The job type was registered.", HangfireJobDiscoveryDisposition.Registered, method.Name, metadata.Name);
+        }
+
+        return builder;
+    }
+
+    private static Func<CancellationToken, string> CreateParameterlessEnqueueDelegate(IBackgroundJobClient client, Type jobType, MethodInfo method)
+    {
+        string Enqueue(CancellationToken cancellationToken)
+        {
+            return client.Create(new Job(jobType, method, new object?[] { CancellationToken.None }), new EnqueuedState());
+        }
+
+        return Enqueue;
+    }
+
     private static readonly MethodInfo CreateEnqueueDelegateMethod =
         typeof(HangfireJobRegistrationCatalogBuilderExtensions).GetMethod(nameof(CreateEnqueueDelegate), BindingFlags.NonPublic | BindingFlags.Static)!;
 

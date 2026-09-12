@@ -55,6 +55,18 @@ return await app.RunAgentSurfaceCliAsync(args);
 
 `AddAgentSurfaceFromApiExplorer` registers both `OperationCatalog` and `OperationInvoker`. API Explorer operations expose body, route, and query parameters, then invoke the mapped endpoint in-process; no Kestrel listener is started by `RunAgentSurfaceCliAsync`. API Explorer publishes Minimal API descriptions during host startup, so the runner also discovers otherwise-undescribed **parameterless** Minimal API routes from the mapped route data. Parameterized Minimal API operations require API Explorer descriptions and therefore are not available until ASP.NET Core has populated them. Hosts can check `AgentSurfaceCliInvocation.IsInProgress` from the current asynchronous flow while a CLI command is being dispatched; use a separate early host-construction signal for decisions made before the runner starts.
 
+If an operation added through `configure` needs a service resolved from the application's `IServiceProvider` — for example an `IHubContext<THub>` for a `AddSignalRSendOperations` registration or a scoped service — use the overload that also passes the provider:
+
+```csharp
+builder.Services.AddAgentSurfaceFromApiExplorer((catalog, services) =>
+{
+    catalog.AddFromType<CustomerOperations>();
+    catalog.AddSignalRSendOperations<ChatHub>(services.GetRequiredService<IHubContext<ChatHub>>());
+});
+```
+
+The provider passed to `configure` is the application's root `IServiceProvider` (`RunAgentSurfaceCliAsync` passes `app.Services`); resolve scoped services through `services.CreateScope()` rather than resolving them directly from the root provider.
+
 ## Proposed usage
 
 ```csharp

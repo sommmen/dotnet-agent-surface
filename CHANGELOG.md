@@ -43,6 +43,17 @@ listed. Each entry links the pull request(s) that shipped it.
 
 ### Added
 
+- `AddAgentSurfaceFromApiExplorer` in `DotNetAgentSurface.AspNetCore` now has an
+  overload accepting `Action<OperationCatalogBuilder, IServiceProvider>`, so a
+  `configure` callback that adds non-HTTP operations (for example a Hangfire
+  job registration or a SignalR `AddSignalRSendOperations` call that needs
+  `IHubContext<THub>`) can resolve services from the application's DI
+  container instead of working around the gap by building the catalog
+  outside of `AddAgentSurfaceFromApiExplorer`/`RunAgentSurfaceCliAsync`.
+  `RunAgentSurfaceCliAsync` passes `app.Services` to this overload. Purely
+  additive: the existing `Action<OperationCatalogBuilder>` overload and every
+  caller of it are unaffected.
+
 - Root `OperationCommandLineAdapter` help now explains category drill-down with
   `<category> [<sub-category> ...] --help`, so category-only generated CLIs
   make their positional discovery and invocation model explicit. The CLI

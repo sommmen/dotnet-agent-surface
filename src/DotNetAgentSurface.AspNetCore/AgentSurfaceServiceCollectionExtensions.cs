@@ -18,6 +18,10 @@ public static class AgentSurfaceServiceCollectionExtensions
     /// the endpoint data sources are complete. Minimal API descriptions are normally populated only once ASP.NET Core
     /// starts; the command runner additionally discovers unmapped descriptions as parameterless route operations
     /// without starting a listener. Use <paramref name="configure"/> to add non-HTTP operations to the same catalog.
+    /// If an added operation needs a service resolved from the application's <see cref="IServiceProvider"/> (for
+    /// example an <c>IHubContext&lt;THub&gt;</c> or a scoped service), use the
+    /// <see cref="AddAgentSurfaceFromApiExplorer(IServiceCollection, Action{OperationCatalogBuilder, IServiceProvider})"/>
+    /// overload instead.
     /// </remarks>
     public static IServiceCollection AddAgentSurfaceFromApiExplorer(
         this IServiceCollection services,
@@ -25,11 +29,42 @@ public static class AgentSurfaceServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddSingleton(new AgentSurfaceApiExplorerConfiguration(configure));
+        return services.AddAgentSurfaceFromApiExplorerCore(new AgentSurfaceApiExplorerConfiguration(configure));
+    }
+
+    /// <summary>
+    /// Registers Agent Surface command infrastructure for API Explorer endpoints, giving
+    /// <paramref name="configure"/> access to the application's <see cref="IServiceProvider"/> so it can resolve
+    /// services needed by non-HTTP operations added to the catalog.
+    /// </summary>
+    /// <remarks>
+    /// The catalog is constructed only when it is first resolved. Map all application routes before resolving it so
+    /// the endpoint data sources are complete. Minimal API descriptions are normally populated only once ASP.NET Core
+    /// starts; the command runner additionally discovers unmapped descriptions as parameterless route operations
+    /// without starting a listener. The <see cref="IServiceProvider"/> passed to <paramref name="configure"/> is the
+    /// same root provider used to build the catalog (<see cref="RunAgentSurfaceCliAsync"/> passes <c>app.Services</c>);
+    /// resolve scoped services through <see cref="ServiceProviderServiceExtensions.CreateScope"/> rather than
+    /// resolving them directly from it.
+    /// </remarks>
+    public static IServiceCollection AddAgentSurfaceFromApiExplorer(
+        this IServiceCollection services,
+        Action<OperationCatalogBuilder, IServiceProvider> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        return services.AddAgentSurfaceFromApiExplorerCore(new AgentSurfaceApiExplorerConfiguration(configure));
+    }
+
+    private static IServiceCollection AddAgentSurfaceFromApiExplorerCore(
+        this IServiceCollection services,
+        AgentSurfaceApiExplorerConfiguration configuration)
+    {
+        services.AddSingleton(configuration);
         services.AddSingleton(sp =>
         {
             var catalogBuilder = new OperationCatalogBuilder();
-            configure?.Invoke(catalogBuilder);
+            configuration.Configure?.Invoke(catalogBuilder, sp);
             return catalogBuilder
                 .AddFromApiExplorer(
                     sp.GetRequiredService<IApiDescriptionGroupCollectionProvider>(),
@@ -59,7 +94,7 @@ public static class AgentSurfaceServiceCollectionExtensions
         using var invocation = AgentSurfaceCliInvocation.Enter();
         var configuration = app.Services.GetRequiredService<AgentSurfaceApiExplorerConfiguration>();
         var catalogBuilder = new OperationCatalogBuilder();
-        configuration.Configure?.Invoke(catalogBuilder);
+        configuration.Configure?.Invoke(catalogBuilder, app.Services);
         var catalog = catalogBuilder
             .AddFromApiExplorer(
                 app.Services.GetRequiredService<IApiDescriptionGroupCollectionProvider>(),
@@ -85,9 +120,19 @@ public static class AgentSurfaceServiceCollectionExtensions
     }
 }
 
-internal sealed class AgentSurfaceApiExplorerConfiguration(Action<OperationCatalogBuilder>? configure)
+internal sealed class AgentSurfaceApiExplorerConfiguration
 {
-    public Action<OperationCatalogBuilder>? Configure { get; } = configure;
+    public AgentSurfaceApiExplorerConfiguration(Action<OperationCatalogBuilder>? configure)
+        : this(configure is null ? null : (builder, _) => configure(builder))
+    {
+    }
+
+    public AgentSurfaceApiExplorerConfiguration(Action<OperationCatalogBuilder, IServiceProvider>? configure)
+    {
+        Configure = configure;
+    }
+
+    public Action<OperationCatalogBuilder, IServiceProvider>? Configure { get; }
 }
 
 /// <summary>Exposes whether execution is currently occurring through <see cref="AgentSurfaceServiceCollectionExtensions.RunAgentSurfaceCliAsync"/>.</summary>

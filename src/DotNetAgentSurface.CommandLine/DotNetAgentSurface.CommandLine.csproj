@@ -20,14 +20,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="PolySharp" Version="1.14.1">
+    <PackageReference Include="PolySharp">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-    <PackageReference Include="System.Text.Json" Version="10.0.1" />
+    <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 
   <!--
@@ -37,7 +37,7 @@
     above is pinned to the same version Toon.DotNet itself depends on for that target framework.
   -->
   <ItemGroup>
-    <PackageReference Include="Toon.DotNet" Version="1.7.3" />
+    <PackageReference Include="Toon.DotNet" />
   </ItemGroup>
 
 </Project>

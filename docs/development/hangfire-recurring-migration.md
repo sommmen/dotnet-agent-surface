@@ -214,9 +214,30 @@ registration mechanisms.
 | Register job classes that take no agent-supplied input (no options), greenfield or brownfield | `RegisterJobs<TJobBase>(...)` | **Primary class-registration API.** `TJobBase` may be `HangfireJob` for new job code, or the `IHangfireJob` interface itself — or any pre-existing base class/interface that implements it — to adopt an existing job hierarchy (including one with constructor parameters or a CRTP-style generic self-reference) without rewriting its inheritance chain. See [Adopting a pre-existing (brownfield) job hierarchy](#adopting-a-pre-existing-brownfield-job-hierarchy). |
 | Register options-bearing job classes, greenfield or brownfield | `RegisterJobs<TJobBase, TOptions>(...)` | The primary typed variant: it adds JSON schema, input binding, and an explicit options contract. `TJobBase` may be `HangfireJobWithOptions<TOptions>` or the `IHangfireJob<TOptions>` interface, with the same brownfield-adoption support as above. |
 | Adapt job classes with a fully custom shape (non-conventional method name/signature, custom argument binding) | `AddHangfireJobTypes(...)` | Escape hatch for callers who need a custom type predicate, method selector, or argument factory that `RegisterJobs` intentionally does not expose. Most pre-existing job hierarchies do not need this — implementing `IHangfireJob`/`IHangfireJob<TOptions>` on the existing base class/interface and using `RegisterJobs` is simpler. |
+| Adopt a pre-existing job hierarchy without implementing `IHangfireJob`/`IHangfireJob<TOptions>` or changing its base class/interface list | `RegisterAttributeJobs(...)` / `RegisterAttributeWorkflowTests(...)` | Attribute-based, duck-typed discovery: annotate the type (or a shared base class, since `[HangfireJob]` is inherited) instead of implementing an interface. Structurally matches the same conventional `Execute`/`ExecuteAsync` shapes as `RegisterJobs`. See [Attribute-based (duck-typed) discovery](#attribute-based-duck-typed-discovery). |
 
 `RegisterJobs` is the long-term primary API for new class-based jobs. Keep
 `AddHangfireJobTypes` when its flexibility is required; it is not a deprecated
 alias and no migration is needed merely because both APIs are available. The
 class-registration APIs enqueue an on-demand execution and do not discover or
 alter recurring-job configuration.
+
+### Attribute-based (duck-typed) discovery
+
+`RegisterAttributeJobs(...)` (enqueue-oriented) and
+`RegisterAttributeWorkflowTests(...)` (direct in-process execution) scan
+assemblies for concrete classes marked with `[HangfireJob]` and register an
+operation for each one whose public `Execute`/`ExecuteAsync` method matches
+the same structurally-typed parameterless or `(TOptions, CancellationToken)`
+shape `RegisterJobs` uses — without requiring the type to implement
+`IHangfireJob`/`IHangfireJob<TOptions>` at all.
+
+This is the attribute counterpart to `RegisterJobs`/`RegisterAllOptionsJobs`
+for job hierarchies that already implement their own, unrelated marker
+interface: adding `[HangfireJob]` (optionally `[HangfireJob(typeof(TOptions))]`
+to disambiguate a job exposing more than one differently-shaped execution
+method) opts a class into discovery without touching its interface list.
+Because the attribute is inherited, annotating a shared base class is enough
+to make every concrete subclass discoverable. Jobs with an ambiguous shape are
+skipped and reported through the same `HangfireJobDiscoveryDisposition`
+diagnostics as the other class-registration APIs.

@@ -75,6 +75,32 @@ Use normal .NET conventions: `DotNetAgentSurface.*` package IDs and namespaces, 
 
 Assessed as viable in [`discovery-satellites.md`](../../features/discovery-satellites.md); automatic discovery deliberately has no source generator because each source's final composition is only fully known at runtime, not compile time. ASP.NET Core discovery uses `IApiDescriptionGroupCollectionProvider` (`ApiExplorer`) rather than a hand-rolled `EndpointDataSource` walk. All three feed the existing catalog through `OperationCatalogBuilder.Add(...)`; none changes `Core`'s "scan only explicitly annotated methods" philosophy or adds a dependency to `Core`, `CommandLine`, or `Mcp`'s existing outward-facing adapter. Items 19–24 below (including cross-source validation) are all complete; Hangfire discovery has since grown class-based (`RegisterJobs`) and attribute-based (`RegisterAttributeJobs`) variants beyond the original recurring-job satellite.
 
+### Workflow-test construction of `PerformContext`-requiring jobs — resolved
+
+`RegisterWorkflowTests`/`RegisterAttributeWorkflowTests` (`HangfireWorkflowTestCatalogBuilderExtensions`) construct
+job instances directly via `ActivatorUtilities.CreateInstance` against the caller-supplied `IServiceProvider` —
+there is no enqueue/`JobActivator` round-trip through an actual Hangfire server. Job base classes that only need
+DI services and `ILogger<T>`/`ILoggerFactory` always worked with this, but a job base class whose constructor
+also requests a Hangfire `PerformContext` (a common pattern for jobs using Hangfire.Console-style progress
+logging or job metadata) previously failed, because nothing in that construction path could supply one.
+
+This is resolved by `SyntheticPerformContextFactory`, which builds a real (but otherwise unconnected)
+`PerformContext` — backed by a private `Hangfire.InMemory.InMemoryStorage`/`IStorageConnection` and a placeholder
+`Job`/`BackgroundJob` pair, mirroring the shape Hangfire's own `InjectContextJobActivator` produces for real
+background execution. `WorkflowTestServiceProvider` (the internal `IServiceProvider` used for job construction)
+now special-cases `PerformContext`, `IJobCancellationToken`, and `CancellationToken` constructor parameters the
+same way it already special-cased `ILoggerFactory`/`ILogger<T>`, mirroring Hangfire's own internal
+`CoreBackgroundJobPerformer.Substitutions` map so behavior matches what a job would receive during real
+background execution. One synthetic context is created per workflow-test run, tied to that run's own linked
+cancellation token (caller cancellation + configured timeout), and disposed when the run completes.
+
+`SyntheticPerformContextFactory.Create(...)` is also public, so code that needs a real `PerformContext` outside
+of workflow-test registration (e.g. a bespoke test harness) can call it directly instead of reflecting into
+Hangfire's internals by hand. See `samples/DotNetAgentSurface.Samples.Hangfire.Cli/Program.cs`'s
+`ArchiveOldRecordsJob`/`PerformContextWorkflowJob` for a worked example, and `IHangfireJob`'s XML docs for the
+distinction between the enqueue path (real `JobActivator`, no synthesis needed) and the workflow-test path
+(direct construction, synthesis required).
+
 ### Explicit-metadata registration and source generation — work item
 
 Add an additive Core registration API that accepts explicit operation and parameter descriptors with a generic asynchronous handler, while retaining the current delegate-based `OperationCatalogBuilder.Add(...)` overloads. This must decouple operation schema from `Delegate.Method.GetParameters()` so dynamic discovery sources can supply their already-known metadata directly. The ASP.NET Core satellite can then replace its `System.Reflection.Emit` wrapper generation with an explicit descriptor and a generic endpoint-invocation handler. Validate invoker binding and generated CLI, MCP, and skill schemas against the descriptor metadata; preserve delegate-registration behavior; and cover the new API with focused Core and ASP.NET Core tests. This also improves trimming and Native AOT compatibility and provides a reusable foundation for other dynamic sources such as Hangfire, plug-ins, OpenAPI imports, or database-defined commands.

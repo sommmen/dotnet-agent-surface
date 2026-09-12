@@ -187,6 +187,7 @@ public sealed class OperationCommandLineAdapterTests
         Assert.Contains("ping", help.Output);
         Assert.Contains("customers", help.Output);
         Assert.Contains("projects", help.Output);
+        Assert.Contains("<category> [<sub-category> ...] --help", help.Output);
     }
 
     private static OperationCommandLineAdapter CreateAdapter()

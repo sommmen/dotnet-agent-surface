@@ -18,6 +18,13 @@ namespace DotNetAgentSurface.Hangfire;
 /// Discovery only enumerates a job type's public <c>Execute</c>/<c>ExecuteAsync</c> methods via reflection, so an
 /// explicit interface implementation (<c>Task IHangfireJob.ExecuteAsync(...)</c>) will not be found.
 /// </para>
+/// <para>
+/// <see cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterWorkflowTests{TJobBase}"/> and its overloads
+/// construct job instances directly (there is no enqueue/<see cref="JobActivator"/> round-trip), so a
+/// constructor requesting <c>PerformContext</c>, <c>IJobCancellationToken</c>, or <see cref="CancellationToken"/>
+/// receives a real-but-synthetic instance produced by <see cref="SyntheticPerformContextFactory"/> instead of one
+/// tied to an actual Hangfire server — see that type's remarks for details.
+/// </para>
 /// </summary>
 public interface IHangfireJob
 {

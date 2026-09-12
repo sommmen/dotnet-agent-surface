@@ -43,6 +43,28 @@ listed. Each entry links the pull request(s) that shipped it.
 
 ### Added
 
+- Root `OperationCommandLineAdapter` help now explains category drill-down with
+  `<category> [<sub-category> ...] --help`, so category-only generated CLIs
+  make their positional discovery and invocation model explicit. The CLI
+  adapter guide also documents how hosts that opt into the separate
+  `SkillGeneratorCommand` surface should advertise `generate` and `check` in
+  their own root help.
+
+- `SyntheticPerformContextFactory` and `SyntheticPerformContext` in
+  `DotNetAgentSurface.Hangfire`, synthesizing a real (but otherwise
+  unconnected) Hangfire `PerformContext` from just `Hangfire.Core`/
+  `Hangfire.InMemory` — no running Hangfire server required.
+  `RegisterWorkflowTests`/`RegisterAttributeWorkflowTests` now use this
+  automatically, so a job base class whose constructor requires a
+  `PerformContext`, `IJobCancellationToken`, or `CancellationToken` (a common
+  pattern for jobs using Hangfire.Console-style progress logging or job
+  metadata) can be registered and run through workflow tests without a
+  bespoke `IServiceProvider` from the caller. `SyntheticPerformContextFactory.Create(...)`
+  is also public for callers that need a synthetic `PerformContext` outside of
+  workflow-test registration. Purely additive: jobs that don't request these
+  types are unaffected. See
+  [`docs/development/testing-and-open-decisions.md`](docs/development/testing-and-open-decisions.md#workflow-test-construction-of-performcontext-requiring-jobs--resolved).
+
 - `McpOperationServer`'s constructor now accepts an optional
   `serverInstructions` parameter, forwarded to `McpServerOptions.ServerInstructions`
   so consumers can inject custom guidance on how MCP clients should use the

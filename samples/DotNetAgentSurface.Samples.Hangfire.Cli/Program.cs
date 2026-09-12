@@ -4,6 +4,7 @@ using DotNetAgentSurface.Hangfire;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.InMemory;
+using Hangfire.Server;
 using Microsoft.Extensions.Logging;
 
 using var storage = new InMemoryStorage();
@@ -24,6 +25,10 @@ var catalog = new OperationCatalogBuilder()
         // artifact after the process exits, e.g. from a CI job or a long-lived agent workspace.
         options.ArtifactDirectory = Environment.GetEnvironmentVariable("HANGFIRE_WORKFLOW_TEST_ARTIFACT_DIR");
     })
+    // Demonstrates a job base class whose constructor requires a Hangfire PerformContext (e.g. for
+    // Hangfire.Console-style progress logging or job metadata) — the workflow-test harness synthesizes a
+    // real PerformContext automatically, so no bespoke IServiceProvider is needed even here.
+    .RegisterWorkflowTests<PerformContextWorkflowJob>(new NullServiceProvider(), [typeof(ArchiveOldRecordsJob).Assembly])
     .Build();
 var invoker = new OperationInvoker(
     new NullServiceProvider(),
@@ -95,5 +100,28 @@ internal sealed class DamageSyncJob(ILogger<DamageSyncJob> logger) : WorkflowJob
         }
 
         logger.LogInformation("Damage sync completed.");
+    }
+}
+
+/// <summary>
+/// Shared base class for a job that requires a Hangfire <see cref="PerformContext"/> in its constructor — a
+/// common pattern for jobs that want Hangfire.Console-style progress logging or job metadata (id, creation
+/// time) alongside their regular DI dependencies. <see cref="RegisterWorkflowTests{TJobBase}"/> synthesizes a
+/// real (but otherwise unconnected) <see cref="PerformContext"/> for this constructor parameter automatically;
+/// see <see cref="SyntheticPerformContextFactory"/> for details.
+/// </summary>
+internal abstract class PerformContextWorkflowJob : HangfireJob;
+
+/// <summary>
+/// Stand-in for a job that logs its synthesized <see cref="PerformContext"/>'s job id, proving the
+/// workflow-test harness constructs <see cref="PerformContext"/>-requiring jobs without any bespoke
+/// <see cref="IServiceProvider"/> from the host.
+/// </summary>
+internal sealed class ArchiveOldRecordsJob(PerformContext context, ILogger<ArchiveOldRecordsJob> logger) : PerformContextWorkflowJob
+{
+    public override Task ExecuteAsync(CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Archiving old records for synthesized job {JobId}.", context.BackgroundJob.Id);
+        return Task.CompletedTask;
     }
 }

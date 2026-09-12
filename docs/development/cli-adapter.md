@@ -24,6 +24,42 @@ Hosts that authenticate a caller out of band can pass an
 
 Human-friendly formatting can be layered on later, but automation must have a stable output mode from the start.
 
+## Discovering commands
+
+The root invocation (`<executable> --help`, or no arguments) lists uncategorized
+operations and top-level categories. When categories are present, the generated
+help also states the drill-down form:
+
+```text
+<executable> <category> [<sub-category> ...] --help
+```
+
+Run that command at each level to list its operations and nested categories, then
+invoke a displayed operation path with its flags. For example,
+`tasktracker-cli projects --help` explores the `projects` category and
+`tasktracker-cli projects archived --help` explores a nested `archived` category.
+
+`SkillGeneratorCommand` deliberately remains independent of
+`OperationCommandLineAdapter`, so a host that opts into the `generate` and
+`check` skill-reference verbs must advertise and dispatch them itself. The sample
+CLI hosts use this pattern:
+
+```csharp
+var result = SkillGeneratorCommand.CanHandle(args)
+    ? await SkillGeneratorCommand.ExecuteAsync(
+        args,
+        catalog,
+        outputDirectoryDefault: "skill",
+        generationOptions: skillOptions)
+    : await adapter.ExecuteAsync(args);
+```
+
+When using that optional command surface, make its two verbs visible in the
+host's own root help or usage banner (for example,
+`generate [--output <directory>]` and `check [--output <directory>]`). Keeping
+this host-level avoids claiming those verbs exist for hosts that don't wire
+`SkillGeneratorCommand`.
+
 ## AXI and token efficiency
 
 Generated CLIs should support the [Agent eXperience Interface (AXI)](https://github.com/kunchenguid/axi/blob/main/.agents/skills/axi/SKILL.md) conventions. This is an output-boundary concern: operation inputs, schemas, and normalized results remain JSON-compatible internally, while the CLI can render compact [TOON](https://toonformat.dev/) by default for agent-oriented use and retain an explicit JSON mode for interoperability and scripting.

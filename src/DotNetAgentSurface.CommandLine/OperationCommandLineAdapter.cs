@@ -339,6 +339,12 @@ public sealed class OperationCommandLineAdapter
             lines.AddRange(categoryLines);
         }
 
+        if (pathSegments.Count == 0 && node.Categories.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Use '<category> [<sub-category> ...] --help' to explore a category, then invoke an operation by its displayed path.");
+        }
+
         return string.Join("\n", lines);
     }
 

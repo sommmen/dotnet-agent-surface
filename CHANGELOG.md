@@ -57,6 +57,15 @@ listed. Each entry links the pull request(s) that shipped it.
   `HangfireJob`/`HangfireJobWithOptions<TOptions>` now implement the
   interfaces, so every existing greenfield caller keeps compiling unchanged.
 
+- `[HangfireJob]`, `RegisterAttributeJobs(...)`, and
+  `RegisterAttributeWorkflowTests(...)` in `DotNetAgentSurface.Hangfire` for
+  opt-in, duck-typed discovery of class-based jobs. Existing job hierarchies
+  can add the inherited attribute instead of implementing
+  `IHangfireJob`/`IHangfireJob<TOptions>`; public conventional
+  `Execute`/`ExecuteAsync` methods are selected and ambiguous shapes are
+  reported through the existing registration diagnostics. See
+  [`docs/development/hangfire-recurring-migration.md`](docs/development/hangfire-recurring-migration.md#choosing-the-right-hangfire-integration).
+
 - `IConfirmationEnforcingPolicy` marker interface in `DotNetAgentSurface.Core`,
   implemented by `DangerousOperationConfirmationPolicy`, identifying a policy
   that enforces `AgentSafetyLevel.Confirm`/`AgentSafetyLevel.Dangerous`
@@ -120,6 +129,18 @@ listed. Each entry links the pull request(s) that shipped it.
   [`docs/development/xml-doc-comments.md`](docs/development/xml-doc-comments.md).
 
 ### Changed
+
+- `DotNetAgentSurface.CommandLine`'s TOON output renderer
+  (`ToonAgentOutputRenderer`) switched its encoding dependency from
+  [Cysharp/ToonEncoder](https://github.com/Cysharp/ToonEncoder) (net10.0-only,
+  requiring a hand-rolled `netstandard2.0` fallback writer) to
+  [Toon.DotNet](https://github.com/CharlesHunt/ToonDotNet) 1.7.3, which
+  supports both `net10.0` and `netstandard2.0` natively. This removed the
+  duplicated `netstandard2.0` TOON-writing code path; the `IAgentOutputRenderer`
+  boundary and rendered output are unchanged for callers on either target
+  framework. `System.Text.Json` is bumped to `10.0.1` for the `netstandard2.0`
+  build to match Toon.DotNet's own dependency. See
+  [`docs/development/testing-and-open-decisions.md`](docs/development/testing-and-open-decisions.md#toon-and-output-contract--resolved).
 
 - `Hangfire.Core`/`Hangfire.SqlServer` bumped from `1.8.18` to the latest
   stable `1.8.25`, and `Hangfire.InMemory` bumped from `0.9.0` to the latest

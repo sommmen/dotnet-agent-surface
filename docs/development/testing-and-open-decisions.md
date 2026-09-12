@@ -41,7 +41,7 @@ Categories map to deterministic command groups: an operation in category `tasks`
 
 ### TOON and output contract — work item
 
-Use [Cysharp/ToonEncoder](https://github.com/Cysharp/ToonEncoder) initially (`ToonEncoder` 2.x is available on NuGet), but hide it behind a small output-renderer boundary such as `IAgentOutputRenderer`. Keep normalized results and schemas represented internally as JSON-compatible values; render TOON only at the CLI stdout boundary. JSON remains an explicit machine-readable escape hatch (for example, `--output json`), while TOON is the AXI-oriented default. Pin and test the exact encoder options and newline/escaping contract so a future official implementation can replace the dependency without changing operation metadata.
+Use [Toon.DotNet](https://github.com/CharlesHunt/ToonDotNet) (pinned to `Toon.DotNet` 1.7.3), hidden behind a small output-renderer boundary such as `IAgentOutputRenderer`. Keep normalized results and schemas represented internally as JSON-compatible values; render TOON only at the CLI stdout boundary. JSON remains an explicit machine-readable escape hatch (for example, `--output json`), while TOON is the AXI-oriented default. Pin and test the exact encoder options and newline/escaping contract so a future implementation can replace the dependency without changing operation metadata.
 
 ### Projection, truncation, and `--fields` — work item
 
@@ -85,7 +85,7 @@ Explore an optional source-generation path for statically known, explicitly anno
 
 1. Add fluent/delegate registration alongside attributes.
 2. Add category-based command routing, deterministic collision diagnostics, and README command-chain documentation.
-3. Add the renderer abstraction and Cysharp/ToonEncoder-backed TOON output with explicit JSON mode.
+3. Add the renderer abstraction and Toon.DotNet-backed TOON output with explicit JSON mode.
 4. Add AXI-oriented projections, configurable truncation, `--fields`, `--full`, total counts, and structured empty/error output.
 5. Add overload and alias support with deterministic naming rules.
 6. Add an explicit generator CLI command; evaluate optional MSBuild integration later.

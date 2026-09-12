@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!--
+      net8.0 is included alongside net10.0 so this suite also executes against the netstandard2.0 build of
+      DotNetAgentSurface.CommandLine: net8.0 isn't in that project's TargetFrameworks list, so NuGet/MSBuild
+      resolves the reference to its nearest compatible asset, netstandard2.0, exercising that compatibility
+      path (e.g. the ToonAgentOutputRenderer implementation) at test time instead of only at compile time.
+    -->
+    <TargetFrameworks>net10.0;net8.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>

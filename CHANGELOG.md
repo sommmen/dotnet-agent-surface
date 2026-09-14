@@ -329,7 +329,7 @@ PR: [#16](https://github.com/sommmen/dotnet-agent-surface/pull/16) — `feat(han
 
 PR: [#15](https://github.com/sommmen/dotnet-agent-surface/pull/15) — `Fix NuGet pack failure in AspNetCore package metadata`
 
-This is the version OPG Platform originally integrated against
+This is the version originally integrated against
 ([issue #28](https://github.com/sommmen/dotnet-agent-surface/issues/28)).
 
 ### Breaking changes

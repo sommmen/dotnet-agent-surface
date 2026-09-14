@@ -489,7 +489,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
     // --- Attribute-based fixtures -------------------------------------------------------------
     //
     // These simulate a pre-existing production job base class implementing its own unrelated marker
-    // interface (see issue description: OPG Platform's IOpgJob<TOptions>/OpgJobBase<TOptions, TSelf>).
+    // interface (see issue description for a representative foreign job hierarchy).
     // None of these types implement IHangfireJob/IHangfireJob<TOptions>.
 
     private interface IForeignWorkflowJob

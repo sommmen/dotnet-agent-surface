@@ -540,7 +540,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
     // --- Attribute-based fixtures -------------------------------------------------------------
     //
     // These simulate a pre-existing production job base class implementing its own unrelated marker
-    // interface (see issue description: OPG Platform's IOpgJob<TOptions>/OpgJobBase<TOptions, TSelf>).
+    // interface (see issue description for a representative foreign job hierarchy).
     // None of these types implement IHangfireJob/IHangfireJob<TOptions>.
 
     private interface IForeignJob
@@ -635,7 +635,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
 
     // --- Brownfield fixtures (issue #28) -----------------------------------------------------
     //
-    // These mirror a real pre-existing Hangfire job hierarchy (OPG Platform's IOpgJob/OpgJobBase<TSelf>):
+    // These mirror a representative pre-existing Hangfire job hierarchy:
     // a CRTP-style generic base class that is *not* HangfireJob, takes constructor parameters
     // (simulating a Hangfire PerformContext plus an injected dependency), and only implements
     // IHangfireJob to opt into RegisterJobs — no rewrite of the base class's inheritance chain.

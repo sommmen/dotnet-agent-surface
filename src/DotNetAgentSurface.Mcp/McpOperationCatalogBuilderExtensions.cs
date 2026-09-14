@@ -57,10 +57,10 @@ public static class McpOperationCatalogBuilderExtensions
                          .Where(static method => method.IsDefined(typeof(McpServerToolAttribute), inherit: false)))
             {
                 var attribute = method.GetCustomAttribute<McpServerToolAttribute>(inherit: false)!;
-                var name = string.IsNullOrWhiteSpace(attribute.Name) ? method.Name : attribute.Name;
+                var name = string.IsNullOrWhiteSpace(attribute.Name) ? method.Name : attribute.Name!;
                 var description = method.GetCustomAttribute<DescriptionAttribute>(inherit: false)?.Description;
                 description = string.IsNullOrWhiteSpace(description) ? attribute.Title : description;
-                description = string.IsNullOrWhiteSpace(description) ? name : description;
+                description = string.IsNullOrWhiteSpace(description) ? name : description!;
 
                 builder.Add(name, description, CreateDelegate(method, method.IsStatic ? null : target), options =>
                 {

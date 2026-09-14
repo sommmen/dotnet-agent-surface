@@ -68,7 +68,7 @@ internal sealed class NullServiceProvider : IServiceProvider
 }
 
 /// <summary>
-/// Shared base class for jobs registered via <see cref="RegisterWorkflowTests{TJobBase, TOptions}"/> in this
+/// Shared base class for jobs registered via the workflow-test registration methods in
 /// sample. Any pre-existing job base class works here too — see <see cref="IHangfireJob{TOptions}"/>.
 /// </summary>
 internal abstract class WorkflowJob : HangfireJobWithOptions<WorkflowJobOptions>;
@@ -106,7 +106,7 @@ internal sealed class DamageSyncJob(ILogger<DamageSyncJob> logger) : WorkflowJob
 /// <summary>
 /// Shared base class for a job that requires a Hangfire <see cref="PerformContext"/> in its constructor — a
 /// common pattern for jobs that want Hangfire.Console-style progress logging or job metadata (id, creation
-/// time) alongside their regular DI dependencies. <see cref="RegisterWorkflowTests{TJobBase}"/> synthesizes a
+/// time) alongside their regular DI dependencies. Workflow-test registration synthesizes a
 /// real (but otherwise unconnected) <see cref="PerformContext"/> for this constructor parameter automatically;
 /// see <see cref="SyntheticPerformContextFactory"/> for details.
 /// </summary>

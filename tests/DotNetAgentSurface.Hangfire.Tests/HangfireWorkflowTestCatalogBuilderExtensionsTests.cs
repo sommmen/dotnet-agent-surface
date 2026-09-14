@@ -293,8 +293,8 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
 
             await Task.WhenAll(invocation1Task, invocation2Task);
 
-            var result1 = Assert.IsType<HangfireWorkflowTestResult>(invocation1Task.Result.Value);
-            var result2 = Assert.IsType<HangfireWorkflowTestResult>(invocation2Task.Result.Value);
+            var result1 = Assert.IsType<HangfireWorkflowTestResult>((await invocation1Task).Value);
+            var result2 = Assert.IsType<HangfireWorkflowTestResult>((await invocation2Task).Value);
 
             // Both should have artifact paths and they should be different.
             Assert.NotNull(result1.ArtifactPath);

@@ -69,7 +69,7 @@ internal sealed class NullServiceProvider : IServiceProvider
 
 /// <summary>
 /// Shared base class for jobs registered via the workflow-test registration methods in
-/// sample. Any pre-existing job base class works here too — see <see cref="IHangfireJob{TOptions}"/>.
+/// in this sample. Any pre-existing job base class works here too — see <see cref="IHangfireJob{TOptions}"/>.
 /// </summary>
 internal abstract class WorkflowJob : HangfireJobWithOptions<WorkflowJobOptions>;
 

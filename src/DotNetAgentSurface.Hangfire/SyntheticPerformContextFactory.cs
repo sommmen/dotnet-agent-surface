@@ -9,14 +9,14 @@ namespace DotNetAgentSurface.Hangfire;
 /// <summary>
 /// Creates a real, working Hangfire <see cref="PerformContext"/> outside of an actual Hangfire server, for tests
 /// and tools that need to construct a class-based job whose constructor requires one (e.g. a job base class that
-/// uses <c>PerformContext</c> for Hangfire.Console progress logging or job metadata). <see
-/// cref="HangfireWorkflowTestCatalogBuilderExtensions.RegisterWorkflowTests{TJobBase}"/> and its overloads use this
-/// factory automatically; call it directly only when constructing job instances outside of workflow-test
+/// uses <c>PerformContext</c> for Hangfire.Console progress logging or job metadata). The workflow-test
+/// registration methods in <see cref="HangfireWorkflowTestCatalogBuilderExtensions"/> use this factory
+/// automatically; call it directly only when constructing job instances outside of workflow-test
 /// registration (for example, from a bespoke test harness).
 /// </summary>
 /// <remarks>
 /// The returned context is backed by a private, in-process <see cref="InMemoryStorage"/> instance and a
-/// placeholder <see cref="Job"/>/<see cref="Hangfire.BackgroundJob"/> pair, mirroring the shape Hangfire's own
+/// placeholder <see cref="Job"/>/<see cref="global::Hangfire.BackgroundJob"/> pair, mirroring the shape Hangfire's own
 /// <c>InjectContextJobActivator</c> produces for real background execution. It is not connected to any real job
 /// queue, and nothing enqueued or written through it is persisted anywhere. Dispose the returned <see
 /// cref="SyntheticPerformContext"/> once the job invocation that used it has completed.

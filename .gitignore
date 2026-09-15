@@ -375,16 +375,16 @@ FodyWeavers.xsd
 *.sqlite-wal
 *.sqlite
 *.sqlite-shm
-src/Back-end/Applications/Api/OPG.Platform.Api.Commerce/uploads/
-src/Back-end/Applications/Api/OPG.Platform.Api.Management/uploads/
+src/Back-end/Applications/Api/Commerce/uploads/
+src/Back-end/Applications/Api/Management/uploads/
 
 # Old
-src/Back-end/Applications/Api/OPG.Platform.Api.Management/media/
+src/Back-end/Applications/Api/Management/media/
 # Newer
 src/Back-end/Applications/Api/media
 
 # Produced by sync job to find legacy blocks.
-src/Back-end/Applications/Api/OPG.Platform.Api.Management/blocks
+src/Back-end/Applications/Api/Management/blocks
 /.dotnet-home/.dotnet
 
 # Copilot Orchestrator temporary files

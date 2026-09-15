@@ -113,17 +113,17 @@ using Hangfire;
 using DotNetAgentSurface.Hangfire;
 
 // Pre-existing brownfield hierarchy — unchanged except for adding `: IHangfireJob`.
-public interface IOpgJob
+public interface IExistingJob
 {
     Task RunAsync(CancellationToken cancellationToken);
 }
 
-public abstract class OpgJobBase<TSelf> : IOpgJob, IHangfireJob
-    where TSelf : OpgJobBase<TSelf>
+public abstract class ExistingJobBase<TSelf> : IExistingJob, IHangfireJob
+    where TSelf : ExistingJobBase<TSelf>
 {
     private readonly PerformContext _context;
 
-    protected OpgJobBase(PerformContext context)
+    protected ExistingJobBase(PerformContext context)
     {
         _context = context;
     }
@@ -139,7 +139,7 @@ public abstract class OpgJobBase<TSelf> : IOpgJob, IHangfireJob
     public Task ExecuteAsync(CancellationToken cancellationToken) => RunAsync(cancellationToken);
 }
 
-public sealed class NightlyReconciliationJob : OpgJobBase<NightlyReconciliationJob>
+public sealed class NightlyReconciliationJob : ExistingJobBase<NightlyReconciliationJob>
 {
     private readonly IReconciliationService _service;
 
@@ -159,7 +159,7 @@ base class as `TJobBase`:
 
 ```csharp
 var catalog = new OperationCatalogBuilder()
-    .RegisterJobs<OpgJobBase<NightlyReconciliationJob>>(backgroundJobClient, [typeof(NightlyReconciliationJob).Assembly])
+    .RegisterJobs<ExistingJobBase<NightlyReconciliationJob>>(backgroundJobClient, [typeof(NightlyReconciliationJob).Assembly])
     .Build();
 ```
 
@@ -167,7 +167,7 @@ var catalog = new OperationCatalogBuilder()
 would be — enqueued through `IBackgroundJobClient`, constructed by Hangfire's
 `JobActivator` (which resolves `PerformContext` and `IReconciliationService`
 from the application's DI container, just as it already would for a
-recurring job) — without OPG's `OpgJobBase<TSelf>`/`IOpgJob` hierarchy ever
+recurring job) — without the existing `ExistingJobBase<TSelf>`/`IExistingJob` hierarchy ever
 being rewritten to derive from `HangfireJob`.
 
 The same applies to options-bearing brownfield jobs: implement

@@ -250,18 +250,18 @@ It discovers every concrete class that implements exactly one closed `IHangfireJ
 `RegisterJobs<TJobBase>(...)`/`RegisterAllOptionsJobs(...)` require the discovered type (or a shared base class) to implement `IHangfireJob`/`IHangfireJob<TOptions>` — pure nominal typing via `Type.IsAssignableFrom`. A production job base class often already implements its *own*, unrelated interface with the identical `ExecuteAsync(CancellationToken)`/`ExecuteAsync(TOptions, CancellationToken)` shape, and adding a dependency from that domain library onto this tooling package is undesirable. `[HangfireJob]` opts a type into discovery structurally instead, without requiring any interface at all:
 
 ```csharp
-// A pre-existing, brownfield job base class — note it implements its own IOpgJob<TOptions>,
+// A pre-existing, brownfield job base class — note it implements its own IExistingJob<TOptions>,
 // not this package's IHangfireJob<TOptions>, and never references DotNetAgentSurface.Hangfire's
 // job interfaces (the [HangfireJob] attribute is the only reference to this package).
 [HangfireJob]
-public abstract class OpgJobBase<TOptions, TSelf> : IOpgJob<TOptions>
-    where TSelf : OpgJobBase<TOptions, TSelf>
+public abstract class ExistingJobBase<TOptions, TSelf> : IExistingJob<TOptions>
+    where TSelf : ExistingJobBase<TOptions, TSelf>
 {
     public async Task ExecuteAsync(TOptions options, CancellationToken cancellationToken) { /* ... */ }
 }
 
 var catalog = new OperationCatalogBuilder()
-    .RegisterAttributeJobs(backgroundJobs, [typeof(MyOpgJob).Assembly])
+    .RegisterAttributeJobs(backgroundJobs, [typeof(MyExistingJob).Assembly])
     .Build();
 ```
 

@@ -23,7 +23,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         _fixture = fixture;
     }
 
-    [SkippableFact]
+    [Fact]
     public void AddHangfireRecurringOperations_does_not_access_sql_server_storage_until_invocation()
     {
         SkipUnlessAvailable();
@@ -47,7 +47,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         Assert.Equal(AgentSafetyLevel.Confirm, trigger.SafetyLevel);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task List_recurring_hangfire_reflects_jobs_registered_against_sql_server_storage()
     {
         SkipUnlessAvailable();
@@ -69,7 +69,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         Assert.All(ownJobs, job => Assert.Equal(typeof(TestJobs).FullName, job.JobType));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Trigger_recurring_hangfire_rejects_unknown_job_without_triggering_manager()
     {
         SkipUnlessAvailable();
@@ -87,7 +87,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         Assert.Equal(missingJobId, acknowledgement.JobId);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Trigger_recurring_hangfire_enqueues_a_job_registered_in_sql_server_storage()
     {
         SkipUnlessAvailable();
@@ -111,7 +111,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         Assert.Equal(acknowledgement.EnqueueId, registeredJob.LastJobId);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task List_recurring_hangfire_translates_sql_server_storage_failures_into_operation_failures()
     {
         SkipUnlessAvailable();
@@ -132,7 +132,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         Assert.NotNull(result.Error);
     }
 
-    private void SkipUnlessAvailable() => Skip.If(_fixture.SkipReason is not null, _fixture.SkipReason);
+    private void SkipUnlessAvailable() => Assert.SkipWhen(_fixture.SkipReason is not null, _fixture.SkipReason);
 
     private static Task<OperationInvocationResult> InvokeAsync(OperationCatalog catalog, string operationName, string? jobId = null)
     {

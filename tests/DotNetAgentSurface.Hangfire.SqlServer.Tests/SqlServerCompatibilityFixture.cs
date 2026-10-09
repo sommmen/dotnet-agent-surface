@@ -36,7 +36,7 @@ public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
     /// <summary>Gets the connection string for the running container. Only valid once initialized and enabled.</summary>
     public string ConnectionString { get; private set; } = string.Empty;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!IsEnabled)
         {
@@ -72,7 +72,7 @@ public sealed class SqlServerCompatibilityFixture : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_container is not null)
         {

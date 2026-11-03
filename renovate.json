@@ -20,6 +20,34 @@
         "/^[Rr]enovatebot/github-action/"
       ],
       "automerge": true
+    },
+    {
+      "description": "Test-only infrastructure ships nothing to production, so a bad version can only turn the required 'Build and Test (.NET)' check red, which already blocks the merge. That makes these self-policing, so all update types automerge including majors. Testcontainers.MsSql is referenced solely by DotNetAgentSurface.Hangfire.SqlServer.Tests.",
+      "matchManagers": [
+        "nuget"
+      ],
+      "matchDepNames": [
+        "/^[Xx]unit/",
+        "/^[Mm]icrosoft\\.NET\\.Test\\./",
+        "/^[Mm]icrosoft\\.Testing\\./",
+        "/^[Nn]Substitute/",
+        "/^[Aa]utoFixture/",
+        "/^[Cc]overlet/",
+        "/^[Tt]estcontainers(\\.|$)/"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Build-time only: polyfill source generators, SourceLink, versioning and reproducible-build SDKs emit nothing at runtime, so a bad version fails the build rather than reaching production.",
+      "matchManagers": [
+        "nuget"
+      ],
+      "matchDepNames": [
+        "/^[Dd]ot[Nn]et\\.ReproducibleBuilds/",
+        "/^[Mm]icrosoft\\.SourceLink\\./",
+        "/^[Pp]olySharp$/"
+      ],
+      "automerge": true
     }
   ]
 }

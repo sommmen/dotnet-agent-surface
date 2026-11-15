@@ -23,7 +23,11 @@ public static class McpOperationCatalogBuilderExtensions
         this OperationCatalogBuilder builder,
         Assembly assembly,
         Func<Type, object?>? targetFactory = null)
-        => AddMcpServerTools(builder, assembly, targetFactory, configure: null);
+        => AddMcpServerTools(
+            builder,
+            assembly,
+            targetFactory,
+            static options => options.SafetyMapping = McpToolSafetyMapping.DestructiveIsDangerous);
 
     /// <summary>
     /// Discovers native MCP SDK tools like <see cref="AddMcpServerTools(OperationCatalogBuilder, Assembly, Func{Type, object?}?)"/>
@@ -32,7 +36,9 @@ public static class McpOperationCatalogBuilderExtensions
     /// <remarks>
     /// SDK hint attributes (<c>Destructive</c>, <c>ReadOnly</c>, <c>Idempotent</c>, <c>OpenWorld</c>, <c>Title</c>) are
     /// imported as MCP annotations and do not affect <see cref="AgentSafetyLevel"/> unless
-    /// <see cref="McpToolImportOptions.SafetyMapping"/> says so. A <see cref="DescriptionAttribute"/> on a parameter
+    /// <see cref="McpToolImportOptions.SafetyMapping"/> says so; hint-only is the default here, whereas the overload
+    /// without <paramref name="configure"/> keeps mapping destructive tools to <see cref="AgentSafetyLevel.Dangerous"/>.
+    /// A <see cref="DescriptionAttribute"/> on a parameter
     /// becomes that parameter's description and wins over XML documentation.
     /// </remarks>
     /// <param name="builder">The catalog builder to populate.</param>

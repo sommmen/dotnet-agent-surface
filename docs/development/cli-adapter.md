@@ -129,7 +129,8 @@ public sealed class TargetInitializer(TargetRegistry registry) : IAgentSessionIn
   run under the lock against freshly read state and **persist immediately** (not on `Save`);
   the delegate runs while the lock is held, so keep it quick. In-memory sessions run them
   atomically in process. They are default interface members (`net10.0`); on `netstandard2.0`
-  they are extension methods with a non-atomic fallback for foreign implementations.
+  they are `AgentSessionExtensions` extension methods (atomic for `InMemoryAgentSession` and
+  `FileAgentSession`, a non-atomic fallback for foreign implementations).
 - **Session id**, in order: `--session <id>`, the `<APP>_SESSION` environment variable, then
   a hash of the current directory (`cwd-<hash>`), which gives per-workspace state by default.
   Ids are 1-128 letters, digits, `.`, `_` or `-`.

@@ -1,0 +1,13 @@
+<Project>
+
+  <!--
+    Carries only the repo-wide warning policy. It is the single place TreatWarningsAsErrors is set,
+    and src/Directory.Build.props imports it explicitly because MSBuild stops at the nearest
+    Directory.Build.props and would otherwise never reach this file from src/. tests/ and samples/
+    pick it up automatically and still do not inherit the packaging metadata in src/.
+  -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

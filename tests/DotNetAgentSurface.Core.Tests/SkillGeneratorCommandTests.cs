@@ -11,7 +11,7 @@ public sealed class SkillGeneratorCommandTests : IDisposable
     {
         var catalog = CreateCatalog();
 
-        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog);
+        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.True(File.Exists(Path.Combine(_outputDirectory, "SKILL.md")));
@@ -23,11 +23,11 @@ public sealed class SkillGeneratorCommandTests : IDisposable
     public async Task Generate_without_force_is_a_noop_when_already_current()
     {
         var catalog = CreateCatalog();
-        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog);
+        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
         var writtenAt = File.GetLastWriteTimeUtc(Path.Combine(_outputDirectory, "SKILL.md"));
 
-        await Task.Delay(25);
-        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog);
+        await Task.Delay(25, TestContext.Current.CancellationToken);
+        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("already current", result.Output);
@@ -38,11 +38,11 @@ public sealed class SkillGeneratorCommandTests : IDisposable
     public async Task Generate_with_force_regenerates_even_when_current()
     {
         var catalog = CreateCatalog();
-        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog);
+        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
         var writtenAt = File.GetLastWriteTimeUtc(Path.Combine(_outputDirectory, "SKILL.md"));
 
-        await Task.Delay(25);
-        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory, "--force"], catalog);
+        await Task.Delay(25, TestContext.Current.CancellationToken);
+        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory, "--force"], catalog, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.True(File.GetLastWriteTimeUtc(Path.Combine(_outputDirectory, "SKILL.md")) >= writtenAt);
@@ -53,16 +53,16 @@ public sealed class SkillGeneratorCommandTests : IDisposable
     {
         var catalog = CreateCatalog();
 
-        var missing = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog);
+        var missing = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotEqual(0, missing.ExitCode);
         Assert.Contains("missing or stale", missing.Error);
 
-        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog);
-        var current = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog);
+        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
+        var current = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(0, current.ExitCode);
 
         File.AppendAllText(Path.Combine(_outputDirectory, "SKILL.md"), "stale");
-        var stale = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog);
+        var stale = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotEqual(0, stale.ExitCode);
     }
 
@@ -71,13 +71,13 @@ public sealed class SkillGeneratorCommandTests : IDisposable
     {
         var catalog = CreateCatalog();
 
-        var unknownVerb = await SkillGeneratorCommand.ExecuteAsync(["publish"], catalog);
+        var unknownVerb = await SkillGeneratorCommand.ExecuteAsync(["publish"], catalog, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, unknownVerb.ExitCode);
 
-        var unknownFlag = await SkillGeneratorCommand.ExecuteAsync(["generate", "--bogus"], catalog);
+        var unknownFlag = await SkillGeneratorCommand.ExecuteAsync(["generate", "--bogus"], catalog, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, unknownFlag.ExitCode);
 
-        var missingValue = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output"], catalog);
+        var missingValue = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output"], catalog, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, missingValue.ExitCode);
     }
 
@@ -87,7 +87,7 @@ public sealed class SkillGeneratorCommandTests : IDisposable
         var catalog = CreateCatalog();
         var options = new SkillGenerationOptions("custom-skill", "Custom skill description", "custom-cli");
 
-        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, generationOptions: options);
+        var result = await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, generationOptions: options, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         var skill = File.ReadAllText(Path.Combine(_outputDirectory, "SKILL.md"));
@@ -101,12 +101,12 @@ public sealed class SkillGeneratorCommandTests : IDisposable
     {
         var catalog = CreateCatalog();
         var options = new SkillGenerationOptions("custom-skill", "Custom skill description", "custom-cli");
-        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, generationOptions: options);
+        await SkillGeneratorCommand.ExecuteAsync(["generate", "--output", _outputDirectory], catalog, generationOptions: options, cancellationToken: TestContext.Current.CancellationToken);
 
-        var matchingOptions = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog, generationOptions: options);
+        var matchingOptions = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog, generationOptions: options, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(0, matchingOptions.ExitCode);
 
-        var defaultOptions = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog);
+        var defaultOptions = await SkillGeneratorCommand.ExecuteAsync(["check", "--output", _outputDirectory], catalog, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotEqual(0, defaultOptions.ExitCode);
     }
 

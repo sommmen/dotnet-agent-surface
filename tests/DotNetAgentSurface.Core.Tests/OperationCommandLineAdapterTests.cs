@@ -9,8 +9,8 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateAdapter();
 
-        var help = await adapter.ExecuteAsync([]);
-        var invocation = await adapter.ExecuteAsync(["echo", "--value", "hello"]);
+        var help = await adapter.ExecuteAsync([], TestContext.Current.CancellationToken);
+        var invocation = await adapter.ExecuteAsync(["echo", "--value", "hello"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, help.ExitCode);
         Assert.Contains("echo", help.Output);
@@ -21,7 +21,7 @@ public sealed class OperationCommandLineAdapterTests
     [Fact]
     public async Task ExecuteAsync_returns_usage_error_for_malformed_input()
     {
-        var result = await CreateAdapter().ExecuteAsync(["echo", "--value"]);
+        var result = await CreateAdapter().ExecuteAsync(["echo", "--value"], TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
         Assert.Contains("The --value flag requires a value", result.Error);
@@ -30,7 +30,7 @@ public sealed class OperationCommandLineAdapterTests
     [Fact]
     public async Task ExecuteAsync_rejects_unknown_operation_flag_with_valid_flags()
     {
-        var result = await CreateAdapter().ExecuteAsync(["echo", "--unknown", "value"]);
+        var result = await CreateAdapter().ExecuteAsync(["echo", "--unknown", "value"], TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
         Assert.Contains("Unknown flag '--unknown'", result.Error);
@@ -41,7 +41,7 @@ public sealed class OperationCommandLineAdapterTests
     [Fact]
     public async Task ExecuteAsync_operation_help_lists_global_flags_without_invoking()
     {
-        var result = await CreateAdapter().ExecuteAsync(["echo", "--help"]);
+        var result = await CreateAdapter().ExecuteAsync(["echo", "--help"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("--value", result.Output);
@@ -60,7 +60,7 @@ public sealed class OperationCommandLineAdapterTests
         var catalog = OperationCatalog.Discover(source, typeof(CliOperations));
         var adapter = new OperationCommandLineAdapter(catalog, new OperationInvoker(new SingleServiceProvider(new CliOperations())));
 
-        var result = await adapter.ExecuteAsync(["echo", "--help"]);
+        var result = await adapter.ExecuteAsync(["echo", "--help"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("--value <string> (required) - The value to echo back.", result.Output);
@@ -69,7 +69,7 @@ public sealed class OperationCommandLineAdapterTests
     [Fact]
     public async Task ExecuteAsync_resolves_operation_by_alias()
     {
-        var invocation = await CreateAdapter().ExecuteAsync(["say", "--value", "hello"]);
+        var invocation = await CreateAdapter().ExecuteAsync(["say", "--value", "hello"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, invocation.ExitCode);
         Assert.Equal("hello", invocation.Output);
@@ -78,7 +78,7 @@ public sealed class OperationCommandLineAdapterTests
     [Fact]
     public async Task ExecuteAsync_returns_cancellation_exit_code()
     {
-        var result = await CreateAdapter().ExecuteAsync(["cancel"]);
+        var result = await CreateAdapter().ExecuteAsync(["cancel"], TestContext.Current.CancellationToken);
 
         Assert.Equal(130, result.ExitCode);
         Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
@@ -88,7 +88,7 @@ public sealed class OperationCommandLineAdapterTests
     [Fact]
     public async Task ExecuteAsync_returns_successful_acknowledgement_for_explicit_idempotent_no_op()
     {
-        var result = await CreateAdapter().ExecuteAsync(["ensure-state"]);
+        var result = await CreateAdapter().ExecuteAsync(["ensure-state"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("State already applied.", result.Output);
@@ -100,7 +100,7 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var invocation = await adapter.ExecuteAsync(["projects", "archived", "list", "--value", "hello"]);
+        var invocation = await adapter.ExecuteAsync(["projects", "archived", "list", "--value", "hello"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, invocation.ExitCode);
         Assert.Equal("hello", invocation.Output);
@@ -111,7 +111,7 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var invocation = await adapter.ExecuteAsync(["ping", "--value", "hello"]);
+        var invocation = await adapter.ExecuteAsync(["ping", "--value", "hello"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, invocation.ExitCode);
         Assert.Equal("hello", invocation.Output);
@@ -122,7 +122,7 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var invocation = await adapter.ExecuteAsync(["customers"]);
+        var invocation = await adapter.ExecuteAsync(["customers"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, invocation.ExitCode);
         Assert.Contains("find-customer", invocation.Output);
@@ -134,7 +134,7 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var invocation = await adapter.ExecuteAsync(["projects", "--help"]);
+        var invocation = await adapter.ExecuteAsync(["projects", "--help"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, invocation.ExitCode);
         Assert.Contains("archived", invocation.Output);
@@ -145,7 +145,7 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var invocation = await adapter.ExecuteAsync(["bogus-category", "leaf"]);
+        var invocation = await adapter.ExecuteAsync(["bogus-category", "leaf"], TestContext.Current.CancellationToken);
 
         Assert.Equal(2, invocation.ExitCode);
         Assert.Contains("Unknown operation 'bogus-category'", invocation.Error);
@@ -156,7 +156,7 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var invocation = await adapter.ExecuteAsync(["customers", "bogus-op"]);
+        var invocation = await adapter.ExecuteAsync(["customers", "bogus-op"], TestContext.Current.CancellationToken);
 
         Assert.Equal(2, invocation.ExitCode);
         Assert.Contains("Unknown operation 'bogus-op'", invocation.Error);
@@ -167,8 +167,8 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var customersList = await adapter.ExecuteAsync(["customers", "list-items", "--value", "customers-list"]);
-        var projectsList = await adapter.ExecuteAsync(["projects", "list-items", "--value", "projects-list"]);
+        var customersList = await adapter.ExecuteAsync(["customers", "list-items", "--value", "customers-list"], TestContext.Current.CancellationToken);
+        var projectsList = await adapter.ExecuteAsync(["projects", "list-items", "--value", "projects-list"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, customersList.ExitCode);
         Assert.Equal("customers-list", customersList.Output);
@@ -181,7 +181,7 @@ public sealed class OperationCommandLineAdapterTests
     {
         var adapter = CreateCategoryAdapter();
 
-        var help = await adapter.ExecuteAsync([]);
+        var help = await adapter.ExecuteAsync([], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, help.ExitCode);
         Assert.Contains("ping", help.Output);

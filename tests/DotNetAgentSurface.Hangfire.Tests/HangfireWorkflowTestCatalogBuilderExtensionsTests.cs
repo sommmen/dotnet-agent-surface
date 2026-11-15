@@ -31,7 +31,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
         Assert.Equal("Hangfire workflow tests", operation.Category);
         Assert.Equal(AgentSafetyLevel.Confirm, operation.SafetyLevel);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(invocation.Succeeded);
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
@@ -53,7 +53,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             ["workflowOptions"] = JsonDocument.Parse("{\"message\":\"agent says hi\"}").RootElement.Clone()
         };
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(invocation.Succeeded);
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
@@ -71,7 +71,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
         Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
@@ -87,7 +87,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
         Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
@@ -104,7 +104,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
         Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
@@ -121,7 +121,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
         Assert.Equal(HangfireWorkflowTestStatus.Succeeded, result.Status);
@@ -137,7 +137,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(invocation.Succeeded);
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
@@ -158,7 +158,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
         Assert.Equal(HangfireWorkflowTestStatus.TimedOut, result.Status);
@@ -197,12 +197,12 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
                 .Build();
             var operation = Assert.Single(catalog.Operations);
 
-            var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+            var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
             var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
             Assert.NotNull(result.ArtifactPath);
             Assert.True(File.Exists(result.ArtifactPath));
-            var contents = await File.ReadAllTextAsync(result.ArtifactPath);
+            var contents = await File.ReadAllTextAsync(result.ArtifactPath, TestContext.Current.CancellationToken);
             Assert.Equal(result.Transcript, contents);
         }
         finally
@@ -288,8 +288,8 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
 
             // Run the same job twice in rapid succession (same millisecond very likely).
             var invoker = CreateInvoker(new NullServiceProvider());
-            var invocation1Task = invoker.InvokeAsync(operation).AsTask();
-            var invocation2Task = invoker.InvokeAsync(operation).AsTask();
+            var invocation1Task = invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken).AsTask();
+            var invocation2Task = invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken).AsTask();
 
             await Task.WhenAll(invocation1Task, invocation2Task);
 
@@ -326,7 +326,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             .Build();
         var operation = Assert.Single(catalog.Operations);
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
         Assert.True(result.Status == HangfireWorkflowTestStatus.Succeeded, result.Error);
@@ -355,7 +355,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
 
         var operation = Assert.Single(catalog.Operations, operation => operation.Name == "attribute-marked-foreign-logging-job");
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(invocation.Succeeded);
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
@@ -377,7 +377,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
             ["workflowOptions"] = JsonDocument.Parse("{\"message\":\"agent options hi\"}").RootElement.Clone()
         };
 
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(invocation.Succeeded);
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);
@@ -440,7 +440,7 @@ public sealed class HangfireWorkflowTestCatalogBuilderExtensionsTests
         Assert.Single(catalog.Operations, operation => operation.Name == "workflow-scan-b");
 
         var inputs = new Dictionary<string, JsonElement> { ["options"] = JsonDocument.Parse("{\"message\":\"hi\"}").RootElement.Clone() };
-        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationA, inputs);
+        var invocation = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationA, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(invocation.Succeeded);
         var result = Assert.IsType<HangfireWorkflowTestResult>(invocation.Value);

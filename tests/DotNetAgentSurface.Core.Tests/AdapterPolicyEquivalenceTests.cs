@@ -18,7 +18,7 @@ public sealed class AdapterPolicyEquivalenceTests
         var operation = catalog.Operations.Single();
         var invoker = CreateInvoker(operations);
 
-        var result = await invoker.InvokeAsync(operation, Arguments());
+        var result = await invoker.InvokeAsync(operation, Arguments(), TestContext.Current.CancellationToken);
 
         Assert.False(result.Succeeded);
         Assert.Equal("Operation 'increment' was denied by policy for testing.", result.Error);
@@ -32,7 +32,7 @@ public sealed class AdapterPolicyEquivalenceTests
         var catalog = OperationCatalog.Discover(typeof(CountingOperations));
         var adapter = new OperationCommandLineAdapter(catalog, CreateInvoker(operations));
 
-        var result = await adapter.ExecuteAsync(["increment", "--amount", "1"]);
+        var result = await adapter.ExecuteAsync(["increment", "--amount", "1"], TestContext.Current.CancellationToken);
 
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("Operation 'increment' was denied by policy for testing.", result.Error);
@@ -46,7 +46,7 @@ public sealed class AdapterPolicyEquivalenceTests
         var catalog = OperationCatalog.Discover(typeof(CountingOperations));
         var adapter = new McpOperationAdapter(catalog, CreateInvoker(operations));
 
-        var result = await adapter.InvokeAsync("increment", Arguments());
+        var result = await adapter.InvokeAsync("increment", Arguments(), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
         Assert.Contains(
@@ -65,7 +65,7 @@ public sealed class AdapterPolicyEquivalenceTests
             OperationCatalog.Discover(typeof(ConfirmationOperations)),
             CreateConfirmationInvoker(operations));
 
-        var result = await adapter.ExecuteAsync([operationName]);
+        var result = await adapter.ExecuteAsync([operationName], TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Equal($"Operation '{operationName}' requires explicit confirmation.", result.Error);
@@ -80,7 +80,7 @@ public sealed class AdapterPolicyEquivalenceTests
             OperationCatalog.Discover(typeof(ConfirmationOperations)),
             CreateConfirmationInvoker(operations));
 
-        var result = await adapter.ExecuteAsync(["confirm-operation", "--confirm"]);
+        var result = await adapter.ExecuteAsync(["confirm-operation", "--confirm"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(1, operations.InvocationCount);
@@ -94,8 +94,8 @@ public sealed class AdapterPolicyEquivalenceTests
             OperationCatalog.Discover(typeof(ConfirmationOperations)),
             CreateConfirmationInvoker(operations));
 
-        var denied = await adapter.ExecuteAsync(["dangerous-operation", "--confirm"]);
-        var approved = await adapter.ExecuteAsync(["dangerous-operation", "--confirm", "--yes"]);
+        var denied = await adapter.ExecuteAsync(["dangerous-operation", "--confirm"], TestContext.Current.CancellationToken);
+        var approved = await adapter.ExecuteAsync(["dangerous-operation", "--confirm", "--yes"], TestContext.Current.CancellationToken);
 
         Assert.Equal(1, denied.ExitCode);
         Assert.Equal("Operation 'dangerous-operation' requires explicit confirmation.", denied.Error);
@@ -116,9 +116,7 @@ public sealed class AdapterPolicyEquivalenceTests
             OperationCatalog.Discover(typeof(ConfirmationOperations)),
             CreateConfirmationInvoker(operations));
 
-        var result = await adapter.InvokeAsync(
-            operationName,
-            confirmation: new OperationConfirmation(confirmed, dangerousConfirmed));
+        var result = await adapter.InvokeAsync(operationName, confirmation: new OperationConfirmation(confirmed, dangerousConfirmed), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Null(result.IsError);
         Assert.Equal(1, operations.InvocationCount);
@@ -138,9 +136,7 @@ public sealed class AdapterPolicyEquivalenceTests
             OperationCatalog.Discover(typeof(ConfirmationOperations)),
             CreateConfirmationInvoker(operations));
 
-        var result = await adapter.InvokeAsync(
-            operationName,
-            confirmation: new OperationConfirmation(confirmed, dangerousConfirmed));
+        var result = await adapter.InvokeAsync(operationName, confirmation: new OperationConfirmation(confirmed, dangerousConfirmed), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
         Assert.Contains(

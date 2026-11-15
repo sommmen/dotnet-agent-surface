@@ -132,7 +132,7 @@ public sealed class HangfireSqlServerCompatibilityTests
         Assert.NotNull(result.Error);
     }
 
-    private void SkipUnlessAvailable() => Assert.SkipWhen(_fixture.SkipReason is not null, _fixture.SkipReason);
+    private void SkipUnlessAvailable() => Assert.SkipWhen(_fixture.SkipReason is not null, _fixture.SkipReason ?? string.Empty);
 
     private static Task<OperationInvocationResult> InvokeAsync(OperationCatalog catalog, string operationName, string? jobId = null)
     {

@@ -5,7 +5,7 @@ public sealed class SyntheticPerformContextFactoryTests
     [Fact]
     public void Create_returns_a_context_backed_by_a_real_background_job_and_storage()
     {
-        using var synthetic = SyntheticPerformContextFactory.Create();
+        using var synthetic = SyntheticPerformContextFactory.Create(TestContext.Current.CancellationToken);
 
         Assert.NotNull(synthetic.Context);
         Assert.NotNull(synthetic.Context.BackgroundJob);
@@ -17,7 +17,7 @@ public sealed class SyntheticPerformContextFactoryTests
     [Fact]
     public void Create_uses_the_supplied_job_id()
     {
-        using var synthetic = SyntheticPerformContextFactory.Create(jobId: "custom-job-id");
+        using var synthetic = SyntheticPerformContextFactory.Create(TestContext.Current.CancellationToken, jobId: "custom-job-id");
 
         Assert.Equal("custom-job-id", synthetic.Context.BackgroundJob.Id);
     }
@@ -39,7 +39,7 @@ public sealed class SyntheticPerformContextFactoryTests
     [Fact]
     public void Dispose_can_be_called_without_throwing()
     {
-        var synthetic = SyntheticPerformContextFactory.Create();
+        var synthetic = SyntheticPerformContextFactory.Create(TestContext.Current.CancellationToken);
 
         var exception = Record.Exception(synthetic.Dispose);
 

@@ -23,7 +23,7 @@ public sealed class McpOperationAdapterTests
             ["name"] = JsonDocument.Parse("\"Ada\"").RootElement.Clone()
         };
 
-        var result = await adapter.InvokeAsync("greet", arguments);
+        var result = await adapter.InvokeAsync("greet", arguments, TestContext.Current.CancellationToken);
 
         Assert.Equal("greet", tool.Name);
         Assert.Equal("Greets a person", tool.Description);
@@ -43,7 +43,7 @@ public sealed class McpOperationAdapterTests
             ["name"] = JsonDocument.Parse("\"Ada\"").RootElement.Clone()
         };
 
-        var result = await adapter.InvokeAsync("hello", arguments);
+        var result = await adapter.InvokeAsync("hello", arguments, TestContext.Current.CancellationToken);
 
         Assert.Null(result.IsError);
         Assert.Equal("Hello, Ada!", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
@@ -56,7 +56,7 @@ public sealed class McpOperationAdapterTests
             OperationCatalog.Discover(typeof(GreetingOperations)),
             new OperationInvoker(new SingleServiceProvider(new GreetingOperations())));
 
-        var result = await adapter.InvokeAsync("missing");
+        var result = await adapter.InvokeAsync("missing", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
         Assert.Contains("Unknown operation 'missing'", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
@@ -85,7 +85,7 @@ public sealed class McpOperationAdapterTests
             OperationCatalog.Discover(typeof(GreetingOperations)),
             new OperationInvoker(new SingleServiceProvider(new GreetingOperations())));
 
-        var result = await adapter.InvokeAsync("repeat");
+        var result = await adapter.InvokeAsync("repeat", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
         Assert.Contains("times", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
@@ -100,7 +100,7 @@ public sealed class McpOperationAdapterTests
                 new SingleServiceProvider(new GreetingOperations()),
                 policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]));
 
-        var result = await adapter.InvokeAsync("fail");
+        var result = await adapter.InvokeAsync("fail", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;

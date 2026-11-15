@@ -1,11 +1,14 @@
 <Project>
 
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
   <!--
     Shared packaging metadata for every publishable library under src/. Kept out of the individual
     csproj files so version bumps and metadata changes happen in one place. Samples and tests live
-    outside src/ and are unaffected (each already sets <IsPackable>false</IsPackable> explicitly, and
-    MSBuild only walks up from a project's own directory to find Directory.Build.props, so this file
-    is never picked up by samples/ or tests/).
+    outside src/ and are unaffected by this file (each already sets <IsPackable>false</IsPackable>
+    explicitly, and MSBuild only walks up from a project's own directory to find Directory.Build.props,
+    so this file is never picked up by samples/ or tests/). Only the root Directory.Build.props, which
+    carries TreatWarningsAsErrors alone, is shared with them.
   -->
   <PropertyGroup>
     <GitVersionBaseDirectory>$(MSBuildThisFileDirectory)..</GitVersionBaseDirectory>

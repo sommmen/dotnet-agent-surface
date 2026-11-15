@@ -32,7 +32,7 @@ public sealed class AgentSurfaceServiceCollectionExtensionsTests
         Console.SetOut(output);
         try
         {
-            var exitCode = await app.RunAgentSurfaceCliAsync(["greet"]);
+            var exitCode = await app.RunAgentSurfaceCliAsync(["greet"], cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, exitCode);
             Assert.Contains("hello from DI", output.ToString(), StringComparison.OrdinalIgnoreCase);
@@ -66,7 +66,7 @@ public sealed class AgentSurfaceServiceCollectionExtensionsTests
         Console.SetError(error);
         try
         {
-            var exitCode = await app.RunAgentSurfaceCliAsync(["aspnetcore", "aspnet_get_signal"]);
+            var exitCode = await app.RunAgentSurfaceCliAsync(["aspnetcore", "aspnet_get_signal"], cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, exitCode);
             Assert.Contains("inProgress", output.ToString(), StringComparison.OrdinalIgnoreCase);

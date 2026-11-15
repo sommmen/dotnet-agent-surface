@@ -1,5 +1,7 @@
 using System.Reflection;
+using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace DotNetAgentSurface.Core;
 
@@ -31,6 +33,11 @@ public sealed class OperationInvoker
     private readonly IServiceProvider _services;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly IReadOnlyList<IOperationInvocationPolicy> _policies;
+    private readonly IReadOnlyList<IOperationInvocationFilter> _filters;
+    private readonly IOperationExceptionMapper _exceptionMapper;
+    private readonly ILogger? _logger;
+    private readonly OperationConfirmationMode _confirmationMode;
+    private readonly Func<IServiceProvider, Type, object?>? _targetFactory;
 
     /// <param name="services">Resolves unbound instance-method targets for discovered/registered operations.</param>
     /// <param name="jsonOptions">Options used to bind JSON inputs; defaults to <see cref="JsonSerializerDefaults.Web"/>.</param>
@@ -41,14 +48,21 @@ public sealed class OperationInvoker
     /// a policy implementing <see cref="IConfirmationEnforcingPolicy"/>, such as <see
     /// cref="DangerousOperationConfirmationPolicy"/>. See the type-level remarks for details.
     /// </param>
+    /// <param name="options">Filters, exception mapping, logging and the confirmation mode.</param>
     public OperationInvoker(
         IServiceProvider services,
         JsonSerializerOptions? jsonOptions = null,
-        IEnumerable<IOperationInvocationPolicy>? policies = null)
+        IEnumerable<IOperationInvocationPolicy>? policies = null,
+        OperationInvokerOptions? options = null)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _jsonOptions = jsonOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
         _policies = (policies ?? []).ToArray();
+        _filters = (options?.Filters ?? []).ToArray();
+        _logger = options?.Logger;
+        _exceptionMapper = options?.ExceptionMapper ?? new DefaultOperationExceptionMapper(_logger);
+        _confirmationMode = options?.ConfirmationMode ?? OperationConfirmationMode.PolicyEnforced;
+        _targetFactory = options?.TargetFactory;
     }
 
     public async ValueTask<OperationInvocationResult> InvokeAsync(
@@ -60,65 +74,134 @@ public sealed class OperationInvoker
     {
         Guard.ThrowIfNull(operation);
 
+        var context = invocationContext is { RequestId: not null }
+            ? invocationContext
+            : (invocationContext ?? new OperationInvocationContext()) with { RequestId = Guid.NewGuid().ToString("N") };
+        var filterContext = new OperationInvocationFilterContext(operation, inputs, context, cancellationToken);
+
+        using var logScope = _logger?.BeginScope(new Dictionary<string, object?>
+        {
+            ["OperationName"] = operation.Name,
+            ["RequestId"] = context.RequestId,
+            ["Surface"] = context.Surface,
+        });
+
+        OperationInvocationResult result;
+        var entered = 0;
         try
         {
-            EnsureConfirmationIsEnforceable(operation);
-
-            foreach (var policy in _policies.Concat(operation.InvocationPolicies))
+            for (; entered < _filters.Count; entered++)
             {
-                var decision = await policy.EvaluateAsync(operation, inputs, confirmation, cancellationToken, invocationContext).ConfigureAwait(false);
-                if (!decision.IsAllowed)
-                {
-                    return OperationInvocationResult.Failure(decision.Error ?? $"Operation '{operation.Name}' was denied by policy.");
-                }
+                await _filters[entered].OnInvokingAsync(filterContext).ConfigureAwait(false);
             }
 
-            var arguments = Bind(operation, inputs, cancellationToken);
-            var target = ResolveTarget(operation);
+            result = await InvokeCoreAsync(operation, inputs, cancellationToken, confirmation, context).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            result = await MapExceptionAsync(filterContext, exception).ConfigureAwait(false);
+        }
+
+        for (var index = entered - 1; index >= 0; index--)
+        {
+            try
+            {
+                result = await _filters[index].OnInvokedAsync(filterContext, result).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                result = await MapExceptionAsync(filterContext, exception).ConfigureAwait(false);
+            }
+        }
+
+        return result;
+    }
+
+    private async ValueTask<OperationInvocationResult> InvokeCoreAsync(
+        OperationDescriptor operation,
+        IReadOnlyDictionary<string, JsonElement>? inputs,
+        CancellationToken cancellationToken,
+        OperationConfirmation? confirmation,
+        OperationInvocationContext context)
+    {
+        EnsureConfirmationIsEnforceable(operation);
+
+        foreach (var policy in _policies.Concat(operation.InvocationPolicies))
+        {
+            var decision = await policy.EvaluateAsync(operation, inputs, confirmation, cancellationToken, context).ConfigureAwait(false);
+            if (!decision.IsAllowed)
+            {
+                return OperationInvocationResult.Failure(decision.Error ?? $"Operation '{operation.Name}' was denied by policy.");
+            }
+        }
+
+        var services = context.Services ?? _services;
+        var arguments = Bind(operation, inputs, cancellationToken, context, services);
+        var (target, ownsTarget) = ResolveTarget(operation, services);
+        try
+        {
             var rawResult = operation.Method.Invoke(target, arguments);
             var result = await UnwrapResultAsync(rawResult).ConfigureAwait(false);
             return OperationInvocationResult.Success(result);
         }
-        catch (OperationCanceledException)
+        finally
         {
-            return OperationInvocationResult.Cancelled();
-        }
-        catch (TargetInvocationException exception) when (exception.InnerException is OperationCanceledException)
-        {
-            return OperationInvocationResult.Cancelled();
-        }
-        catch (TargetInvocationException exception) when (exception.InnerException is OperationException inner)
-        {
-            return OperationInvocationResult.VerbatimFailure(inner.Message);
-        }
-        catch (TargetInvocationException exception) when (exception.InnerException is not null)
-        {
-            return OperationInvocationResult.Failure(exception.InnerException.Message);
-        }
-        catch (OperationException exception)
-        {
-            return OperationInvocationResult.VerbatimFailure(exception.Message);
-        }
-        catch (OperationBindingException exception)
-        {
-            return OperationInvocationResult.Failure(exception.Message);
-        }
-        catch (Exception exception)
-        {
-            return OperationInvocationResult.Failure(exception.Message);
+            await DisposeTargetAsync(ownsTarget ? target : null).ConfigureAwait(false);
         }
     }
 
+    private async ValueTask<OperationInvocationResult> MapExceptionAsync(OperationInvocationFilterContext filterContext, Exception exception)
+    {
+        var unwrapped = exception;
+        while (unwrapped is TargetInvocationException { InnerException: not null } wrapper)
+        {
+            unwrapped = wrapper.InnerException!;
+        }
+
+        foreach (var filter in _filters)
+        {
+            try
+            {
+                await filter.OnExceptionAsync(filterContext, unwrapped).ConfigureAwait(false);
+            }
+            catch (Exception filterException)
+            {
+                _logger?.LogWarning(filterException, "An invocation filter failed while observing an exception for operation '{Operation}'.", filterContext.Operation.Name);
+            }
+        }
+
+        try
+        {
+            return _exceptionMapper.Map(new OperationFailureContext(filterContext.Operation, unwrapped, filterContext.InvocationContext));
+        }
+        catch (Exception mapperException)
+        {
+            _logger?.LogError(mapperException, "The exception mapper failed for operation '{Operation}'.", filterContext.Operation.Name);
+            return OperationInvocationResult.Failure($"Operation '{filterContext.Operation.Name}' failed. Correlation id: {filterContext.RequestId}.");
+        }
+    }
+
+    private static async ValueTask DisposeTargetAsync(object? target)
+    {
+        if (target is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+        }
+        else if (target is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+    }
     /// <summary>
     /// Guards against the trap where <see cref="OperationDescriptor.SafetyLevel"/> looks gated (<see
     /// cref="AgentSafetyLevel.Confirm"/> or <see cref="AgentSafetyLevel.Dangerous"/>) but no supplied policy
     /// actually enforces confirmation, which would otherwise let the invocation silently proceed unconfirmed.
-    /// See the <see cref="OperationInvoker(IServiceProvider, JsonSerializerOptions?, IEnumerable{IOperationInvocationPolicy}?)"/>
+    /// See the <see cref="OperationInvoker(IServiceProvider, JsonSerializerOptions?, IEnumerable{IOperationInvocationPolicy}?, OperationInvokerOptions?)"/>
     /// constructor remarks for how to satisfy this check.
     /// </summary>
     private void EnsureConfirmationIsEnforceable(OperationDescriptor operation)
     {
-        if (operation.SafetyLevel == AgentSafetyLevel.Safe)
+        if (operation.SafetyLevel == AgentSafetyLevel.Safe || _confirmationMode == OperationConfirmationMode.OperationEnforced)
         {
             return;
         }
@@ -136,23 +219,36 @@ public sealed class OperationInvoker
             $"{nameof(OperationDescriptor.InvocationPolicies)}.");
     }
 
-    private object? ResolveTarget(OperationDescriptor operation)
+    private (object? Target, bool OwnsTarget) ResolveTarget(OperationDescriptor operation, IServiceProvider services)
     {
         if (operation.BoundTarget is not null)
         {
-            return operation.BoundTarget;
+            return (operation.BoundTarget, false);
         }
 
         if (operation.Method.IsStatic)
         {
-            return null;
+            return (null, false);
         }
 
-        var target = _services.GetService(operation.ServiceType!);
-        return target ?? throw new OperationBindingException($"No service is registered for operation '{operation.Name}' ({operation.ServiceType!.FullName}).");
+        var target = services.GetService(operation.ServiceType!);
+        if (target is not null)
+        {
+            return (target, false);
+        }
+
+        var created = _targetFactory?.Invoke(services, operation.ServiceType!);
+        return created is null
+            ? throw new OperationBindingException($"No service is registered for operation '{operation.Name}' ({operation.ServiceType!.FullName}).")
+            : (created, true);
     }
 
-    private object?[] Bind(OperationDescriptor operation, IReadOnlyDictionary<string, JsonElement>? inputs, CancellationToken cancellationToken)
+    private object?[] Bind(
+        OperationDescriptor operation,
+        IReadOnlyDictionary<string, JsonElement>? inputs,
+        CancellationToken cancellationToken,
+        OperationInvocationContext context,
+        IServiceProvider services)
     {
         var inputValues = inputs ?? new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         var arguments = new object?[operation.Parameters.Count];
@@ -160,9 +256,9 @@ public sealed class OperationInvoker
         for (var index = 0; index < operation.Parameters.Count; index++)
         {
             var parameter = operation.Parameters[index];
-            if (parameter.IsCancellationToken)
+            if (parameter.IsAmbient)
             {
-                arguments[index] = cancellationToken;
+                arguments[index] = ResolveAmbient(parameter, operation, cancellationToken, context, services);
                 continue;
             }
 
@@ -198,6 +294,48 @@ public sealed class OperationInvoker
         return arguments;
     }
 
+    private static object? ResolveAmbient(
+        OperationParameterDescriptor parameter,
+        OperationDescriptor operation,
+        CancellationToken cancellationToken,
+        OperationInvocationContext context,
+        IServiceProvider services)
+    {
+        var type = parameter.ParameterType;
+        if (type == typeof(CancellationToken))
+        {
+            return cancellationToken;
+        }
+
+        if (type == typeof(IServiceProvider))
+        {
+            return services;
+        }
+
+        if (type == typeof(ClaimsPrincipal))
+        {
+            return context.Principal;
+        }
+
+        if (type == typeof(IOperationContext))
+        {
+            return new OperationContext(operation, context);
+        }
+
+        if (type == typeof(IOperationProgress))
+        {
+            return services.GetService(typeof(IOperationProgress)) ?? OperationProgress.None;
+        }
+
+        var ambient = services.GetService(type);
+        if (ambient is null && !parameter.IsOptional)
+        {
+            throw new OperationBindingException(
+                $"Parameter '{parameter.Name}' of operation '{operation.Name}' requires '{type.Name}', which is only available when the operation is invoked by the surface that provides it.");
+        }
+
+        return ambient;
+    }
     private static bool TryGetValue(IReadOnlyDictionary<string, JsonElement> inputs, string name, out JsonElement value)
     {
         if (inputs.TryGetValue(name, out value))

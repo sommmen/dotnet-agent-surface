@@ -24,14 +24,13 @@ public sealed class McpToolImportTests
     private static OperationInvoker EmptyInvoker() => new(new EmptyServiceProvider());
 
     [Fact]
-    public void Default_import_maps_destructive_attribute_to_a_hint_only()
+    public void Default_import_emits_only_explicitly_set_sdk_hints_and_keeps_safe_level()
     {
         var catalog = Import();
         var tool = Assert.Single(new McpOperationAdapter(catalog, EmptyInvoker()).GetTools(), tool => tool.Name == "echo");
 
         Assert.All(catalog.Operations, operation => Assert.Equal(AgentSafetyLevel.Safe, operation.SafetyLevel));
-        Assert.True(tool.Annotations!.DestructiveHint);
-        Assert.False(tool.Annotations.ReadOnlyHint);
+        Assert.Null(tool.Annotations);
     }
 
     [Fact]
@@ -137,7 +136,7 @@ public sealed class McpToolImportTests
 
         Assert.Equal([AgentSurface.Cli, AgentSurface.Mcp], recorder.Surfaces);
         Assert.Equal("r1", recorder.RequestIds[0]);
-        Assert.Null(recorder.RequestIds[1]);
+        Assert.False(string.IsNullOrEmpty(recorder.RequestIds[1]));
     }
 
     [Fact]

@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace DotNetAgentSurface.Core;
 
 /// <summary>
@@ -75,7 +77,44 @@ public sealed class OperationCatalogBuilder
             attribute,
             implementation.Target,
             options.PolicyMetadata,
-            options.InvocationPolicies));
+            options.InvocationPolicies,
+            hints: new OperationHints(options.Title, options.ReadOnly, options.Destructive, options.Idempotent, options.OpenWorld)));
+        return this;
+    }
+
+    /// <summary>
+    /// Registers an operation from a method without binding a target. Instance methods are invoked on a service of the
+    /// declaring type that the <see cref="OperationInvoker"/> resolves from the (request-scoped) service provider for each call.
+    /// </summary>
+    public OperationCatalogBuilder AddMethod(
+        MethodInfo method,
+        string name,
+        string description,
+        Action<OperationRegistrationOptions>? configure = null)
+    {
+        Guard.ThrowIfNull(method);
+        Guard.ThrowIfNullOrWhiteSpace(name);
+        Guard.ThrowIfNullOrWhiteSpace(description);
+
+        var options = new OperationRegistrationOptions();
+        configure?.Invoke(options);
+
+        var attribute = new AgentOperationAttribute(name, description)
+        {
+            Category = options.Category,
+            SafetyLevel = options.SafetyLevel,
+            Examples = [.. options.Examples],
+            Aliases = [.. options.Aliases],
+            IsIdempotent = options.IsIdempotent
+        };
+
+        _operations.Add(new OperationDescriptor(
+            method,
+            attribute,
+            null,
+            options.PolicyMetadata,
+            options.InvocationPolicies,
+            hints: new OperationHints(options.Title, options.ReadOnly, options.Destructive, options.Idempotent, options.OpenWorld)));
         return this;
     }
 
@@ -106,6 +145,21 @@ public sealed class OperationRegistrationOptions
     /// <see langword="false"/>, matching <see cref="AgentOperationAttribute.IsIdempotent"/>.
     /// </summary>
     public bool IsIdempotent { get; set; }
+
+    /// <summary>Human-readable title advertised to hosts that support one. Not advertised when <see langword="null"/>.</summary>
+    public string? Title { get; set; }
+
+    /// <summary>Read-only hint. Independent of <see cref="SafetyLevel"/>; not advertised when <see langword="null"/>.</summary>
+    public bool? ReadOnly { get; set; }
+
+    /// <summary>Destructive hint. Independent of <see cref="SafetyLevel"/>; not advertised when <see langword="null"/>.</summary>
+    public bool? Destructive { get; set; }
+
+    /// <summary>Idempotent hint. Independent of <see cref="IsIdempotent"/>; not advertised when <see langword="null"/>.</summary>
+    public bool? Idempotent { get; set; }
+
+    /// <summary>Open-world hint. Not advertised when <see langword="null"/>.</summary>
+    public bool? OpenWorld { get; set; }
 
     /// <summary>Metadata made available to invocation policies without exposing it as operation input.</summary>
     public List<object> PolicyMetadata { get; } = [];

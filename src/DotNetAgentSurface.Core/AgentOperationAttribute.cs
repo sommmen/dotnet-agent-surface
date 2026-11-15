@@ -36,6 +36,56 @@ public sealed class AgentOperationAttribute : Attribute
     public string[] Aliases { get; init; } = [];
 
     public bool IsIdempotent { get; init; }
+
+    private bool? _readOnly;
+    private bool? _destructive;
+    private bool? _idempotent;
+    private bool? _openWorld;
+
+    /// <summary>Gets the human-readable title advertised to hosts that support one (MCP <c>annotations.title</c>).</summary>
+    public string? Title { get; init; }
+
+    /// <summary>
+    /// Advertises whether the operation changes nothing (MCP <c>readOnlyHint</c>). Independent of <see cref="SafetyLevel"/>:
+    /// when it is not set nothing is advertised.
+    /// </summary>
+    public bool ReadOnly { get => _readOnly ?? false; init => _readOnly = value; }
+
+    /// <summary>Advertises whether the operation may perform destructive updates (MCP <c>destructiveHint</c>). Nothing is advertised when not set.</summary>
+    public bool Destructive { get => _destructive ?? false; init => _destructive = value; }
+
+    /// <summary>Advertises whether repeating the call with the same inputs has no further effect (MCP <c>idempotentHint</c>). Nothing is advertised when not set.</summary>
+    public bool Idempotent { get => _idempotent ?? false; init => _idempotent = value; }
+
+    /// <summary>Advertises whether the operation talks to an open world of external entities (MCP <c>openWorldHint</c>). Nothing is advertised when not set.</summary>
+    public bool OpenWorld { get => _openWorld ?? false; init => _openWorld = value; }
+
+    internal OperationHints GetHints() => new(Title, _readOnly, _destructive, _idempotent, _openWorld);
+}
+
+/// <summary>
+/// Independent, optional descriptive hints about an operation. A <see langword="null"/> member is unset and is not advertised.
+/// Hosts map them to their own vocabulary (the MCP adapter maps them to <c>ToolAnnotations</c>).
+/// </summary>
+public sealed record OperationHints(
+    string? Title = null,
+    bool? ReadOnly = null,
+    bool? Destructive = null,
+    bool? Idempotent = null,
+    bool? OpenWorld = null)
+{
+    public static OperationHints Empty { get; } = new();
+
+    /// <summary>Gets a value indicating whether no hint is set.</summary>
+    public bool IsEmpty => Title is null && ReadOnly is null && Destructive is null && Idempotent is null && OpenWorld is null;
+
+    /// <summary>Returns these hints with every unset member filled from <paramref name="fallback"/>.</summary>
+    public OperationHints WithFallback(OperationHints fallback) => new(
+        Title ?? fallback.Title,
+        ReadOnly ?? fallback.ReadOnly,
+        Destructive ?? fallback.Destructive,
+        Idempotent ?? fallback.Idempotent,
+        OpenWorld ?? fallback.OpenWorld);
 }
 
 /// <summary>

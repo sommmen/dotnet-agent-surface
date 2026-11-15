@@ -32,25 +32,32 @@ public sealed class McpOperationServer
         _serverInstructions = serverInstructions;
     }
 
-    public McpServerOptions CreateOptions() => new()
+    /// <summary>
+    /// Creates SDK server options that carry the catalog's operations in <see cref="McpServerOptions.ToolCollection"/>. The
+    /// list handler is left to the SDK; only an alias-resolving <see cref="McpServerHandlers.CallToolHandler"/> fallback is
+    /// set, because the SDK matches tool names exactly.
+    /// </summary>
+    public McpServerOptions CreateOptions()
     {
-        ServerInstructions = _serverInstructions,
-        Handlers = new McpServerHandlers
+        var options = new McpServerOptions
         {
-            ListToolsHandler = (context, cancellationToken) => new ValueTask<ListToolsResult>(new ListToolsResult
+            ServerInstructions = _serverInstructions,
+            Handlers = new McpServerHandlers
             {
-                Tools = [.. _adapter.GetTools()]
-            }),
-            CallToolHandler = (context, cancellationToken) => _adapter.InvokeAsync(
-                context.Params.Name,
-                context.Params.Arguments is null
-                    ? null
-                    : new Dictionary<string, System.Text.Json.JsonElement>(context.Params.Arguments),
-                cancellationToken,
-                GetConfirmation(context.Params.Meta),
-                GetInvocationContext(context))
-        }
-    };
+                CallToolHandler = (context, cancellationToken) => _adapter.InvokeAsync(
+                    context.Params?.Name ?? string.Empty,
+                    context.Params?.Arguments is null
+                        ? null
+                        : new Dictionary<string, System.Text.Json.JsonElement>(context.Params.Arguments),
+                    cancellationToken,
+                    GetConfirmation(context.Params?.Meta),
+                    GetInvocationContext(context))
+            }
+        };
+
+        options.ToolCollection = [.. _adapter.CreateServerTools()];
+        return options;
+    }
 
     public Task RunStdioAsync(CancellationToken cancellationToken = default)
     {
@@ -58,7 +65,6 @@ public sealed class McpOperationServer
         var transport = new StdioServerTransport(options);
         return McpServer.Create(transport, options).RunAsync(cancellationToken);
     }
-
     /// <summary>The MCP request metadata key carrying host-level operation approval.</summary>
     public const string ConfirmationMetadataKey = "io.dotnetagentsurface/confirmation";
 

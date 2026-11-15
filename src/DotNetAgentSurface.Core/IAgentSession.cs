@@ -76,11 +76,11 @@ public interface IAgentSession
 #endif
 }
 
-#if !NET
 /// <summary>
-/// <c>GetOrAdd</c> and <c>Update</c> for <see cref="IAgentSession"/> on
-/// targets without default interface members: <see cref="InMemoryAgentSession"/> (and file-backed subclasses) use their
-/// atomic implementation; any other session falls back to a non-atomic get-then-set.
+/// <c>GetOrAdd</c> and <c>Update</c> for <see cref="IAgentSession"/> on targets without default interface members
+/// (<c>netstandard2.0</c>). It is compiled for every target so the package surface is identical; on <c>net10.0</c> the
+/// interface members take precedence. <see cref="InMemoryAgentSession"/> (and file-backed subclasses) use their atomic
+/// implementation; any other session falls back to a non-atomic get-then-set.
 /// </summary>
 public static class AgentSessionExtensions
 {
@@ -119,7 +119,6 @@ public static class AgentSessionExtensions
         return updated;
     }
 }
-#endif
 
 /// <summary>
 /// Rebuilds live state from a persisted <see cref="IAgentSession"/>. The CLI runs every registered initializer after

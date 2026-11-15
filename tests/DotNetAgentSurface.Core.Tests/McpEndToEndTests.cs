@@ -192,7 +192,7 @@ public sealed class McpEndToEndTests
 
         Assert.Equal(["value"], properties.EnumerateObject().Select(property => property.Name));
         Assert.Equal("x|Mcp|server=True|ctx=True|scoped=1|id=True", Text(result));
-        Assert.Contains(progressValues, value => value.Progress == 1 && value.Message == "half");
+        Assert.Contains(progressValues, value => value.Progress is 1f && value.Message == "half");
         await client.DisposeAsync();
     }
 
@@ -332,7 +332,7 @@ public sealed class McpEndToEndTests
         Assert.Equal("Hello, Ada!", Text(viaAlias));
         await client.DisposeAsync();
         await server.DisposeAsync();
-        await run.WaitAsync(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+        await run.WaitAsync(TimeSpan.FromSeconds(5), ct);
     }
 
     [McpServerToolType]
@@ -407,7 +407,7 @@ public sealed class McpEndToEndTests
         {
             progress.Report(new ProgressNotificationValue { Progress = 1, Total = 2, Message = "half" });
             var scoped = services.GetRequiredService<ScopedCounter>().Value;
-            return $"{value}|{operationContext.Surface}|server={server is not null}|ctx={context is not null}|scoped={scoped}|id={operationContext.RequestId.Length > 0}";
+            return $"{value}|{operationContext.Surface}|server={!ReferenceEquals(server, null)}|ctx={!ReferenceEquals(context, null)}|scoped={scoped}|id={operationContext.RequestId.Length > 0}";
         }
     }
 

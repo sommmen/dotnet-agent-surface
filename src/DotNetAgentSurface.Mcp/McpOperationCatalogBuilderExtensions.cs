@@ -156,7 +156,7 @@ public static class McpOperationCatalogBuilderExtensions
             name = method.Name;
         }
 
-        return SnakeCaseLower.ConvertName(name) ?? name;
+        return SnakeCaseLower.ConvertName(name);
     }
 
     private static readonly System.Text.Json.JsonNamingPolicy SnakeCaseLower = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;

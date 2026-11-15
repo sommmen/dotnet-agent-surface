@@ -1,8 +1,6 @@
 using DotNetAgentSurface.Core;
 using DotNetAgentSurface.Mcp;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace Microsoft.Extensions.DependencyInjection;

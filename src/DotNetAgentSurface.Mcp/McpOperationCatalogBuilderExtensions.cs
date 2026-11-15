@@ -75,7 +75,7 @@ public static class McpOperationCatalogBuilderExtensions
                 .ToArray();
 
             object? target = null;
-            if (toolMethods.Any(static method => !method.IsStatic))
+            if (!importOptions.ResolveTargetsFromServices && toolMethods.Any(static method => !method.IsStatic))
             {
                 target = targetFactory?.Invoke(toolType) ?? Activator.CreateInstance(toolType);
                 if (target is null)
@@ -95,7 +95,7 @@ public static class McpOperationCatalogBuilderExtensions
                 description = string.IsNullOrWhiteSpace(description) ? name : description!;
                 var sdkAnnotations = TryGetSdkAnnotations(method);
 
-                builder.Add(name, description, CreateDelegate(method, method.IsStatic ? null : target), options =>
+                void Configure(OperationRegistrationOptions options)
                 {
                     options.SafetyLevel = importOptions.SafetyMapping == McpToolSafetyMapping.DestructiveIsDangerous && attribute.Destructive
                         ? AgentSafetyLevel.Dangerous
@@ -110,7 +110,16 @@ public static class McpOperationCatalogBuilderExtensions
                     {
                         options.PolicyMetadata.Add(new McpStructuredContentHint());
                     }
-                });
+                }
+
+                if (importOptions.ResolveTargetsFromServices)
+                {
+                    builder.AddMethod(method, name, description, Configure);
+                }
+                else
+                {
+                    builder.Add(name, description, CreateDelegate(method, method.IsStatic ? null : target), Configure);
+                }
             }
         }
         return builder;

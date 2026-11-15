@@ -14,7 +14,7 @@ DotNetAgentSurface, without duplicating any operation definitions.
   `TaskTrackerService` operation catalog and executes a single command per
   process invocation via `OperationCommandLineAdapter`.
 - **DotNetAgentSurface.Samples.Mcp** (`tasktracker-mcp`) — discovers the same
-  catalog and exposes it as an MCP server over stdio via `McpOperationServer`.
+  catalog and exposes it as an MCP server over stdio through the SDK host builder (`AddMcpServer().WithStdioServerTransport().WithOperations(...)`); `DotNetAgentSurface.Samples.CliAndMcp` still shows the zero-DI `McpOperationServer`.
 - **DotNetAgentSurface.Samples.CliAndMcp** (`tasktracker`) — a single
   executable that supports both surfaces: it discovers the same catalog once
   and dispatches to the CLI adapter or the MCP stdio server depending on the

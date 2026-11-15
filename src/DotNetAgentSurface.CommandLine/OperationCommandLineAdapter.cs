@@ -363,7 +363,7 @@ public sealed class OperationCommandLineAdapter
     {
         var lines = new List<string> { $"{operation.Name}: {operation.Description}", "", "Operation flags:" };
         lines.AddRange(operation.Parameters
-            .Where(parameter => !parameter.IsCancellationToken)
+            .Where(parameter => !parameter.IsAmbient)
             .Select(parameter => $"  --{parameter.Name} <{parameter.ParameterType.Name}>{(parameter.IsOptional ? " (optional)" : string.Empty)}{(string.IsNullOrWhiteSpace(parameter.Description) ? string.Empty : $" - {parameter.Description}")}"));
         lines.AddRange([
             "", "Global flags:", "  --output <toon|json>", "  --fields <name,...>", "  --full", "  --confirm", "  --yes (requires --confirm for dangerous operations)", "  --help, -h",
@@ -386,7 +386,7 @@ public sealed class OperationCommandLineAdapter
     {
         var validInputNames = new HashSet<string>(
             operation.Parameters
-                .Where(parameter => !parameter.IsCancellationToken)
+                .Where(parameter => !parameter.IsAmbient)
                 .Select(parameter => parameter.Name),
             StringComparer.OrdinalIgnoreCase);
         var validFlags = validInputNames.Select(name => $"--{name}")

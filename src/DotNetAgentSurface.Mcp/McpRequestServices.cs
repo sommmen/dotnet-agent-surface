@@ -12,6 +12,17 @@ namespace DotNetAgentSurface.Mcp;
 /// </summary>
 internal sealed class McpRequestServices(RequestContext<CallToolRequestParams> request, IServiceProvider? inner) : IServiceProvider
 {
+    private readonly List<Task> _pending = [];
+
+    /// <summary>Waits for progress notifications still in flight so they reach the client before the result does.</summary>
+    public Task FlushProgressAsync()
+    {
+        lock (_pending)
+        {
+            return Task.WhenAll(_pending.ToArray());
+        }
+    }
+
     public object? GetService(Type serviceType)
     {
         if (serviceType == typeof(RequestContext<CallToolRequestParams>))
@@ -27,7 +38,7 @@ internal sealed class McpRequestServices(RequestContext<CallToolRequestParams> r
         if (serviceType == typeof(IProgress<ProgressNotificationValue>) || serviceType == typeof(IOperationProgress))
         {
             return request.Params?.ProgressToken is { } token
-                ? new McpOperationProgress(request.Server, token)
+                ? new McpOperationProgress(request.Server, token, _pending)
                 : serviceType == typeof(IOperationProgress) ? OperationProgress.None : IgnoredProgress.Instance;
         }
 
@@ -40,14 +51,18 @@ internal sealed class McpRequestServices(RequestContext<CallToolRequestParams> r
     }
 }
 
-internal sealed class McpOperationProgress(McpServer server, ProgressToken token) : IOperationProgress, IProgress<ProgressNotificationValue>
+internal sealed class McpOperationProgress(McpServer server, ProgressToken token, List<Task> pending) : IOperationProgress, IProgress<ProgressNotificationValue>
 {
     public void Report(float progress, float? total = null, string? message = null)
         => Report(new ProgressNotificationValue { Progress = progress, Total = total, Message = message });
 
     public void Report(ProgressNotificationValue value)
     {
-        _ = SendAsync(value);
+        var send = SendAsync(value);
+        lock (pending)
+        {
+            pending.Add(send);
+        }
     }
 
     private async Task SendAsync(ProgressNotificationValue value)

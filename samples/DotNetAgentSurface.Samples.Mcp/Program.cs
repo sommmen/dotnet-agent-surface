@@ -1,20 +1,19 @@
 using DotNetAgentSurface.Core;
-using DotNetAgentSurface.Mcp;
 using DotNetAgentSurface.Samples.TaskTracker;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-var services = new SingleServiceProvider(new TaskTrackerService());
-var catalog = OperationCatalog.Discover(typeof(TaskTrackerService));
+// Hosts the catalog on the official ModelContextProtocol SDK builder: WithOperations registers every
+// operation as an SDK tool, so it composes with WithStdioServerTransport(), WithTools<T>(), prompts,
+// resources and hosted services. McpOperationServer remains the zero-DI alternative.
+var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+builder.Services.AddSingleton<TaskTrackerService>();
+builder.Services
+    .AddMcpServer(options => options.ServerInstructions =
+        "Use the task tracker tools to list, create, and complete tasks instead of tracking them in free text.")
+    .WithStdioServerTransport()
+    .WithOperations(catalog => catalog.AddFromType<TaskTrackerService>());
 
-// serverInstructions is optional guidance for MCP clients that honor
-// McpServerOptions.ServerInstructions (typically folded into the model's system prompt).
-var server = new McpOperationServer(
-    new McpOperationAdapter(catalog, new OperationInvoker(services)),
-    serverInstructions: "Use the task tracker tools to list, create, and complete tasks instead of tracking them in free text.");
-
-await server.RunStdioAsync();
-
-/// <summary>Resolves a single pre-built service instance, sufficient for a single-service sample host.</summary>
-internal sealed class SingleServiceProvider(object service) : IServiceProvider
-{
-    public object? GetService(Type serviceType) => serviceType.IsInstanceOfType(service) ? service : null;
-}
+await builder.Build().RunAsync();

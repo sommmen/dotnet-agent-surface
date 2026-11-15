@@ -101,7 +101,9 @@ public sealed class McpOperationAdapter
             confirmation = await ElicitConfirmationAsync(operation, request, cancellationToken).ConfigureAwait(false) ?? confirmation;
         }
 
-        return await InvokeOperationAsync(operation, arguments, cancellationToken, confirmation, context).ConfigureAwait(false);
+        var result = await InvokeOperationAsync(operation, arguments, cancellationToken, confirmation, context).ConfigureAwait(false);
+        await services.FlushProgressAsync().ConfigureAwait(false);
+        return result;
     }
 
     private async ValueTask<CallToolResult> InvokeOperationAsync(

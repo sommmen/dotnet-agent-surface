@@ -187,7 +187,7 @@ public sealed class McpEndToEndTests
         var result = await client.CallToolAsync(
             "ambient",
             new Dictionary<string, object?> { ["value"] = "x" },
-            new Progress<ProgressNotificationValue>(progressValues.Add),
+            new InlineProgress(progressValues),
             cancellationToken: ct);
 
         Assert.Equal(["value"], properties.EnumerateObject().Select(property => property.Name));
@@ -408,6 +408,17 @@ public sealed class McpEndToEndTests
             progress.Report(new ProgressNotificationValue { Progress = 1, Total = 2, Message = "half" });
             var scoped = services.GetRequiredService<ScopedCounter>().Value;
             return $"{value}|{operationContext.Surface}|server={!ReferenceEquals(server, null)}|ctx={!ReferenceEquals(context, null)}|scoped={scoped}|id={operationContext.RequestId.Length > 0}";
+        }
+    }
+
+    private sealed class InlineProgress(List<ProgressNotificationValue> values) : IProgress<ProgressNotificationValue>
+    {
+        public void Report(ProgressNotificationValue value)
+        {
+            lock (values)
+            {
+                values.Add(value);
+            }
         }
     }
 

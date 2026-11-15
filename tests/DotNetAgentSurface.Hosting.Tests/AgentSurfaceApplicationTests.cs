@@ -177,10 +177,11 @@ public sealed class AgentSurfaceApplicationTests
 
     }
 
-    private sealed class PlainHostedService(Probe probe, AsyncOnlyService _) : IHostedService
+    private sealed class PlainHostedService(Probe probe, AsyncOnlyService dependency) : IHostedService
     {
         public Task StartAsync(CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(dependency);
             probe.PlainHostedServiceStarted = true;
             return Task.CompletedTask;
         }

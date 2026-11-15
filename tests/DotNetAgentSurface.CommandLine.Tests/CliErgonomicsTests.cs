@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using DotNetAgentSurface.CommandLine;
 using DotNetAgentSurface.Core;
 
 namespace DotNetAgentSurface.CommandLine.Tests;
@@ -18,9 +17,9 @@ public sealed class CliErgonomicsTests : IDisposable
         var text = "line \"one\"\n" + new string('x', 2500);
         var operations = new Operations { Text = text };
 
-        var toon = await CreateAdapter(operations, new ToonAgentOutputRenderer()).ExecuteAsync(["text"]);
-        var json = await CreateAdapter(operations, new JsonAgentOutputRenderer()).ExecuteAsync(["text", "--output", "json"]);
-        var legacy = await CreateAdapter(operations, renderer: null).ExecuteAsync(["text"]);
+        var toon = await CreateAdapter(operations, new ToonAgentOutputRenderer()).ExecuteAsync(["text"], TestContext.Current.CancellationToken);
+        var json = await CreateAdapter(operations, new JsonAgentOutputRenderer()).ExecuteAsync(["text", "--output", "json"], TestContext.Current.CancellationToken);
+        var legacy = await CreateAdapter(operations, renderer: null).ExecuteAsync(["text"], TestContext.Current.CancellationToken);
 
         Assert.Equal(text, toon.Output);
         Assert.Equal(text, json.Output);
@@ -31,7 +30,7 @@ public sealed class CliErgonomicsTests : IDisposable
     [Fact]
     public async Task Object_results_still_project_and_truncate()
     {
-        var result = await CreateAdapter(new Operations(), new JsonAgentOutputRenderer()).ExecuteAsync(["long-object"]);
+        var result = await CreateAdapter(new Operations(), new JsonAgentOutputRenderer()).ExecuteAsync(["long-object"], TestContext.Current.CancellationToken);
 
         Assert.Contains("truncated, showing 1000 of 1500 chars", result.Output);
     }
@@ -39,8 +38,8 @@ public sealed class CliErgonomicsTests : IDisposable
     [Fact]
     public async Task Operation_errors_keep_newlines_unless_flattening_is_requested()
     {
-        var kept = await CreateAdapter(new Operations()).ExecuteAsync(["fail-plain"]);
-        var flattened = await CreateAdapter(new Operations(), options: new OperationCommandLineOptions { FlattenOperationErrors = true }).ExecuteAsync(["fail-plain"]);
+        var kept = await CreateAdapter(new Operations()).ExecuteAsync(["fail-plain"], TestContext.Current.CancellationToken);
+        var flattened = await CreateAdapter(new Operations(), options: new OperationCommandLineOptions { FlattenOperationErrors = true }).ExecuteAsync(["fail-plain"], TestContext.Current.CancellationToken);
 
         Assert.Equal(1, kept.ExitCode);
         Assert.Equal("first\nsecond", kept.Error);
@@ -60,10 +59,10 @@ public sealed class CliErgonomicsTests : IDisposable
             },
         };
 
-        var result = await CreateAdapter(new Operations(), new ToonAgentOutputRenderer(), options).ExecuteAsync(["long-object"]);
+        var result = await CreateAdapter(new Operations(), new ToonAgentOutputRenderer(), options).ExecuteAsync(["long-object"], TestContext.Current.CancellationToken);
 
         Assert.Equal("custom", result.Output);
-        Assert.IsType<LongObject>(seen);
+        Assert.Equal(1500, Assert.IsType<LongObject>(seen).Text.Length);
     }
 
     [Theory]
@@ -74,7 +73,7 @@ public sealed class CliErgonomicsTests : IDisposable
     [InlineData("\"quoted\"")]
     public async Task String_parameters_receive_the_text_verbatim(string value)
     {
-        var result = await CreateAdapter(new Operations()).ExecuteAsync(["echo", "--value", value]);
+        var result = await CreateAdapter(new Operations()).ExecuteAsync(["echo", "--value", value], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(value, result.Output);
@@ -86,8 +85,8 @@ public sealed class CliErgonomicsTests : IDisposable
         var id = Guid.NewGuid();
         var adapter = CreateAdapter(new Operations());
 
-        var guid = await adapter.ExecuteAsync(["describe", "--id", id.ToString(), "--mode", "beta"]);
-        var badMode = await adapter.ExecuteAsync(["describe", "--id", id.ToString(), "--mode", "nope"]);
+        var guid = await adapter.ExecuteAsync(["describe", "--id", id.ToString(), "--mode", "beta"], TestContext.Current.CancellationToken);
+        var badMode = await adapter.ExecuteAsync(["describe", "--id", id.ToString(), "--mode", "nope"], TestContext.Current.CancellationToken);
 
         Assert.Equal($"{id}|Beta|False|0", guid.Output);
         Assert.Equal(2, badMode.ExitCode);
@@ -97,7 +96,7 @@ public sealed class CliErgonomicsTests : IDisposable
     [Fact]
     public async Task Supports_equals_syntax_and_complex_json_values()
     {
-        var result = await CreateAdapter(new Operations()).ExecuteAsync(["sum", "--numbers=[1,2,3]"]);
+        var result = await CreateAdapter(new Operations()).ExecuteAsync(["sum", "--numbers=[1,2,3]"], TestContext.Current.CancellationToken);
 
         Assert.Equal("6", result.Output);
     }
@@ -108,10 +107,10 @@ public sealed class CliErgonomicsTests : IDisposable
         var adapter = CreateAdapter(new Operations());
         var id = Guid.Empty.ToString();
 
-        var on = await adapter.ExecuteAsync(["describe", "--id", id, "--include-all-builds"]);
-        var onCamel = await adapter.ExecuteAsync(["describe", "--id", id, "--includeAllBuilds"]);
-        var off = await adapter.ExecuteAsync(["describe", "--id", id, "--include-all-builds", "--no-include-all-builds"]);
-        var explicitFalse = await adapter.ExecuteAsync(["describe", "--id", id, "--include-all-builds=false"]);
+        var on = await adapter.ExecuteAsync(["describe", "--id", id, "--include-all-builds"], TestContext.Current.CancellationToken);
+        var onCamel = await adapter.ExecuteAsync(["describe", "--id", id, "--includeAllBuilds"], TestContext.Current.CancellationToken);
+        var off = await adapter.ExecuteAsync(["describe", "--id", id, "--include-all-builds", "--no-include-all-builds"], TestContext.Current.CancellationToken);
+        var explicitFalse = await adapter.ExecuteAsync(["describe", "--id", id, "--include-all-builds=false"], TestContext.Current.CancellationToken);
 
         Assert.EndsWith("|True|0", on.Output);
         Assert.EndsWith("|True|0", onCamel.Output);
@@ -124,10 +123,10 @@ public sealed class CliErgonomicsTests : IDisposable
     {
         var adapter = CreateAdapter(new Operations());
 
-        var viaKebab = await adapter.ExecuteAsync(["run-query", "--context-name", "main"]);
-        var viaSnake = await adapter.ExecuteAsync(["run_query", "--contextName", "main"]);
-        var help = await adapter.ExecuteAsync(["run-query", "--help"]);
-        var root = await adapter.ExecuteAsync([]);
+        var viaKebab = await adapter.ExecuteAsync(["run-query", "--context-name", "main"], TestContext.Current.CancellationToken);
+        var viaSnake = await adapter.ExecuteAsync(["run_query", "--contextName", "main"], TestContext.Current.CancellationToken);
+        var help = await adapter.ExecuteAsync(["run-query", "--help"], TestContext.Current.CancellationToken);
+        var root = await adapter.ExecuteAsync([], TestContext.Current.CancellationToken);
 
         Assert.Equal("main", viaKebab.Output);
         Assert.Equal("main", viaSnake.Output);
@@ -144,10 +143,10 @@ public sealed class CliErgonomicsTests : IDisposable
         var options = new OperationCommandLineOptions { Input = new StringReader("from stdin") };
         var adapter = CreateAdapter(new Operations(), options: options);
 
-        var fromFile = await adapter.ExecuteAsync(["echo", "--value", "@" + file]);
-        var fromStdin = await adapter.ExecuteAsync(["echo", "--value", "-"]);
-        var literal = await adapter.ExecuteAsync(["echo", "--value", "@@user"]);
-        var missing = await adapter.ExecuteAsync(["echo", "--value", "@" + Path.Combine(_directory, "absent.txt")]);
+        var fromFile = await adapter.ExecuteAsync(["echo", "--value", "@" + file], TestContext.Current.CancellationToken);
+        var fromStdin = await adapter.ExecuteAsync(["echo", "--value", "-"], TestContext.Current.CancellationToken);
+        var literal = await adapter.ExecuteAsync(["echo", "--value", "@@user"], TestContext.Current.CancellationToken);
+        var missing = await adapter.ExecuteAsync(["echo", "--value", "@" + Path.Combine(_directory, "absent.txt")], TestContext.Current.CancellationToken);
 
         Assert.Equal("SELECT 1\nFROM t", fromFile.Output);
         Assert.Equal("from stdin", fromStdin.Output);
@@ -160,8 +159,8 @@ public sealed class CliErgonomicsTests : IDisposable
     {
         var adapter = CreateAdapter(new Operations());
 
-        var repeated = await adapter.ExecuteAsync(["join", "--include", "A", "--include", "B"]);
-        var json = await adapter.ExecuteAsync(["join", "--include", "[\"C\",\"D\"]"]);
+        var repeated = await adapter.ExecuteAsync(["join", "--include", "A", "--include", "B"], TestContext.Current.CancellationToken);
+        var json = await adapter.ExecuteAsync(["join", "--include", "[\"C\",\"D\"]"], TestContext.Current.CancellationToken);
 
         Assert.Equal("A,B", repeated.Output);
         Assert.Equal("C,D", json.Output);
@@ -173,10 +172,10 @@ public sealed class CliErgonomicsTests : IDisposable
         var options = new OperationCommandLineOptions { GlobalOptions = [new CommandLineGlobalOption("--connection", InjectAs: "connectionName")] };
         var adapter = CreateAdapter(new Operations(), options: options);
 
-        var declared = await adapter.ExecuteAsync(["--connection", "db1", "connect"]);
-        var undeclared = await adapter.ExecuteAsync(["--connection", "db1", "echo", "--value", "x"]);
-        var afterOperation = await adapter.ExecuteAsync(["connect", "--connection=db2"]);
-        var explicitWins = await adapter.ExecuteAsync(["--connection", "db1", "connect", "--connection-name", "db3"]);
+        var declared = await adapter.ExecuteAsync(["--connection", "db1", "connect"], TestContext.Current.CancellationToken);
+        var undeclared = await adapter.ExecuteAsync(["--connection", "db1", "echo", "--value", "x"], TestContext.Current.CancellationToken);
+        var afterOperation = await adapter.ExecuteAsync(["connect", "--connection=db2"], TestContext.Current.CancellationToken);
+        var explicitWins = await adapter.ExecuteAsync(["--connection", "db1", "connect", "--connection-name", "db3"], TestContext.Current.CancellationToken);
 
         Assert.Equal("db1", declared.Output);
         Assert.Equal(0, undeclared.ExitCode);
@@ -190,9 +189,9 @@ public sealed class CliErgonomicsTests : IDisposable
     {
         var adapter = CreateAdapter(new Operations(), new JsonAgentOutputRenderer());
 
-        var parameter = await adapter.ExecuteAsync(["export", "--output", "folder", "--fields", "a,b"]);
-        var global = await adapter.ExecuteAsync(["--output", "json", "export", "--output", "folder", "--fields", "a,b"]);
-        var alias = await adapter.ExecuteAsync(["--format", "json", "echo", "--value", "v"]);
+        var parameter = await adapter.ExecuteAsync(["export", "--output", "folder", "--fields", "a,b"], TestContext.Current.CancellationToken);
+        var global = await adapter.ExecuteAsync(["--output", "json", "export", "--output", "folder", "--fields", "a,b"], TestContext.Current.CancellationToken);
+        var alias = await adapter.ExecuteAsync(["--format", "json", "echo", "--value", "v"], TestContext.Current.CancellationToken);
 
         Assert.Equal("folder|a,b", parameter.Output);
         Assert.Equal("folder|a,b", global.Output);
@@ -202,7 +201,7 @@ public sealed class CliErgonomicsTests : IDisposable
     [Fact]
     public async Task Unknown_flag_before_operation_is_a_usage_error()
     {
-        var result = await CreateAdapter(new Operations()).ExecuteAsync(["--bogus", "echo"]);
+        var result = await CreateAdapter(new Operations()).ExecuteAsync(["--bogus", "echo"], TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
         Assert.Contains("Unknown flag '--bogus'", result.Error);
@@ -224,8 +223,8 @@ public sealed class CliErgonomicsTests : IDisposable
     {
         var adapter = CreateAdapter(new Operations());
 
-        var root = await adapter.ExecuteAsync([]);
-        var call = await adapter.ExecuteAsync(["mcp-only"]);
+        var root = await adapter.ExecuteAsync([], TestContext.Current.CancellationToken);
+        var call = await adapter.ExecuteAsync(["mcp-only"], TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain("mcp-only", root.Output);
         Assert.Equal(2, call.ExitCode);
@@ -234,7 +233,7 @@ public sealed class CliErgonomicsTests : IDisposable
     [Fact]
     public async Task Help_shows_descriptions_defaults_required_markers_and_examples()
     {
-        var help = await CreateAdapter(new Operations()).ExecuteAsync(["sum", "--help"]);
+        var help = await CreateAdapter(new Operations()).ExecuteAsync(["sum", "--help"], TestContext.Current.CancellationToken);
 
         Assert.Contains("Usage: sum [--numbers <int[]>]", help.Output);
         Assert.Contains("(optional, repeatable) - Numbers to add.", help.Output);

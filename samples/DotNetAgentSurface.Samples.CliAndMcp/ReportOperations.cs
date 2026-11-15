@@ -12,6 +12,8 @@ public sealed class AuditLog : IAsyncDisposable
 {
     private readonly List<string> _entries = [];
 
+    public int Count => _entries.Count;
+
     public void Record(string entry) => _entries.Add(entry);
 
     public ValueTask DisposeAsync()

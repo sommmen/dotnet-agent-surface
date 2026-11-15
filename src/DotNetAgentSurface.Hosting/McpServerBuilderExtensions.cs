@@ -1,7 +1,6 @@
 using DotNetAgentSurface.Core;
 using DotNetAgentSurface.Mcp;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 
 namespace DotNetAgentSurface.Hosting;
@@ -23,7 +22,7 @@ public static class AgentSurfaceMcpServerBuilderExtensions
 
         builder.Services.AddOptions<McpServerOptions>().Configure<McpOperationAdapter>((options, adapter) =>
         {
-            var handlers = new McpOperationServer(adapter).CreateOptions().Handlers!;
+            var handlers = new McpOperationServer(adapter).CreateOptions().Handlers;
             options.Handlers.ListToolsHandler = handlers.ListToolsHandler;
             options.Handlers.CallToolHandler = handlers.CallToolHandler;
         });

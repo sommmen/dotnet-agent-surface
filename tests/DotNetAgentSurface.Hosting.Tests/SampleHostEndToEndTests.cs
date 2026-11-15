@@ -139,7 +139,7 @@ public sealed class SampleHostEndToEndTests
         var startInfo = CreateStartInfo([]);
         using var process = Process.Start(startInfo)!;
         await process.StandardInput.WriteAsync(input);
-        await process.StandardInput.FlushAsync();
+        await process.StandardInput.FlushAsync(TestContext.Current.CancellationToken);
 
         var lines = new List<string>();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);

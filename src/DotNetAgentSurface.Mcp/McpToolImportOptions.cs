@@ -27,7 +27,7 @@ public sealed class McpToolImportOptions
     public Func<MethodInfo, bool>? Include { get; set; }
 
     /// <summary>Gets or sets a callback choosing which surfaces an imported tool method is exposed on. Defaults to <see cref="DotNetAgentSurface.Core.AgentSurfaces.All"/>; return <see cref="DotNetAgentSurface.Core.AgentSurfaces.Mcp"/> to hide a tool from the CLI.</summary>
-    public Func<MethodInfo, DotNetAgentSurface.Core.AgentSurfaces>? Surfaces { get; set; }
+    public Func<MethodInfo, Core.AgentSurfaces>? Surfaces { get; set; }
 
     /// <summary>Gets or sets how SDK hint attributes map to the operation safety level. Defaults to <see cref="McpToolSafetyMapping.None"/>.</summary>
     public McpToolSafetyMapping SafetyMapping { get; set; } = McpToolSafetyMapping.None;

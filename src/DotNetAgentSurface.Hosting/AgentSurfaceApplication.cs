@@ -463,7 +463,7 @@ public sealed class AgentSurfaceApplication
         var name = string.IsNullOrWhiteSpace(processPath) ? null : Path.GetFileNameWithoutExtension(processPath);
         return string.IsNullOrWhiteSpace(name) || string.Equals(name, "dotnet", StringComparison.OrdinalIgnoreCase)
             ? System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? "app"
-            : name!;
+            : name;
     }
 
     private void ConfigureCommon(HostApplicationBuilder builder)

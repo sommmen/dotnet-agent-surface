@@ -12,7 +12,7 @@ public sealed class AgentSurfaceApplicationTests
     public async Task Cli_mode_disposes_async_only_singletons_and_does_not_start_hosted_services()
     {
         var probe = new Probe();
-        var result = await RunAsync(["cli", "ping"], probe);
+        var result = await RunAsync(["cli", "ping"], probe, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("pong", result.Output);
@@ -26,7 +26,7 @@ public sealed class AgentSurfaceApplicationTests
     public async Task Cli_mode_never_feeds_operation_arguments_to_host_configuration()
     {
         var probe = new Probe();
-        var result = await RunAsync(["cli", "echo-config", "--query", "fromargs"], probe);
+        var result = await RunAsync(["cli", "echo-config", "--query", "fromargs"], probe, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("fromargs|none", result.Output);
@@ -36,7 +36,7 @@ public sealed class AgentSurfaceApplicationTests
     public async Task Global_option_with_config_key_is_applied_before_the_host_is_built()
     {
         var probe = new Probe();
-        var result = await RunAsync(["cli", "--setting", "fromflag", "config"], probe, app => app.AddGlobalOption("--setting", configKey: "Setting"));
+        var result = await RunAsync(["cli", "--setting", "fromflag", "config"], probe, app => app.AddGlobalOption("--setting", configKey: "Setting"), TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("fromflag", result.Output);
@@ -48,8 +48,8 @@ public sealed class AgentSurfaceApplicationTests
         var probe = new Probe();
         var app = (Action<AgentSurfaceApplication>)(a => a.AddGlobalOption("--connection", injectAs: "connectionName"));
 
-        var declared = await RunAsync(["cli", "--connection", "db1", "connect"], probe, app);
-        var ignored = await RunAsync(["cli", "--connection", "db1", "ping"], probe, app);
+        var declared = await RunAsync(["cli", "--connection", "db1", "connect"], probe, app, TestContext.Current.CancellationToken);
+        var ignored = await RunAsync(["cli", "--connection", "db1", "ping"], probe, app, TestContext.Current.CancellationToken);
 
         Assert.Equal("db1", declared.Output);
         Assert.Equal(0, ignored.ExitCode);
@@ -64,9 +64,10 @@ public sealed class AgentSurfaceApplicationTests
         {
             received = args;
             return 7;
-        }));
+        }), TestContext.Current.CancellationToken);
 
         Assert.Equal(7, result.ExitCode);
+        Assert.NotNull(received);
         Assert.Equal(["install", "--force"], received);
         Assert.False(probe.AsyncDisposed);
     }
@@ -75,7 +76,7 @@ public sealed class AgentSurfaceApplicationTests
     public async Task Default_surface_cli_runs_operations_without_a_verb()
     {
         var probe = new Probe();
-        var result = await RunAsync(["ping"], probe, app => app.DefaultSurface = AgentSurface.Cli);
+        var result = await RunAsync(["ping"], probe, app => app.DefaultSurface = AgentSurface.Cli, TestContext.Current.CancellationToken);
 
         Assert.Equal("pong", result.Output);
     }
@@ -106,7 +107,7 @@ public sealed class AgentSurfaceApplicationTests
     public async Task Mcp_help_lists_verbs_without_building_a_host()
     {
         var probe = new Probe();
-        var result = await RunAsync(["--help"], probe, app => app.AddVerb("hooks", _ => 0));
+        var result = await RunAsync(["--help"], probe, app => app.AddVerb("hooks", _ => 0), TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("hooks", result.Output);

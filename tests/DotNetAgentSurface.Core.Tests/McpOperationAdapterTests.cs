@@ -152,8 +152,8 @@ public sealed class McpOperationAdapterTests
             var commandLine = new OperationCommandLineAdapter(
                 catalog,
                 new OperationInvoker(new SingleServiceProvider(new NativeMcpTools()), policies: confirmationPolicies));
-            var cliResult = await commandLine.ExecuteAsync(["native-greet", "--name", "Ada"]);
-            var result = await adapter.InvokeAsync("native-greet", ArgumentsFor("Ada"));
+            var cliResult = await commandLine.ExecuteAsync(["native-greet", "--name", "Ada"], TestContext.Current.CancellationToken);
+            var result = await adapter.InvokeAsync("native-greet", ArgumentsFor("Ada"), TestContext.Current.CancellationToken);
 
             Assert.Equal("native-greet", operation.Name);
             Assert.Equal("Native MCP greeting", operation.Description);

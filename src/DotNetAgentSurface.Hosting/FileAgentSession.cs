@@ -11,13 +11,15 @@ namespace DotNetAgentSurface.Hosting;
 
 /// <summary>
 /// An <see cref="IAgentSession"/> persisted as a small JSON file so state survives across CLI invocations. It is loaded
-/// by <see cref="Open"/> and written by <see cref="Save"/>, which replaces the file atomically (temp file plus rename);
-/// concurrent writers are last-writer-wins. Never store secrets in it: the file is plain JSON.
+/// by <see cref="Open"/> and written by <see cref="Save"/>, which under a short cross-process lock merges only the keys this
+/// session changed into the current file and replaces it atomically (temp file plus rename). <see cref="GetOrAdd"/> and
+/// <see cref="Update"/> run under the same lock and persist immediately. Never store secrets in it: the file is plain JSON.
 /// </summary>
 public sealed class FileAgentSession : InMemoryAgentSession
 {
     private const int MaxIdLength = 128;
     private const int MoveAttempts = 200;
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(15);
 
     private FileAgentSession(string id, string path)
         : base(id)
@@ -159,6 +161,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
                     if (File.GetLastWriteTimeUtc(file) < cutoff)
                     {
                         File.Delete(file);
+                        File.Delete(file + ".lock");
                     }
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -185,7 +188,12 @@ public sealed class FileAgentSession : InMemoryAgentSession
         {
         }
     }
-    /// <summary>Writes the session if it changed since it was loaded. Returns whether a file was written.</summary>
+    /// <summary>
+    /// Writes the keys changed since the session was loaded or last saved. Under a short exclusive lock on
+    /// <c>&lt;id&gt;.json.lock</c> it re-reads the file, applies only those keys and replaces the file atomically, so concurrent
+    /// processes that changed different keys all keep their changes. Returns whether a file was written.
+    /// </summary>
+    /// <exception cref="IOException">The lock could not be acquired within the timeout, or the file could not be written.</exception>
     public bool Save()
     {
         if (!IsModified)
@@ -196,8 +204,155 @@ public sealed class FileAgentSession : InMemoryAgentSession
         var directory = System.IO.Path.GetDirectoryName(Path)!;
         EnsureDirectory(directory);
 
+        using (AcquireLock())
+        {
+            var changes = SnapshotChanges(out var version);
+            var fresh = ReadFile(out _);
+            ApplyChanges(fresh, changes);
+            var updatedAt = Write(fresh);
+            ApplyPersisted(fresh, version);
+            UpdatedAt = updatedAt;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the value under <paramref name="key"/>, creating it with <paramref name="factory"/> when there is none. The
+    /// check and the creation run under the cross-process lock against freshly read state and are written immediately, so
+    /// concurrent callers converge on one value. <paramref name="factory"/> runs while the lock is held: keep it quick.
+    /// </summary>
+    public override T GetOrAdd<T>(string key, Func<T> factory)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(factory);
+        return Mutate<T>(key, (exists, current) => exists && current is { } existing ? existing : factory());
+    }
+
+    /// <summary>
+    /// Replaces the value under <paramref name="key"/> with <c>update(current)</c>, where <c>current</c> is read under the
+    /// cross-process lock from freshly read state (<see langword="default"/> when there is none). The result is written
+    /// immediately, so concurrent updates, for example adding entries to a dictionary value, are all kept.
+    /// <paramref name="update"/> runs while the lock is held: keep it quick.
+    /// </summary>
+    public override T Update<T>(string key, Func<T?, T> update)
+        where T : default
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(update);
+        return Mutate<T>(key, (_, current) => update(current));
+    }
+
+    /// <summary>Removes all values and deletes the session file. Returns whether a file was deleted.</summary>
+    public bool Clear()
+    {
+        Replace([]);
+        UpdatedAt = null;
+        if (!File.Exists(Path))
+        {
+            return false;
+        }
+
+        EnsureDirectory(System.IO.Path.GetDirectoryName(Path)!);
+        using (AcquireLock())
+        {
+            if (!File.Exists(Path))
+            {
+                return false;
+            }
+
+            File.Delete(Path);
+            return true;
+        }
+    }
+
+    private T Mutate<T>(string key, Func<bool, T?, T> compute)
+    {
+        EnsureDirectory(System.IO.Path.GetDirectoryName(Path)!);
+        using (AcquireLock())
+        {
+            var fresh = ReadFile(out _);
+            JsonElement? baseline = TryGetChange(key, out var pending)
+                ? pending
+                : fresh.TryGetValue(key, out var current) ? current : null;
+            var result = compute(baseline is not null, baseline is { } element ? Deserialize<T>(element) : default);
+            var serialized = JsonSerializer.SerializeToElement(result);
+            var unchanged = fresh.TryGetValue(key, out var stored) && stored.GetRawText() == serialized.GetRawText();
+            fresh[key] = serialized;
+            if (!unchanged)
+            {
+                UpdatedAt = Write(fresh);
+            }
+
+            ApplyPersisted(fresh, 0);
+            SetPersisted(key, serialized);
+            return result;
+        }
+    }
+
+    private static void ApplyChanges(Dictionary<string, JsonElement> values, IReadOnlyDictionary<string, JsonElement?> changes)
+    {
+        foreach (var change in changes)
+        {
+            if (change.Value is { } value)
+            {
+                values[change.Key] = value;
+            }
+            else
+            {
+                values.Remove(change.Key);
+            }
+        }
+    }
+
+    private void Load()
+    {
+        var values = ReadFile(out var updatedAt);
+        Replace(values);
+        UpdatedAt = updatedAt;
+    }
+
+    private Dictionary<string, JsonElement> ReadFile(out DateTimeOffset? updatedAt)
+    {
+        var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        updatedAt = null;
+        try
+        {
+            using var stream = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var document = JsonDocument.Parse(stream);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return values;
+            }
+
+            if (document.RootElement.TryGetProperty("values", out var stored) && stored.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in stored.EnumerateObject())
+                {
+                    values[property.Name] = property.Value.Clone();
+                }
+            }
+
+            if (document.RootElement.TryGetProperty("updatedAt", out var updated)
+                && updated.ValueKind == JsonValueKind.String
+                && updated.TryGetDateTimeOffset(out var parsed))
+            {
+                updatedAt = parsed;
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            values.Clear();
+            updatedAt = null;
+        }
+
+        return values;
+    }
+
+    private DateTimeOffset Write(IReadOnlyDictionary<string, JsonElement> values)
+    {
+        var directory = System.IO.Path.GetDirectoryName(Path)!;
         var updatedAt = DateTimeOffset.UtcNow;
-        var values = Snapshot(out var version);
         var temporaryPath = System.IO.Path.Combine(directory, $".{Id}.{Guid.NewGuid():N}.tmp");
         try
         {
@@ -226,53 +381,30 @@ public sealed class FileAgentSession : InMemoryAgentSession
             throw;
         }
 
-        UpdatedAt = updatedAt;
-        MarkClean(version);
-        return true;
+        return updatedAt;
     }
 
-    /// <summary>Removes all values and deletes the session file. Returns whether a file was deleted.</summary>
-    public bool Clear()
+    private FileStream AcquireLock()
     {
-        Replace([]);
-        UpdatedAt = null;
-        if (!File.Exists(Path))
+        var lockPath = Path + ".lock";
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        for (var attempt = 1; ; attempt++)
         {
-            return false;
-        }
-
-        File.Delete(Path);
-        return true;
-    }
-
-    private void Load()
-    {
-        try
-        {
-            using var stream = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var document = JsonDocument.Parse(stream);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            try
             {
-                return;
+                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
             }
-
-            if (document.RootElement.TryGetProperty("values", out var values) && values.ValueKind == JsonValueKind.Object)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                Replace(values.EnumerateObject().Select(static property => new KeyValuePair<string, JsonElement>(property.Name, property.Value)));
-            }
+                if (stopwatch.Elapsed >= LockTimeout)
+                {
+                    throw new IOException($"Timed out after {LockTimeout.TotalSeconds:0} seconds waiting for the session lock '{lockPath}'.", exception);
+                }
 
-            if (document.RootElement.TryGetProperty("updatedAt", out var updated)
-                && updated.ValueKind == JsonValueKind.String
-                && updated.TryGetDateTimeOffset(out var updatedAt))
-            {
-                UpdatedAt = updatedAt;
+                Thread.Sleep(Random.Shared.Next(1, 4 + Math.Min(attempt, 30)));
             }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-        {
         }
     }
-
     private static FileStream CreateTemporaryFile(string path)
     {
         if (OperatingSystem.IsWindows())

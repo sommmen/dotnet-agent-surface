@@ -31,6 +31,11 @@ versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
+### Fixed (session concurrency, #101)
+
+- `FileAgentSession.Save` no longer loses updates from concurrent CLI processes. It takes a short exclusive lock on `<id>.json.lock`, re-reads the file, applies only the keys the invocation changed and replaces the file atomically. `Set` on the *same* key is still last-writer-wins.
+- `IAgentSession.GetOrAdd<T>(key, factory)` and `IAgentSession.Update<T>(key, update)` are new. They are default interface members on `net10.0` (existing implementers keep compiling; the default is a non-atomic get-then-set) and extension methods on `netstandard2.0`. `InMemoryAgentSession` runs them atomically in process; `FileAgentSession` runs them under the cross-process lock against freshly read state and persists immediately (not on `Save`).
+
 ### Added
 
 - `DotNetAgentSurface.Hosting` package with `AgentSurfaceApplication`: one executable and

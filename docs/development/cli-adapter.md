@@ -93,7 +93,7 @@ return await AgentSurfaceApplication.RunAsync(args, app =>
 
 Stateful flows such as `load_assembly` → `list_contexts` → `run_query` need state that
 outlives one operation call. MCP servers are long-lived, but every CLI invocation is a new
-process, so the host provides an `IAgentSession` (`Id`, `Get<T>`, `Set<T>`, `Remove`) that
+process, so the host provides an `IAgentSession` (`Id`, `Get<T>`, `Set<T>`, `Remove`, `GetOrAdd<T>`, `Update<T>`) that
 works the same on both surfaces. Operations take it as an injected service (a constructor
 parameter); it is never an operation parameter and never appears in a schema.
 
@@ -119,8 +119,17 @@ public sealed class TargetInitializer(TargetRegistry registry) : IAgentSessionIn
 - **CLI:** a JSON file at `%LOCALAPPDATA%\<app>\sessions\<id>.json` on Windows or
   `$XDG_STATE_HOME/<app>/sessions/<id>.json` (default `~/.local/state`) elsewhere, readable
   by the current user only (an ACL on Windows, mode 0600 on Unix). It is loaded before the
-  invocation and saved only after a successful one; the write is atomic (temp file plus
-  rename), last writer wins, and the file records `updatedAt`.
+  invocation and saved only after a successful one. `Save` takes a short exclusive lock on
+  `<id>.json.lock`, re-reads the file, applies only the keys this invocation `Set` or
+  `Remove`d, and replaces the file atomically (temp file plus rename), so parallel CLI runs
+  that touch different keys keep each other's changes. The file records `updatedAt`.
+- **Concurrent writes to one key:** `Set` is still last-writer-wins per key. For create-once
+  values (a signing key) use `GetOrAdd<T>(key, factory)`, and for read-modify-write of one
+  value (adding to a dictionary) use `Update<T>(key, current => ...)`. In the file session both
+  run under the lock against freshly read state and **persist immediately** (not on `Save`);
+  the delegate runs while the lock is held, so keep it quick. In-memory sessions run them
+  atomically in process. They are default interface members (`net10.0`); on `netstandard2.0`
+  they are extension methods with a non-atomic fallback for foreign implementations.
 - **Session id**, in order: `--session <id>`, the `<APP>_SESSION` environment variable, then
   a hash of the current directory (`cwd-<hash>`), which gives per-workspace state by default.
   Ids are 1-128 letters, digits, `.`, `_` or `-`.

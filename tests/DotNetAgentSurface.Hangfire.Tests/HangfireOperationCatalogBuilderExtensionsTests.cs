@@ -218,7 +218,7 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
         var operation = Assert.Single(catalog.Operations);
         Assert.Empty(client.CreatedJobs);
 
-        var result = await CreateInvoker().InvokeAsync(operation);
+        var result = await CreateInvoker().InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.Equal("job:ParameterlessDiscoveredJob", operation.Name);
@@ -255,7 +255,7 @@ public sealed class HangfireOperationCatalogBuilderExtensionsTests
             .Build();
 
         var operation = Assert.Single(catalog.Operations);
-        await CreateInvoker().InvokeAsync(operation);
+        await CreateInvoker().InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var created = Assert.Single(client.CreatedJobs);
         Assert.Equal(typeof(OptionsDiscoveredJob), created.Job.Type);

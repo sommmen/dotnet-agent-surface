@@ -98,7 +98,7 @@ public sealed class SignalRSendOperationCatalogBuilderExtensionsTests
             [inputName] = Json(value)
         };
 
-        var result = await InvokeAsync(catalog, operationName, inputs);
+        var result = await InvokeAsync(catalog, operationName, inputs, TestContext.Current.CancellationToken);
 
         Assert.False(result.Succeeded);
         Assert.Empty(context.Proxies);

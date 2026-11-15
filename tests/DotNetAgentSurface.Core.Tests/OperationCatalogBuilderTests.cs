@@ -18,7 +18,7 @@ public sealed class OperationCatalogBuilderTests
         var invoker = new OperationInvoker(new SingleServiceProvider(new object()));
         var inputs = new Dictionary<string, JsonElement> { ["value"] = JsonDocument.Parse("21").RootElement.Clone() };
 
-        var result = await invoker.InvokeAsync(operation, inputs);
+        var result = await invoker.InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.Equal(42, result.Value);
@@ -46,7 +46,7 @@ public sealed class OperationCatalogBuilderTests
             .Build();
         var invoker = new OperationInvoker(new SingleServiceProvider(new object()));
 
-        var result = await invoker.InvokeAsync(Assert.Single(catalog.Operations));
+        var result = await invoker.InvokeAsync(Assert.Single(catalog.Operations), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.Equal("captured", result.Value);

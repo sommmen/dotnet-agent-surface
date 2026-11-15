@@ -14,7 +14,7 @@ public sealed class OperationInvocationPolicyTests
             new SingleServiceProvider(operations),
             policies: [new DangerousOperationConfirmationPolicy()]);
 
-        var result = await invoker.InvokeAsync(operation);
+        var result = await invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.Succeeded);
         Assert.Equal("Operation 'delete-all' requires explicit confirmation.", result.Error);
@@ -30,7 +30,7 @@ public sealed class OperationInvocationPolicyTests
             new SingleServiceProvider(operations),
             policies: [new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
 
-        var result = await invoker.InvokeAsync(operation);
+        var result = await invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.True(operations.WasInvoked);
@@ -46,7 +46,7 @@ public sealed class OperationInvocationPolicyTests
             new SingleServiceProvider(operations),
             policies: [policy, new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))]);
 
-        var result = await invoker.InvokeAsync(operation);
+        var result = await invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.True(policy.WasEvaluated);
@@ -64,7 +64,7 @@ public sealed class OperationInvocationPolicyTests
         var result = await new OperationInvoker(
                 new SingleServiceProvider(operations),
                 policies: [policy, new DangerousOperationConfirmationPolicy((_, _, _) => ValueTask.FromResult(true))])
-            .InvokeAsync(operation, invocationContext: context);
+            .InvokeAsync(operation, invocationContext: context, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.Same(context.Principal, policy.Context!.Principal);

@@ -11,7 +11,7 @@ public sealed class OperationInvokerTests
         var invoker = new OperationInvoker(new SingleServiceProvider(new MathOperations()));
         var inputs = new Dictionary<string, JsonElement> { ["left"] = JsonDocument.Parse("3").RootElement.Clone() };
 
-        var result = await invoker.InvokeAsync(operation, inputs);
+        var result = await invoker.InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.Equal(5, result.Value);
@@ -23,7 +23,7 @@ public sealed class OperationInvokerTests
         var operation = OperationCatalog.Discover(typeof(MathOperations)).Operations.Single();
         var invoker = new OperationInvoker(new SingleServiceProvider(new MathOperations()));
 
-        var result = await invoker.InvokeAsync(operation);
+        var result = await invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.Succeeded);
         Assert.Contains("Required input 'left'", result.Error);
@@ -36,7 +36,7 @@ public sealed class OperationInvokerTests
         var invoker = new OperationInvoker(new SingleServiceProvider(new AsyncOperations()));
         var inputs = new Dictionary<string, JsonElement> { ["value"] = JsonDocument.Parse("\"hello\"").RootElement.Clone() };
 
-        var result = await invoker.InvokeAsync(operation, inputs);
+        var result = await invoker.InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         Assert.Equal("HELLO", result.Value);

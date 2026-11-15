@@ -30,7 +30,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
         Assert.Equal(AgentSafetyLevel.Confirm, operation.SafetyLevel);
         Assert.Empty(client.CreatedJobs);
 
-        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -54,7 +54,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             ["options"] = JsonDocument.Parse("{\"batchSize\":25}").RootElement.Clone()
         };
 
-        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -80,7 +80,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
 
         var operation = Assert.Single(catalog.Operations, operation => operation.Name == "brownfield-reconciliation-job");
 
-        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -108,7 +108,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             ["options"] = JsonDocument.Parse("{\"batchSize\":7}").RootElement.Clone()
         };
 
-        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -144,7 +144,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             .Build();
 
         var operation = Assert.Single(catalog.Operations, operation => operation.Name == "overloaded-job");
-        await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         var created = Assert.Single(client.CreatedJobs);
         Assert.Single(created.Job.Method.GetParameters());
@@ -190,7 +190,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             ["options"] = JsonDocument.Parse("{\"batchSize\":\"not-a-number\"}").RootElement.Clone()
         };
 
-        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.False(result.Succeeded);
         Assert.Empty(client.CreatedJobs);
@@ -350,14 +350,14 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
         var operationB = Assert.Single(catalog.Operations, operation => operation.Name == "scan-b");
 
         var inputsA = new Dictionary<string, JsonElement> { ["options"] = JsonDocument.Parse("{\"batchSize\":3}").RootElement.Clone() };
-        var resultA = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationA, inputsA);
+        var resultA = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationA, inputsA, TestContext.Current.CancellationToken);
         Assert.True(resultA.Succeeded);
         var createdA = Assert.Single(client.CreatedJobs);
         Assert.Equal(typeof(ScanA), createdA.Job.Type);
         Assert.Equal(3, Assert.IsType<ScanOptionsA>(createdA.Job.Args[0]).BatchSize);
 
         var inputsB = new Dictionary<string, JsonElement> { ["options"] = JsonDocument.Parse("{\"label\":\"x\"}").RootElement.Clone() };
-        var resultB = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationB, inputsB);
+        var resultB = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operationB, inputsB, TestContext.Current.CancellationToken);
         Assert.True(resultB.Succeeded);
         var createdB = client.CreatedJobs.Single(created => created.Job.Type == typeof(ScanB));
         Assert.Equal("x", Assert.IsType<ScanOptionsB>(createdB.Job.Args[0]).Label);
@@ -422,7 +422,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
 
         var operation = Assert.Single(catalog.Operations, operation => operation.Name == "attribute-marked-foreign-job");
 
-        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);
@@ -446,7 +446,7 @@ public sealed class HangfireJobRegistrationCatalogBuilderExtensionsTests
             ["options"] = JsonDocument.Parse("{\"batchSize\":11}").RootElement.Clone()
         };
 
-        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs);
+        var result = await CreateInvoker(new NullServiceProvider()).InvokeAsync(operation, inputs, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded);
         var created = Assert.Single(client.CreatedJobs);

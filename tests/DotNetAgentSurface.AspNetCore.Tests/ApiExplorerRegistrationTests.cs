@@ -20,7 +20,7 @@ public sealed class ApiExplorerRegistrationTests
         await using var app = CreateApplication();
         app.MapPost("/minimal", ([FromBody] Payload payload) => Results.Ok(new { value = payload.Value }));
         app.MapControllers();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
 
         var catalog = Register(app);
         Assert.Contains(catalog.Operations, operation => operation.Name == "aspnet_post_minimal");
@@ -28,7 +28,7 @@ public sealed class ApiExplorerRegistrationTests
 
         using var document = JsonDocument.Parse("{\"value\":\"ok\"}");
         var minimal = catalog.Operations.Single(operation => operation.Name == "aspnet_post_minimal");
-        var result = await new OperationInvoker(app.Services).InvokeAsync(minimal, new Dictionary<string, JsonElement> { ["body"] = document.RootElement.Clone() });
+        var result = await new OperationInvoker(app.Services).InvokeAsync(minimal, new Dictionary<string, JsonElement> { ["body"] = document.RootElement.Clone() }, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded, result.Error);
         var response = Assert.IsType<AspNetCoreEndpointResponse>(result.Value);
@@ -41,7 +41,7 @@ public sealed class ApiExplorerRegistrationTests
     {
         await using var app = CreateApplication();
         app.MapGet("/items/{id}", (string id, [FromQuery] string q) => Results.Ok(new { id, q }));
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var catalog = Register(app);
 
         var operation = Assert.Single(catalog.Operations);
@@ -51,13 +51,11 @@ public sealed class ApiExplorerRegistrationTests
             parameter => Assert.Equal("q", parameter.Name),
             parameter => Assert.True(parameter.IsCancellationToken));
 
-        var result = await new OperationInvoker(app.Services).InvokeAsync(
-            operation,
-            new Dictionary<string, JsonElement>
+        var result = await new OperationInvoker(app.Services).InvokeAsync(operation, new Dictionary<string, JsonElement>
             {
                 ["id"] = JsonSerializer.SerializeToElement("42"),
                 ["q"] = JsonSerializer.SerializeToElement("hello world")
-            });
+            }, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded, result.Error);
         var response = Assert.IsType<AspNetCoreEndpointResponse>(result.Value);
@@ -71,7 +69,7 @@ public sealed class ApiExplorerRegistrationTests
     {
         await using var app = CreateApplication();
         app.MapControllers();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var catalog = Register(app);
 
         var operation = catalog.Operations.Single(o => o.Name == "aspnet_get_controller__id");
@@ -80,9 +78,7 @@ public sealed class ApiExplorerRegistrationTests
             parameter => Assert.Equal("id", parameter.Name),
             parameter => Assert.True(parameter.IsCancellationToken));
 
-        var result = await new OperationInvoker(app.Services).InvokeAsync(
-            operation,
-            new Dictionary<string, JsonElement> { ["id"] = JsonSerializer.SerializeToElement("42") });
+        var result = await new OperationInvoker(app.Services).InvokeAsync(operation, new Dictionary<string, JsonElement> { ["id"] = JsonSerializer.SerializeToElement("42") }, TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded, result.Error);
         var response = Assert.IsType<AspNetCoreEndpointResponse>(result.Value);
@@ -98,11 +94,11 @@ public sealed class ApiExplorerRegistrationTests
         // previously threw ArgumentException ("The path in 'value' must start with '/'").
         await using var app = CreateApplication();
         app.MapControllers();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var catalog = Register(app);
 
         var operation = catalog.Operations.Single(candidate => candidate.Name == "aspnet_get_controller");
-        var result = await new OperationInvoker(app.Services).InvokeAsync(operation);
+        var result = await new OperationInvoker(app.Services).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Equal(200, Assert.IsType<AspNetCoreEndpointResponse>(result.Value).StatusCode);
@@ -119,7 +115,7 @@ public sealed class ApiExplorerRegistrationTests
         await using var app = CreateApplication();
         app.MapGet("/items", () => Results.Ok(new { items = new[] { 1, 2, 3 } })).ExcludeFromDescription(); // Parameterless
         app.MapGet("/items/{id}", (string id) => Results.Ok(new { id })).ExcludeFromDescription(); // Parameterized (should be excluded)
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
 
         var catalog = Register(app);
 
@@ -138,11 +134,11 @@ public sealed class ApiExplorerRegistrationTests
     {
         await using var app = CreateApplication();
         app.MapGet("/protected", () => Results.Ok("secret")).RequireAuthorization();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var catalog = Register(app);
 
         var operation = Assert.Single(catalog.Operations);
-        var result = await new OperationInvoker(app.Services).InvokeAsync(operation);
+        var result = await new OperationInvoker(app.Services).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.Succeeded);
         Assert.Contains("authenticated caller", result.Error!, StringComparison.OrdinalIgnoreCase);
@@ -153,12 +149,12 @@ public sealed class ApiExplorerRegistrationTests
     {
         await using var app = CreateApplication();
         app.MapGet("/protected", () => Results.Ok("secret")).RequireAuthorization();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var operation = Assert.Single(Register(app).Operations);
         var principal = new ClaimsPrincipal(new ClaimsIdentity("test"));
 
         var result = await new OperationInvoker(app.Services)
-            .InvokeAsync(operation, invocationContext: new OperationInvocationContext(principal));
+            .InvokeAsync(operation, invocationContext: new OperationInvocationContext(principal), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Contains("secret", Assert.IsType<AspNetCoreEndpointResponse>(result.Value).Body);
@@ -169,10 +165,10 @@ public sealed class ApiExplorerRegistrationTests
     {
         await using var app = CreateApplication();
         app.MapGet("/public", () => Results.Ok("public")).RequireAuthorization().AllowAnonymous();
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var operation = Assert.Single(Register(app).Operations);
 
-        var result = await new OperationInvoker(app.Services).InvokeAsync(operation);
+        var result = await new OperationInvoker(app.Services).InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Contains("public", Assert.IsType<AspNetCoreEndpointResponse>(result.Value).Body);
@@ -183,14 +179,14 @@ public sealed class ApiExplorerRegistrationTests
     {
         await using var app = CreateApplication();
         app.MapGet("/scoped", () => Results.Ok("scoped")).RequireAuthorization("scope");
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var operation = Assert.Single(Register(app).Operations);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim("scope", "read")],
             "test"));
 
         var result = await new OperationInvoker(app.Services)
-            .InvokeAsync(operation, invocationContext: new OperationInvocationContext(principal));
+            .InvokeAsync(operation, invocationContext: new OperationInvocationContext(principal), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Contains("scoped", Assert.IsType<AspNetCoreEndpointResponse>(result.Value).Body);

@@ -162,7 +162,7 @@ public sealed class SampleHostEndToEndTests
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(RunTimeout);
         using var process = Process.Start(CreateStartInfo([]))!;
-        using var killOnCancel = timeout.Token.Register(() => KillTree(process));
+        using var killOnCancel = timeout.Token.Register(static state => KillTree((Process)state!), process);
         var stderr = ReadAllAsync(process.StandardError.BaseStream);
         await process.StandardInput.WriteAsync(input.AsMemory(), timeout.Token);
         await process.StandardInput.FlushAsync(timeout.Token);
@@ -190,7 +190,7 @@ public sealed class SampleHostEndToEndTests
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(RunTimeout);
         using var process = Process.Start(CreateStartInfo(args))!;
-        using var killOnCancel = timeout.Token.Register(() => KillTree(process));
+        using var killOnCancel = timeout.Token.Register(static state => KillTree((Process)state!), process);
         process.StandardInput.Close();
         var stdout = ReadAllAsync(process.StandardOutput.BaseStream);
         var stderr = ReadAllAsync(process.StandardError.BaseStream);

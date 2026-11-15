@@ -181,7 +181,7 @@ public sealed class AgentSessionTests : IDisposable
         var reopened = FileAgentSession.Open(directory, "shared");
         var payload = reopened.Get<string>("payload");
         Assert.NotNull(payload);
-        Assert.Equal(20_000, payload!.Length);
+        Assert.Equal(20_000, payload.Length);
         Assert.Single(payload.Distinct());
         Assert.NotNull(reopened.UpdatedAt);
         Assert.Empty(Directory.GetFiles(directory, "*.tmp"));

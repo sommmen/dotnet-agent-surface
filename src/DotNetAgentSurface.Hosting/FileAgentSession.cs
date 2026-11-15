@@ -49,7 +49,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
         string root;
         if (!string.IsNullOrWhiteSpace(stateDirectory))
         {
-            root = stateDirectory!;
+            root = stateDirectory;
         }
         else if (OperatingSystem.IsWindows())
         {
@@ -59,7 +59,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
         {
             var xdg = Environment.GetEnvironmentVariable("XDG_STATE_HOME");
             root = !string.IsNullOrWhiteSpace(xdg) && System.IO.Path.IsPathRooted(xdg)
-                ? xdg!
+                ? xdg
                 : System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "state");
         }
 
@@ -97,7 +97,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
     /// <summary>Returns whether <paramref name="id"/> is usable as a session id: 1-128 characters of letters, digits, <c>.</c>, <c>_</c> or <c>-</c>.</summary>
     public static bool IsValidId(string? id)
     {
-        if (string.IsNullOrEmpty(id) || id!.Length > MaxIdLength || id is "." or "..")
+        if (string.IsNullOrEmpty(id) || id.Length > MaxIdLength || id is "." or "..")
         {
             return false;
         }

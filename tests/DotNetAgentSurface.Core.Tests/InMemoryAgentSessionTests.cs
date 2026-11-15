@@ -1,5 +1,3 @@
-using DotNetAgentSurface.Core;
-
 namespace DotNetAgentSurface.Core.Tests;
 
 public sealed class InMemoryAgentSessionTests

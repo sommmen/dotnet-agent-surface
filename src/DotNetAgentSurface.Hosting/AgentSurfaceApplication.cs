@@ -510,7 +510,7 @@ public sealed class AgentSurfaceApplication
         id = string.IsNullOrWhiteSpace(id) ? Environment.GetEnvironmentVariable(ResolveSessionEnvironmentVariable()) : id;
         id = string.IsNullOrWhiteSpace(id)
             ? FileAgentSession.CreateWorkingDirectoryId(string.IsNullOrWhiteSpace(_sessionOptions.WorkingDirectory) ? Directory.GetCurrentDirectory() : _sessionOptions.WorkingDirectory!)
-            : id!.Trim();
+            : id.Trim();
 
         if (_sessionOptions.TimeToLive is { } timeToLive)
         {

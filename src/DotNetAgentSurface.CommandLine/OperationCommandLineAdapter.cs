@@ -103,7 +103,7 @@ public sealed class OperationCommandLineAdapter
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // Standard input failures and exceptions from a custom renderer must not escape the adapter.
-            return CommandLineExecutionResult.Failure(exception.Message, 1);
+            return CommandLineExecutionResult.Failure(exception.Message);
         }
     }
 

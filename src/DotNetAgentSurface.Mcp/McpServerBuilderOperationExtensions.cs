@@ -15,8 +15,9 @@ public static class McpServerBuilderOperationExtensions
     /// prompts, resources, hosted services and <c>McpServerOptions</c> such as <c>ServerInstructions</c>.
     /// </summary>
     /// <remarks>
-    /// Operation targets, policies, filters, the <see cref="IOperationExceptionMapper"/> and <see cref="ILoggerFactory"/> are
-    /// resolved from the request's service provider (or the root provider), so scoped services work. An instance operation whose
+    /// Operation targets and ambient parameters are resolved from the request's service provider (or the root provider), so scoped
+    /// services work there. Policies, filters, the <see cref="IOperationExceptionMapper"/> and <see cref="ILoggerFactory"/> are
+    /// resolved once from the first provider that builds a tool and reused for every request, so they must be singleton-safe. An instance operation whose
     /// declaring type is not registered is constructed per call with <see cref="ActivatorUtilities"/> and disposed afterwards,
     /// the way <c>WithTools&lt;T&gt;()</c> does.
     /// </remarks>

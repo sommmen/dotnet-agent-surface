@@ -132,8 +132,10 @@ public static class McpOperationCatalogBuilderExtensions
         {
             return McpServerTool.Create(method, static _ => throw new InvalidOperationException(), options: null).ProtocolTool.Annotations;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            System.Diagnostics.Trace.TraceWarning(
+                $"Could not read MCP SDK annotations for '{method.DeclaringType?.FullName}.{method.Name}'; its hints are not imported. {exception.GetType().Name}: {exception.Message}");
             return null;
         }
     }

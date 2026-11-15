@@ -44,7 +44,7 @@ internal sealed class McpRequestServices(RequestContext<CallToolRequestParams> r
 
         if (serviceType == typeof(ClaimsPrincipal))
         {
-            return request.User;
+            return request.User ?? inner?.GetService(serviceType);
         }
 
         return inner?.GetService(serviceType);
@@ -58,15 +58,18 @@ internal sealed class McpOperationProgress(McpServer server, ProgressToken token
 
     public void Report(ProgressNotificationValue value)
     {
-        var send = SendAsync(value);
         lock (pending)
         {
-            pending.Add(send);
+            // Each send waits for the previous one, so notifications arrive in order and the list holds only the tail.
+            var previous = pending.Count > 0 ? pending[^1] : Task.CompletedTask;
+            pending.Clear();
+            pending.Add(SendAsync(previous, value));
         }
     }
 
-    private async Task SendAsync(ProgressNotificationValue value)
+    private async Task SendAsync(Task previous, ProgressNotificationValue value)
     {
+        await previous.ConfigureAwait(false);
         try
         {
             await server.NotifyProgressAsync(token, value).ConfigureAwait(false);

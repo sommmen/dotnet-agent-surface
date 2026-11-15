@@ -38,6 +38,7 @@ public class DefaultMcpResultRenderer : IMcpResultRenderer
         switch (value)
         {
             case null:
+            case JsonElement { ValueKind: JsonValueKind.Undefined }:
                 return new CallToolResult { Content = [] };
             case CallToolResult callToolResult:
                 return callToolResult;
@@ -68,7 +69,12 @@ public class DefaultMcpResultRenderer : IMcpResultRenderer
 
 internal static class McpOutputSchema
 {
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<JsonSerializerOptions, System.Collections.Concurrent.ConcurrentDictionary<Core.OperationDescriptor, JsonElement?>> Cache = new();
+
     public static JsonElement? TryCreate(Core.OperationDescriptor operation, JsonSerializerOptions options)
+        => Cache.GetValue(options, static _ => new()).GetOrAdd(operation, op => Create(op, options));
+
+    private static JsonElement? Create(Core.OperationDescriptor operation, JsonSerializerOptions options)
     {
         var type = UnwrapReturnType(operation.DeclaredReturnType);
         if (type is null

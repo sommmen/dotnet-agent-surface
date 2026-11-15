@@ -18,7 +18,13 @@ public sealed class McpOperationTool : McpServerTool
         _adapter = adapter;
         _operation = operation;
         ProtocolTool = adapter.CreateTool(operation);
-        Metadata = [operation, operation.Method];
+        Metadata =
+        [
+            operation,
+            operation.Method,
+            .. (operation.Method.DeclaringType?.GetCustomAttributes(inherit: true) ?? []),
+            .. operation.Method.GetCustomAttributes(inherit: true),
+        ];
     }
 
     public OperationDescriptor Operation => _operation;

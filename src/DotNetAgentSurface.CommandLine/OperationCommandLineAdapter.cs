@@ -259,6 +259,55 @@ public sealed class OperationCommandLineAdapter
         return values;
     }
 
+    /// <summary>
+    /// Reads the output format (<c>json</c> or <c>toon</c>) requested with <c>--output</c>/<c>--format</c> from
+    /// <paramref name="args"/>, so a host can apply it to its configuration before building. The catalog does not exist yet at
+    /// that point, so the flag is recognized anywhere in the arguments; values other than <c>json</c> and <c>toon</c> (for
+    /// example an operation parameter named <c>output</c>) are ignored, and so are the host verbs <c>skill</c> and
+    /// <c>session</c>, which use <c>--output</c> themselves. Returns <see langword="null"/> when no format was requested.
+    /// </summary>
+    public static string? ReadOutputFormat(string[] args, IReadOnlyList<CommandLineGlobalOption>? globalOptions = null)
+    {
+        if (args is null || args.Length == 0)
+        {
+            return null;
+        }
+
+        var commandStart = FindCommandStart(args, globalOptions);
+        if (commandStart < args.Length && args[commandStart] is "skill" or "session")
+        {
+            return null;
+        }
+
+        var hostKeys = new HashSet<string>(
+            (globalOptions ?? []).Select(static option => OperationNaming.ToMatchKey(option.FlagName)),
+            StringComparer.Ordinal);
+        for (var index = 0; index < args.Length; index++)
+        {
+            if (!TrySplitFlag(args[index], out var name, out var inline))
+            {
+                continue;
+            }
+
+            var key = OperationNaming.ToMatchKey(name);
+            if (OutputKeys.Contains(key))
+            {
+                var value = inline ?? (index + 1 < args.Length ? args[index + 1] : null);
+                if (value is not null && value.ToLowerInvariant() is "json" or "toon")
+                {
+                    return value.ToLowerInvariant();
+                }
+            }
+
+            if (inline is null && (IsValueTakingBuiltin(key) || hostKeys.Contains(key)))
+            {
+                index++;
+            }
+        }
+
+        return null;
+    }
+
     private async ValueTask<CommandLineExecutionResult> ExecuteCommandAsync(
         string[] args,
         CancellationToken cancellationToken,
@@ -299,9 +348,7 @@ public sealed class OperationCommandLineAdapter
                 continue;
             }
 
-            return CommandLineExecutionResult.Failure(
-                $"Unknown operation '{token}'.\n\n{RenderNodeHelp(node, pathSegments)}",
-                2);
+            return CommandLineExecutionResult.Failure(RenderUnknownOperation(token, node, pathSegments), 2);
         }
 
         return CommandLineExecutionResult.Success(RenderNodeHelp(node, pathSegments));
@@ -324,6 +371,12 @@ public sealed class OperationCommandLineAdapter
 
         var inputs = ParseInputs(operation, remaining, state);
         InjectGlobalValues(operation, inputs, state);
+        EnsureRequiredInputs(operation, inputs);
+        if (ReturnsText(operation.DeclaredReturnType) && UnsupportedTextProjection(state) is { } unsupported)
+        {
+            return CommandLineExecutionResult.Failure(unsupported, 2);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         var confirmation = state.Confirm && state.Yes
             ? OperationConfirmation.DangerousConfirmed
@@ -335,7 +388,7 @@ public sealed class OperationCommandLineAdapter
             inputs,
             cancellationToken,
             confirmation,
-            WithSurface(invocationContext ?? _invocationContext)).ConfigureAwait(false);
+            WithSurface(invocationContext ?? _invocationContext, state.OutputFormat)).ConfigureAwait(false);
 
         if (!invocation.Succeeded)
         {
@@ -352,6 +405,11 @@ public sealed class OperationCommandLineAdapter
 
         if (invocation.Value is string text)
         {
+            if (UnsupportedTextProjection(state) is { } unsupportedText)
+            {
+                return CommandLineExecutionResult.Failure(unsupportedText, 2);
+            }
+
             return CommandLineExecutionResult.Success(text) with { IsVerbatimOutput = true };
         }
 
@@ -373,10 +431,44 @@ public sealed class OperationCommandLineAdapter
         return CommandLineExecutionResult.Success(renderer.Render(projection));
     }
 
-    private static OperationInvocationContext WithSurface(OperationInvocationContext? context) =>
+    private static OperationInvocationContext WithSurface(OperationInvocationContext? context, string? outputFormat) =>
         context is null
-            ? new OperationInvocationContext { Surface = AgentSurface.Cli }
-            : context with { Surface = AgentSurface.Cli };
+            ? new OperationInvocationContext { Surface = AgentSurface.Cli, OutputFormat = outputFormat }
+            : context with { Surface = AgentSurface.Cli, OutputFormat = outputFormat ?? context.OutputFormat };
+
+    private static string? UnsupportedTextProjection(GlobalState state)
+    {
+        var flag = state.Fields is not null ? "--fields" : state.Full ? "--full" : null;
+        return flag is null
+            ? null
+            : $"{flag} is not supported for this operation's text output: it returns a pre-rendered string, which is written verbatim. Use --output <toon|json> to ask the operation for a different format, or drop {flag}.";
+    }
+
+    private static bool ReturnsText(Type returnType)
+    {
+        if (returnType.IsGenericType)
+        {
+            var definition = returnType.GetGenericTypeDefinition().FullName;
+            if (definition is "System.Threading.Tasks.Task`1" or "System.Threading.Tasks.ValueTask`1")
+            {
+                return returnType.GetGenericArguments()[0] == typeof(string);
+            }
+        }
+
+        return returnType == typeof(string);
+    }
+
+    private static void EnsureRequiredInputs(OperationDescriptor operation, Dictionary<string, JsonElement> inputs)
+    {
+        var missing = operation.Parameters
+            .Where(parameter => parameter.IsRequired && !inputs.ContainsKey(parameter.Name))
+            .Select(static parameter => "--" + OperationNaming.ToKebabCase(parameter.Name))
+            .ToArray();
+        if (missing.Length > 0)
+        {
+            throw new CommandLineUsageException($"missing required {string.Join(", ", missing)}. Run the operation with --help for usage.");
+        }
+    }
 
     private string FormatOperationError(string? error)
     {
@@ -433,12 +525,14 @@ public sealed class OperationCommandLineAdapter
                 throw new CommandLineUsageException("Specify --output at most once.");
             }
 
-            state.Renderer = value.ToLowerInvariant() switch
+            var format = value.ToLowerInvariant();
+            state.Renderer = format switch
             {
                 "toon" => new ToonAgentOutputRenderer(),
                 "json" => new JsonAgentOutputRenderer(),
                 _ => throw new CommandLineUsageException($"Unknown --output value '{value}'. Expected 'toon' or 'json'."),
             };
+            state.OutputFormat = format;
             return true;
         }
 
@@ -673,6 +767,8 @@ public sealed class OperationCommandLineAdapter
     {
         public IAgentOutputRenderer? Renderer { get; set; }
 
+        public string? OutputFormat { get; set; }
+
         public IReadOnlyList<string>? Fields { get; set; }
 
         public bool Full { get; set; }
@@ -770,6 +866,76 @@ public sealed class OperationCommandLineAdapter
         return string.Join("\n", lines);
     }
 
+    private static string RenderUnknownOperation(string token, CommandNode node, IReadOnlyList<string> pathSegments)
+    {
+        var prefix = pathSegments.Count == 0 ? string.Empty : string.Join(" ", pathSegments) + " ";
+        var names = node.Operations.Values
+            .Distinct()
+            .Select(static operation => OperationNaming.ToKebabCase(operation.Name))
+            .Concat(node.Categories.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static name => name, StringComparer.Ordinal)
+            .ToArray();
+        var lines = new List<string> { $"Unknown operation '{token}'." };
+        var suggestions = Suggest(token, node.Operations.Keys.Select(static name => OperationNaming.ToKebabCase(name)).Concat(node.Categories.Keys).Distinct(StringComparer.OrdinalIgnoreCase));
+        if (suggestions.Count > 0)
+        {
+            lines.Add($"Did you mean: {string.Join(", ", suggestions.Select(suggestion => prefix + suggestion))}?");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(pathSegments.Count == 0 ? "Available operations:" : $"Available operations under '{string.Join(" ", pathSegments)}':");
+        lines.Add("  " + string.Join(", ", names));
+        lines.Add(string.Empty);
+        lines.Add($"Run '{(prefix.Length == 0 ? string.Empty : prefix)}--help' to list operations with descriptions.");
+        return string.Join("\n", lines);
+    }
+
+    private static IReadOnlyList<string> Suggest(string token, IEnumerable<string> candidates)
+    {
+        var target = OperationNaming.ToMatchKey(token);
+        var threshold = Math.Max(2, target.Length / 3);
+        return candidates
+            .Select(candidate =>
+            {
+                var key = OperationNaming.ToMatchKey(candidate);
+                var distance = key.Contains(target) || (target.Length >= 3 && key.StartsWith(target, StringComparison.Ordinal))
+                    ? 0
+                    : EditDistance(target, key);
+                return (Candidate: candidate, Distance: distance);
+            })
+            .Where(entry => entry.Distance <= threshold)
+            .OrderBy(static entry => entry.Distance)
+            .ThenBy(static entry => entry.Candidate, StringComparer.Ordinal)
+            .Take(3)
+            .Select(static entry => entry.Candidate)
+            .ToArray();
+    }
+
+    private static int EditDistance(string left, string right)
+    {
+        var previous = new int[right.Length + 1];
+        var current = new int[right.Length + 1];
+        for (var column = 0; column <= right.Length; column++)
+        {
+            previous[column] = column;
+        }
+
+        for (var row = 1; row <= left.Length; row++)
+        {
+            current[0] = row;
+            for (var column = 1; column <= right.Length; column++)
+            {
+                var cost = left[row - 1] == right[column - 1] ? 0 : 1;
+                current[column] = Math.Min(Math.Min(current[column - 1] + 1, previous[column] + 1), previous[column - 1] + cost);
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[right.Length];
+    }
+
     private static int CountOperations(CommandNode node) =>
         node.Operations.Values.Distinct().Count() + node.Categories.Values.Sum(CountOperations);
 
@@ -808,13 +974,13 @@ public sealed class OperationCommandLineAdapter
         return string.Join("\n", lines);
     }
 
-    private static bool IsRequired(OperationParameterDescriptor parameter) => !parameter.IsOptional && !parameter.IsNullable;
+    private static bool IsRequired(OperationParameterDescriptor parameter) => parameter.IsRequired;
 
     private static string RenderParameterHelp(OperationParameterDescriptor parameter)
     {
         var flag = $"--{OperationNaming.ToKebabCase(parameter.Name)}";
         var isBoolean = CommandLineValueConverter.IsBoolean(parameter.ParameterType);
-        var text = isBoolean ? $"  {flag} [true|false]" : $"  {flag} <{FriendlyTypeName(parameter.ParameterType)}>";
+        var text = isBoolean ? $"  {flag} [true|false]" : $"  {flag} <{FriendlyTypeName(parameter.ParameterType, detailed: true)}>";
         var traits = new List<string> { IsRequired(parameter) ? "required" : "optional" };
         if (parameter.IsOptional && parameter.DefaultValue is not null && parameter.DefaultValue is not DBNull)
         {
@@ -824,14 +990,6 @@ public sealed class OperationCommandLineAdapter
         if (isBoolean)
         {
             traits.Add($"--no-{OperationNaming.ToKebabCase(parameter.Name)} sets false");
-        }
-        else if (CommandLineValueConverter.TryGetCollectionElementType(parameter.ParameterType, out _))
-        {
-            traits.Add("repeatable");
-        }
-        else if ((Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType).IsEnum)
-        {
-            traits.Add("values: " + string.Join("|", Enum.GetNames(Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType)));
         }
 
         text += $" ({string.Join(", ", traits)})";
@@ -856,41 +1014,67 @@ public sealed class OperationCommandLineAdapter
         return string.Join("\n", lines);
     }
 
-    private static string FriendlyTypeName(Type type)
+    private static string FriendlyTypeName(Type type, bool detailed = false)
     {
-        var nullable = Nullable.GetUnderlyingType(type);
-        if (nullable is not null)
+        var target = Nullable.GetUnderlyingType(type) ?? type;
+        if (target == typeof(bool))
         {
-            return FriendlyTypeName(nullable) + "?";
+            return "boolean";
         }
 
-        if (type.IsArray)
+        if (target.IsEnum)
         {
-            return FriendlyTypeName(type.GetElementType()!) + "[]";
+            return string.Join("|", Enum.GetNames(target));
         }
 
-        if (type.IsGenericType)
+        if (target == typeof(byte) || target == typeof(sbyte) || target == typeof(short) || target == typeof(ushort)
+            || target == typeof(int) || target == typeof(uint) || target == typeof(long) || target == typeof(ulong))
         {
-            var name = type.Name.Substring(0, type.Name.IndexOf('`'));
-            return $"{name}<{string.Join(", ", type.GetGenericArguments().Select(FriendlyTypeName))}>";
+            return "integer";
         }
 
-        return type.FullName switch
+        if (target == typeof(float) || target == typeof(double) || target == typeof(decimal))
         {
-            "System.String" => "string",
-            "System.Boolean" => "bool",
-            "System.Int32" => "int",
-            "System.Int64" => "long",
-            "System.Int16" => "short",
-            "System.Double" => "double",
-            "System.Single" => "float",
-            "System.Decimal" => "decimal",
-            "System.Char" => "char",
-            "System.Object" => "json",
-            _ => type.Name,
-        };
+            return "number";
+        }
+
+        if (target == typeof(string) || target == typeof(char) || target == typeof(Guid) || target == typeof(DateTime)
+            || target == typeof(DateTimeOffset) || target == typeof(TimeSpan) || target == typeof(Uri) || target == typeof(Version)
+            || target.FullName is "System.DateOnly" or "System.TimeOnly")
+        {
+            return "string";
+        }
+
+        if (CommandLineValueConverter.TryGetCollectionElementType(target, out var element))
+        {
+            var elementName = FriendlyTypeName(element);
+            if (element.IsEnum || (Nullable.GetUnderlyingType(element)?.IsEnum ?? false))
+            {
+                elementName = $"({elementName})";
+            }
+
+            return elementName + "[]" + (detailed ? " (repeatable)" : string.Empty);
+        }
+
+        if (target == typeof(object) || target == typeof(JsonElement) || target.FullName == "System.Text.Json.Nodes.JsonNode")
+        {
+            return "JSON";
+        }
+
+        if (typeof(System.Collections.IDictionary).IsAssignableFrom(target)
+            || target.GetInterfaces().Append(target).Any(static candidate => candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>)))
+        {
+            return "object (JSON map)";
+        }
+
+        var properties = detailed
+            ? target.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Where(static property => property.CanRead && property.GetIndexParameters().Length == 0)
+                .Select(static property => JsonNamingPolicy.CamelCase.ConvertName(property.Name))
+                .ToArray()
+            : [];
+        return properties.Length > 0 ? $"object (JSON: {string.Join(", ", properties)})" : "object (JSON)";
     }
-
     /// <summary>
     /// A single level of the category tree: operations reachable directly at this level (keyed by name and by
     /// each alias, case-insensitively) plus nested category nodes (keyed by category segment, case-insensitively).

@@ -26,4 +26,11 @@ public sealed class AgentSessionOptions
 
     /// <summary>Gets or sets the directory hashed into the default session id. Defaults to the current directory.</summary>
     public string? WorkingDirectory { get; set; }
+
+    /// <summary>
+    /// Gets the session keys whose values <c>session show</c> masks, matched case-insensitively. The values are still stored
+    /// in the session file, so this only keeps them out of terminal output and logs; it does not make a session a safe place
+    /// for secrets.
+    /// </summary>
+    public ISet<string> SensitiveKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 }

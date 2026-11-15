@@ -31,6 +31,15 @@ versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
+### Fixed and added (CLI e2e findings from dotnet-efcore-mcp, #106)
+
+- **Output format reaches the host.** `IOperationContext.OutputFormat` (new interface member, recorded in `CompatibilitySuppressions.xml`: only a custom `IOperationContext` implementation must add it, and the library supplies the only implementation hosts receive; `null` without the flag) and `OperationInvocationContext.OutputFormat` carry the CLI's `--output`/`--format` value (`json` or `toon`). `AgentSurfaceApplication.BindOutputFormat(configKey, map)` maps it to a host configuration key before the host is built, via the new `OperationCommandLineAdapter.ReadOutputFormat`. `--fields` / `--full` with an operation that returns a string now exit 2 with `--fields is not supported for this operation's text output` instead of being silently ignored.
+- **Required parameters are enforced in the CLI.** A parameter without a default value (`OperationParameterDescriptor.IsRequired`, the same set as the MCP schema's `required` list) must be supplied; otherwise exit 2 with `missing required --name`. Behaviour change: a nullable parameter without a default (`string? name`) was previously passed as `null` and is now required, as it already was over MCP; give it `= null` to keep it optional.
+- **Help shows friendly types:** `string`, `integer`, `number`, `boolean`, `string[] (repeatable)`, `object (JSON: prop, ...)` and `Alpha|Beta` for enums instead of CLR names.
+- **Unknown operation** exits 2 listing operation names only plus up to three did-you-mean suggestions.
+- **`SensitiveKeys`.** `ConfigureSession(o => o.SensitiveKeys.Add("cursorKey"))` makes `cli session show` print `***` for that key.
+- **`cli session` and `cli skill` without a subcommand** exit 2 with the usage on stderr.
+
 ### Added (CI and release hardening, #89)
 
 - **Lowest-supported-dependency CI job** (`lowest-dependencies` in `ci.yml`). Restoring, building and testing with `-p:UseLowestSupportedDependencies=true` swaps the `PackageVersion` entries in `Directory.Packages.props` for the `Min*Version` floors declared there (ModelContextProtocol 2.3.1, Toon.DotNet 4.1.1, Microsoft.Extensions.* 10.0.0, System.Text.Json 10.0.1). Raise a floor only when the code needs something newer. Run it locally with the same switch.

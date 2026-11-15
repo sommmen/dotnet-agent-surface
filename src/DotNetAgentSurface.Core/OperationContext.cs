@@ -19,6 +19,13 @@ public interface IOperationContext
 
     /// <summary>Gets the authenticated caller, when the host supplied one.</summary>
     ClaimsPrincipal? Caller { get; }
+
+    /// <summary>
+    /// Gets the output format the caller asked for, for example <c>json</c> or <c>toon</c> from the CLI's <c>--output</c>
+    /// flag, or <see langword="null"/> when none was requested. Operations that return pre-rendered text use it to pick a
+    /// representation.
+    /// </summary>
+    string? OutputFormat { get; }
 }
 
 /// <summary>
@@ -57,6 +64,8 @@ internal sealed class OperationContext(OperationDescriptor operation, OperationI
     public string RequestId => context.RequestId ?? string.Empty;
 
     public ClaimsPrincipal? Caller => context.Principal;
+
+    public string? OutputFormat => context.OutputFormat;
 }
 
 internal static class AmbientParameters

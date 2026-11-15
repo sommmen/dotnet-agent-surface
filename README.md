@@ -105,7 +105,7 @@ CLI over the same `Microsoft.Extensions.Hosting` composition. See
 `samples/DotNetAgentSurface.Samples.CliAndMcp`. A `string` result is printed verbatim; flags accept
 `--name=value`, bare booleans, `--no-name`, kebab-case names, `@file` and `-` (stdin) values.
 
-CLI operation output defaults to token-efficient TOON. Use `--output json` for compact JSON (or `--output toon` explicitly). For object lists, `--fields name,id` selects output fields; `--full` disables the default truncation of long string values.
+CLI operation output defaults to token-efficient TOON. Use `--output json` for compact JSON (or `--output toon` explicitly). For object lists, `--fields name,id` selects output fields; `--full` disables the default truncation of long string values. `--fields` and `--full` apply to object results only; with an operation that returns a string they exit 2 instead of being ignored. The requested format is available to operations as `IOperationContext.OutputFormat`, and `AgentSurfaceApplication.BindOutputFormat(configKey)` maps it to a host configuration key so string-returning hosts can render JSON. Missing required parameters exit 2 (`missing required --name`), and `ConfigureSession(o => o.SensitiveKeys.Add("key"))` masks a session value in `cli session show`.
 
 It is also exposed as an MCP tool named `find-customer` and an entry in generated skill documentation. The category-chain behavior is the current routing decision; the fluent registration, diagnostics, projection, and output-rendering work needed to complete it are tracked in [docs/development/testing-and-open-decisions.md](docs/development/testing-and-open-decisions.md#planned-work-items).
 

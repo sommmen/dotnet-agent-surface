@@ -50,7 +50,12 @@ public static class SkillGeneratorCommand
 
         try
         {
-            if (args.Length == 0 || args[0] is "--help" or "-h")
+            if (args.Length == 0)
+            {
+                return new ValueTask<CommandLineExecutionResult>(CommandLineExecutionResult.Failure(RenderHelp(), 2));
+            }
+
+            if (args[0] is "--help" or "-h")
             {
                 return new ValueTask<CommandLineExecutionResult>(CommandLineExecutionResult.Success(RenderHelp()));
             }

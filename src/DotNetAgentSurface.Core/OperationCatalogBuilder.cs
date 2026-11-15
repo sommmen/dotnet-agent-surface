@@ -106,7 +106,8 @@ public sealed class OperationCatalogBuilder
             SafetyLevel = options.SafetyLevel,
             Examples = [.. options.Examples],
             Aliases = [.. options.Aliases],
-            IsIdempotent = options.IsIdempotent
+            IsIdempotent = options.IsIdempotent,
+            Surfaces = options.Surfaces
         };
 
         _operations.Add(new OperationDescriptor(

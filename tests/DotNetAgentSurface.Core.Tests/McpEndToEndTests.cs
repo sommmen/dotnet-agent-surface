@@ -226,6 +226,21 @@ public sealed class McpEndToEndTests
     }
 
     [Fact]
+    public async Task Filters_that_never_started_are_not_told_about_the_failure()
+    {
+        var events = new List<string>();
+        var invoker = new OperationInvoker(
+            new EmptyServices(),
+            options: new OperationInvokerOptions { Filters = { new OrderFilter("first", events), new ThrowingFilter(), new OrderFilter("third", events) } });
+        var operation = OperationCatalog.Discover(typeof(GreetingOperations)).Operations.Single(operation => operation.Name == "greet");
+
+        var result = await invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(["first:before:greet", "first:error:greet", "first:after:greet"], events);
+    }
+
+    [Fact]
     public async Task Structured_content_is_opt_in_per_operation()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -395,7 +410,7 @@ public sealed class McpEndToEndTests
     public sealed class AmbientOperations
     {
         [AgentOperation("ambient", "Uses ambient parameters")]
-        public string Ambient(
+        public async Task<string> Ambient(
             string value,
             McpServer server,
             RequestContext<CallToolRequestParams> context,
@@ -406,6 +421,7 @@ public sealed class McpEndToEndTests
             CancellationToken cancellationToken)
         {
             progress.Report(new ProgressNotificationValue { Progress = 1, Total = 2, Message = "half" });
+            await Task.Delay(300, cancellationToken);
             var scoped = services.GetRequiredService<ScopedCounter>().Value;
             return $"{value}|{operationContext.Surface}|server={!ReferenceEquals(server, null)}|ctx={!ReferenceEquals(context, null)}|scoped={scoped}|id={operationContext.RequestId.Length > 0}";
         }
@@ -420,6 +436,11 @@ public sealed class McpEndToEndTests
                 values.Add(value);
             }
         }
+    }
+
+    private sealed class ThrowingFilter : OperationInvocationFilter
+    {
+        public override ValueTask OnInvokingAsync(OperationInvocationFilterContext context) => throw new InvalidOperationException("filter failed");
     }
 
     private sealed class RecordingFilter : OperationInvocationFilter;

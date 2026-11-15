@@ -226,6 +226,21 @@ public sealed class McpEndToEndTests
     }
 
     [Fact]
+    public async Task Filters_that_never_started_are_not_told_about_the_failure()
+    {
+        var events = new List<string>();
+        var invoker = new OperationInvoker(
+            new EmptyServices(),
+            options: new OperationInvokerOptions { Filters = { new OrderFilter("first", events), new ThrowingFilter(), new OrderFilter("third", events) } });
+        var operation = OperationCatalog.Discover(typeof(GreetingOperations)).Operations.Single(operation => operation.Name == "greet");
+
+        var result = await invoker.InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(["first:before:greet", "first:error:greet", "first:after:greet"], events);
+    }
+
+    [Fact]
     public async Task Structured_content_is_opt_in_per_operation()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -420,6 +435,11 @@ public sealed class McpEndToEndTests
                 values.Add(value);
             }
         }
+    }
+
+    private sealed class ThrowingFilter : OperationInvocationFilter
+    {
+        public override ValueTask OnInvokingAsync(OperationInvocationFilterContext context) => throw new InvalidOperationException("filter failed");
     }
 
     private sealed class RecordingFilter : OperationInvocationFilter;

@@ -138,21 +138,31 @@ public sealed class McpOperationAdapter
             return null;
         }
 
-        var result = await request.Server.ElicitAsync(
-            new ElicitRequestParams
-            {
-                Message = $"The operation '{operation.Name}' is marked '{operation.SafetyLevel}'. {operation.Description} Do you want to run it?",
-                RequestedSchema = new ElicitRequestParams.RequestSchema
+        bool approved;
+        try
+        {
+            var result = await request.Server.ElicitAsync(
+                new ElicitRequestParams
                 {
-                    Properties = { ["confirm"] = new ElicitRequestParams.BooleanSchema { Title = "Run this operation", Default = false } },
+                    Message = $"The operation '{operation.Name}' is marked '{operation.SafetyLevel}'. {operation.Description} Do you want to run it?",
+                    RequestedSchema = new ElicitRequestParams.RequestSchema
+                    {
+                        Properties = { ["confirm"] = new ElicitRequestParams.BooleanSchema { Title = "Run this operation", Default = false } },
+                    },
                 },
-            },
-            cancellationToken).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
 
-        var approved = result.IsAccepted
-            && result.Content is { } content
-            && content.TryGetValue("confirm", out var answer)
-            && answer.ValueKind == JsonValueKind.True;
+            approved = result.IsAccepted
+                && result.Content is { } content
+                && content.TryGetValue("confirm", out var answer)
+                && answer.ValueKind == JsonValueKind.True;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Elicitation only supplements confirmation: a client that cannot answer leaves the policy to deny as usual.
+            return null;
+        }
+
         if (!approved)
         {
             return null;

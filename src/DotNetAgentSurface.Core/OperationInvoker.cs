@@ -99,7 +99,7 @@ public sealed class OperationInvoker
         }
         catch (Exception exception)
         {
-            result = await MapExceptionAsync(filterContext, exception).ConfigureAwait(false);
+            result = await MapExceptionAsync(filterContext, exception, entered).ConfigureAwait(false);
         }
 
         for (var index = entered - 1; index >= 0; index--)
@@ -110,7 +110,8 @@ public sealed class OperationInvoker
             }
             catch (Exception exception)
             {
-                result = await MapExceptionAsync(filterContext, exception).ConfigureAwait(false);
+                // Filters that already ran their "after" step are not told about a later failing one.
+                result = await MapExceptionAsync(filterContext, exception, 0).ConfigureAwait(false);
             }
         }
 
@@ -146,11 +147,11 @@ public sealed class OperationInvoker
         }
         finally
         {
-            await DisposeTargetAsync(ownsTarget ? target : null).ConfigureAwait(false);
+            await DisposeTargetAsync(ownsTarget ? target : null, operation).ConfigureAwait(false);
         }
     }
 
-    private async ValueTask<OperationInvocationResult> MapExceptionAsync(OperationInvocationFilterContext filterContext, Exception exception)
+    private async ValueTask<OperationInvocationResult> MapExceptionAsync(OperationInvocationFilterContext filterContext, Exception exception, int enteredFilters)
     {
         var unwrapped = exception;
         while (unwrapped is TargetInvocationException { InnerException: not null } wrapper)
@@ -158,7 +159,7 @@ public sealed class OperationInvoker
             unwrapped = wrapper.InnerException!;
         }
 
-        foreach (var filter in _filters)
+        foreach (var filter in _filters.Take(enteredFilters))
         {
             try
             {
@@ -181,17 +182,27 @@ public sealed class OperationInvoker
         }
     }
 
-    private static async ValueTask DisposeTargetAsync(object? target)
+    // A throwing Dispose must not replace the outcome of an operation that already ran. A result must not stay tied to a
+    // target created through TargetFactory, because the target is released as soon as the result is awaited.
+    private async ValueTask DisposeTargetAsync(object? target, OperationDescriptor operation)
     {
-        if (target is IAsyncDisposable asyncDisposable)
+        try
         {
-            await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            if (target is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else if (target is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
         }
-        else if (target is IDisposable disposable)
+        catch (Exception exception)
         {
-            disposable.Dispose();
+            _logger?.LogWarning(exception, "Disposing the target of operation '{Operation}' failed.", operation.Name);
         }
     }
+
     /// <summary>
     /// Guards against the trap where <see cref="OperationDescriptor.SafetyLevel"/> looks gated (<see
     /// cref="AgentSafetyLevel.Confirm"/> or <see cref="AgentSafetyLevel.Dangerous"/>) but no supplied policy

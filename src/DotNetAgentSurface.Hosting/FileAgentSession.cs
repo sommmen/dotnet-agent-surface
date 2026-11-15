@@ -171,6 +171,20 @@ public sealed class FileAgentSession : InMemoryAgentSession
         }
     }
 
+    /// <summary>Marks an existing session file as recently used so read-only sessions are not pruned while in use. Best effort.</summary>
+    public void Touch()
+    {
+        try
+        {
+            if (File.Exists(Path))
+            {
+                File.SetLastWriteTimeUtc(Path, DateTime.UtcNow);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
     /// <summary>Writes the session if it changed since it was loaded. Returns whether a file was written.</summary>
     public bool Save()
     {

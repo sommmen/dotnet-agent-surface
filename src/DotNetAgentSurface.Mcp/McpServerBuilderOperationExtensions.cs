@@ -61,9 +61,10 @@ public static class McpServerBuilderOperationExtensions
 
         var options = new McpOperationOptions();
         configure?.Invoke(options);
-        var holder = new AdapterHolder(catalog, options);
+        var mcpCatalog = catalog.ForSurface(AgentSurface.Mcp);
+        var holder = new AdapterHolder(mcpCatalog, options);
 
-        foreach (var operation in catalog.Operations)
+        foreach (var operation in mcpCatalog.Operations)
         {
             builder.Services.AddSingleton<McpServerTool>(services => new McpOperationTool(holder.Get(services), operation));
         }

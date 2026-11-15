@@ -98,6 +98,13 @@ myapp-cli customers find-customer --email customer@example.com
 
 The category is the command group and the operation name is the leaf command. Nested categories extend the chain from left to right (for example, `projects archived list`), while an operation without a category stays at the root (`myapp-cli find-customer ...`). Category and operation lookup is case-insensitive, but help output is sorted using ordinal rules so the result is deterministic. Two operations that normalize to the same full command path are rejected during catalog construction; the CLI reports the collision as a structured error rather than selecting one based on discovery order.
 
+One executable can serve both surfaces. `DotNetAgentSurface.Hosting` provides
+`AgentSurfaceApplication`: `myserver` runs the MCP stdio server and `myserver cli <operation> ...` runs the
+CLI over the same `Microsoft.Extensions.Hosting` composition. See
+[docs/development/cli-adapter.md](docs/development/cli-adapter.md#dual-surface-hosting) and
+`samples/DotNetAgentSurface.Samples.CliAndMcp`. A `string` result is printed verbatim; flags accept
+`--name=value`, bare booleans, `--no-name`, kebab-case names, `@file` and `-` (stdin) values.
+
 CLI operation output defaults to token-efficient TOON. Use `--output json` for compact JSON (or `--output toon` explicitly). For object lists, `--fields name,id` selects output fields; `--full` disables the default truncation of long string values.
 
 It is also exposed as an MCP tool named `find-customer` and an entry in generated skill documentation. The category-chain behavior is the current routing decision; the fluent registration, diagnostics, projection, and output-rendering work needed to complete it are tracked in [docs/development/testing-and-open-decisions.md](docs/development/testing-and-open-decisions.md#planned-work-items).

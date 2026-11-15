@@ -26,6 +26,7 @@ public sealed class OperationDescriptor
         Aliases = Array.AsReadOnly(operation.Aliases);
         IsIdempotent = operation.IsIdempotent;
         Hints = (hints ?? OperationHints.Empty).WithFallback(operation.GetHints());
+        Surfaces = operation.Surfaces;
         PolicyMetadata = Array.AsReadOnly((policyMetadata ?? []).ToArray());
         InvocationPolicies = Array.AsReadOnly((invocationPolicies ?? []).ToArray());
         Parameters = Array.AsReadOnly(method.GetParameters().Select(parameter =>
@@ -88,6 +89,16 @@ public sealed class OperationDescriptor
 
     /// <summary>Gets the independent descriptive hints (title, read-only, destructive, idempotent, open-world) for this operation.</summary>
     public OperationHints Hints { get; }
+    /// <summary>Gets the adapter surfaces this operation is exposed on.</summary>
+    public AgentSurfaces Surfaces { get; }
+
+    /// <summary>Returns whether this operation is exposed on <paramref name="surface"/>. <see cref="AgentSurface.Unknown"/> matches every operation that is exposed anywhere.</summary>
+    public bool IsAvailableOn(AgentSurface surface) => surface switch
+    {
+        AgentSurface.Mcp => (Surfaces & AgentSurfaces.Mcp) != 0,
+        AgentSurface.Cli => (Surfaces & AgentSurfaces.Cli) != 0,
+        _ => Surfaces != AgentSurfaces.None,
+    };
 
     public MethodInfo Method { get; }
 

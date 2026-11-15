@@ -15,4 +15,4 @@ Requests that a currently registered recurring job be triggered. By default the 
 - Idempotent: `no`
 
 ### Parameters
-- `--jobId` (String), required
+- `--job-id` (String), required

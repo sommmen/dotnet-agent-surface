@@ -69,7 +69,8 @@ public sealed class OperationCatalogBuilder
             SafetyLevel = options.SafetyLevel,
             Examples = [.. options.Examples],
             Aliases = [.. options.Aliases],
-            IsIdempotent = options.IsIdempotent
+            IsIdempotent = options.IsIdempotent,
+            Surfaces = options.Surfaces
         };
 
         _operations.Add(new OperationDescriptor(
@@ -160,6 +161,8 @@ public sealed class OperationRegistrationOptions
 
     /// <summary>Open-world hint. Not advertised when <see langword="null"/>.</summary>
     public bool? OpenWorld { get; set; }
+    /// <summary>Mirrors <see cref="AgentOperationAttribute.Surfaces"/>: the adapter surfaces the operation is exposed on. Defaults to <see cref="AgentSurfaces.All"/>.</summary>
+    public AgentSurfaces Surfaces { get; set; } = AgentSurfaces.All;
 
     /// <summary>Metadata made available to invocation policies without exposing it as operation input.</summary>
     public List<object> PolicyMetadata { get; } = [];

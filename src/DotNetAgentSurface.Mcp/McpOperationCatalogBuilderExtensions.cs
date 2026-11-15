@@ -65,6 +65,7 @@ public static class McpOperationCatalogBuilderExtensions
         var importOptions = new McpToolImportOptions();
         configure?.Invoke(importOptions);
         var include = importOptions.Include ?? (static _ => true);
+        var surfaces = importOptions.Surfaces ?? (static _ => AgentSurfaces.All);
 
         foreach (var toolType in GetLoadableTypes(assembly)
                      .Where(static type => type.IsClass && type.IsDefined(typeof(McpServerToolTypeAttribute), inherit: false)))
@@ -101,6 +102,7 @@ public static class McpOperationCatalogBuilderExtensions
                         ? AgentSafetyLevel.Dangerous
                         : AgentSafetyLevel.Safe;
                     options.IsIdempotent = attribute.Idempotent;
+                    options.Surfaces = surfaces(method);
                     options.Title = string.IsNullOrWhiteSpace(attribute.Title) ? null : attribute.Title;
                     options.ReadOnly = sdkAnnotations?.ReadOnlyHint;
                     options.Destructive = sdkAnnotations?.DestructiveHint;

@@ -1,4 +1,10 @@
 {
+  "archive-old-records-job": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
   "damage-sync-job": {
     "type": "object",
     "properties": {

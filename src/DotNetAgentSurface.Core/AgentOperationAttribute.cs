@@ -37,6 +37,9 @@ public sealed class AgentOperationAttribute : Attribute
 
     public bool IsIdempotent { get; init; }
 
+    /// <summary>Gets the adapter surfaces this operation is exposed on. Defaults to <see cref="AgentSurfaces.All"/>.</summary>
+    public AgentSurfaces Surfaces { get; init; } = AgentSurfaces.All;
+
     private bool? _readOnly;
     private bool? _destructive;
     private bool? _idempotent;

@@ -213,7 +213,7 @@ land in either order. No coordination needed — recorded so it is not re-discov
 | Leaked SQL Server container | Low | Verify `DisposeAsync` runs; §2 |
 | Zero discovery | Medium | Missing `OutputType=Exe`; compare per-project counts |
 | `dotnet pack` output changes | Low | `IsPackable=false` per project; §5.4 |
-| `xUnit1051` warning volume | Certain | Advisory here; see below |
+| `xUnit1051` warning volume | Certain | Fixed at the call sites; see below |
 
 ### `xUnit1051`
 
@@ -222,9 +222,11 @@ land in either order. No coordination needed — recorded so it is not re-discov
 `TestContext.Current.CancellationToken`"). A trial migration of a comparable repository
 (546 tests) produced **150 of these warnings** and no other new rule.
 
-Neither `src/Directory.Build.props` nor the test projects set `TreatWarningsAsErrors`,
-so the build still succeeds and these are advisory. Land the migration first and fix
-the sites as follow-up work.
+The repository now builds with `TreatWarningsAsErrors` (set once in the root `Directory.Build.props`
+and applied to `src/`, `tests/` and `samples/`), so `xUnit1051` is not advisory: every
+call to a method that accepts a `CancellationToken` in a test passes
+`TestContext.Current.CancellationToken`, and a new site fails the build. Do not downgrade the rule
+or add it to `NoWarn`/`WarningsNotAsErrors`.
 
 ## 8. Verification
 

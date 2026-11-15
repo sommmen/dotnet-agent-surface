@@ -894,12 +894,17 @@ public sealed class OperationCommandLineAdapter
     private static IReadOnlyList<string> Suggest(string token, IEnumerable<string> candidates)
     {
         var target = OperationNaming.ToMatchKey(token);
+        if (target.Length < 2)
+        {
+            return [];
+        }
+
         var threshold = Math.Max(2, target.Length / 3);
         return candidates
             .Select(candidate =>
             {
                 var key = OperationNaming.ToMatchKey(candidate);
-                var distance = key.Contains(target) || (target.Length >= 3 && key.StartsWith(target, StringComparison.Ordinal))
+                var distance = key.Contains(target, StringComparison.Ordinal)
                     ? 0
                     : EditDistance(target, key);
                 return (Candidate: candidate, Distance: distance);

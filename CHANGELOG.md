@@ -31,6 +31,12 @@ versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
+### Added (CI and release hardening, #89)
+
+- **Lowest-supported-dependency CI job** (`lowest-dependencies` in `ci.yml`). Restoring, building and testing with `-p:UseLowestSupportedDependencies=true` swaps the `PackageVersion` entries in `Directory.Packages.props` for the `Min*Version` floors declared there (ModelContextProtocol 2.3.1, Toon.DotNet 4.1.1, Microsoft.Extensions.* 10.0.0, System.Text.Json 10.0.1). Raise a floor only when the code needs something newer. Run it locally with the same switch.
+- **Package validation.** `EnablePackageValidation` is on for every packable project, compared against `PackageValidationBaselineVersion` (the latest nuget.org preview, set in `src/Directory.Build.props`) whenever `dotnet pack` runs; CI packs after testing. Policy: an unintended API break fails the build. An *intentional* `0.x` break is recorded with `dotnet pack -p:ApiCompatGenerateSuppressionFile=true`, which writes a reviewed `CompatibilitySuppressions.xml` next to the project, and is listed under **Breaking changes** here; validation is never disabled. Bump the baseline (and delete the suppressions it made obsolete) after a release that should become the new reference.
+- `publish.yml` now runs the tests before packing, so a red build never reaches nuget.org, adds `concurrency` (publishes are serialised, never cancelled) and `timeout-minutes`, and pins `NuGet/login` to the `v1.2.0` commit SHA.
+
 ### Fixed (session concurrency, #101)
 
 - `FileAgentSession.Save` no longer loses updates from concurrent CLI processes. It takes a short exclusive lock on `<id>.json.lock`, re-reads the file, applies only the keys the invocation changed and replaces the file atomically. `Set` on the *same* key is still last-writer-wins.

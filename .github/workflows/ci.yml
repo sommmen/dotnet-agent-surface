@@ -36,3 +36,33 @@ jobs:
 
       - name: Run tests
         run: dotnet test DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --verbosity normal --report-gh
+
+      # Packing runs package validation against the published baseline (see src/Directory.Build.props).
+      - name: Pack (package validation)
+        run: dotnet pack DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --output ./artifacts
+
+  lowest-dependencies:
+    name: Build and Test (lowest supported dependencies)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # Swaps the floors declared in Directory.Packages.props (UseLowestSupportedDependencies) for the latest versions.
+      - name: Restore at lowest supported versions
+        run: dotnet restore DotNetAgentSurface.slnx -p:UseLowestSupportedDependencies=true
+
+      - name: Build
+        run: dotnet build DotNetAgentSurface.slnx --no-restore --configuration Release -p:UseLowestSupportedDependencies=true
+
+      - name: Run tests
+        run: dotnet test DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --verbosity normal --report-gh -p:UseLowestSupportedDependencies=true

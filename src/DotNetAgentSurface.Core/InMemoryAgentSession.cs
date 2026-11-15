@@ -76,7 +76,7 @@ public class InMemoryAgentSession : IAgentSession
         }
     }
 
-    /// <inheritdoc cref="IAgentSession.GetOrAdd{T}(string, Func{T})" />
+    /// <summary>Returns the value under <paramref name="key"/>, creating it with <paramref name="factory"/> when there is none, atomically in process.</summary>
     public virtual T GetOrAdd<T>(string key, Func<T> factory)
     {
         Guard.ThrowIfNull(key);
@@ -94,7 +94,7 @@ public class InMemoryAgentSession : IAgentSession
         }
     }
 
-    /// <inheritdoc cref="IAgentSession.Update{T}(string, Func{T, T})" />
+    /// <summary>Replaces the value under <paramref name="key"/> with <c>update(current)</c> atomically in process and returns it.</summary>
     public virtual T Update<T>(string key, Func<T?, T> update)
     {
         Guard.ThrowIfNull(key);

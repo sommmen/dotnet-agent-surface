@@ -184,6 +184,25 @@ public sealed class CliErgonomicsTests : IDisposable
         Assert.Equal(expected, OperationCommandLineAdapter.FindCommandStart(args, options));
     }
 
+    [Theory]
+    [InlineData(new[] { "clear", "--session", "x" }, new[] { "clear" })]
+    [InlineData(new[] { "--connection=x", "check", "--out-dir", "d", "--format", "json" }, new[] { "check", "--out-dir", "d" })]
+    [InlineData(new[] { "check", "--full", "--bogus", "--connection" }, new[] { "check", "--bogus", "--connection" })]
+    public void RemoveGlobalFlags_strips_global_flags_and_keeps_everything_else(string[] args, string[] expected)
+    {
+        var options = new[] { new CommandLineGlobalOption("--connection"), new CommandLineGlobalOption("--session") };
+
+        Assert.Equal(expected, OperationCommandLineAdapter.RemoveGlobalFlags(args, options));
+    }
+
+    [Fact]
+    public void RemoveGlobalFlags_keeps_flags_the_verb_owns()
+    {
+        Assert.Equal(
+            new[] { "generate", "--output", "dir" },
+            OperationCommandLineAdapter.RemoveGlobalFlags(["generate", "--output", "dir"], null, ["output"]));
+    }
+
     private sealed class ThrowingReader : TextReader
     {
         public override string ReadToEnd() => throw new IOException("pipe closed");

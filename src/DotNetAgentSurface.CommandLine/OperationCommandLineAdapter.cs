@@ -138,6 +138,83 @@ public sealed class OperationCommandLineAdapter
     }
 
     /// <summary>
+    /// Removes the global flags (and their values) from <paramref name="args"/> and returns what is left, so a host verb
+    /// such as <c>session</c> or <c>skill</c> accepts <c>--session x</c> or <c>--format json</c> after the verb as well as
+    /// before it. Recognizes the adapter's own flags and <paramref name="globalOptions"/>; <paramref name="exceptFlags"/>
+    /// names flags (without dashes) that must be left in place because the verb uses them itself. A value-taking flag
+    /// without a value is left in place so the verb rejects it. Everything else, including unknown flags, is kept.
+    /// </summary>
+    public static string[] RemoveGlobalFlags(string[] args, IReadOnlyList<CommandLineGlobalOption>? globalOptions = null, IEnumerable<string>? exceptFlags = null)
+    {
+        if (args is null)
+        {
+            return [];
+        }
+
+        var hostKeys = new HashSet<string>(
+            (globalOptions ?? []).Select(static option => OperationNaming.ToMatchKey(option.FlagName)),
+            StringComparer.Ordinal);
+        var excluded = new HashSet<string>((exceptFlags ?? []).Select(OperationNaming.ToMatchKey), StringComparer.Ordinal);
+        var kept = new List<string>(args.Length);
+        for (var index = 0; index < args.Length; index++)
+        {
+            if (!TrySplitFlag(args[index], out var name, out var inline))
+            {
+                kept.Add(args[index]);
+                continue;
+            }
+
+            var key = OperationNaming.ToMatchKey(name);
+            if (excluded.Contains(key) || !(IsValueTakingBuiltin(key) || IsBooleanBuiltin(key) || hostKeys.Contains(key)))
+            {
+                kept.Add(args[index]);
+                continue;
+            }
+
+            if (inline is not null || IsBooleanBuiltin(key))
+            {
+                continue;
+            }
+
+            if (index + 1 < args.Length && !(args[index + 1].StartsWith("--", StringComparison.Ordinal) && args[index + 1].Length > 2))
+            {
+                index++;
+            }
+            else
+            {
+                kept.Add(args[index]);
+            }
+        }
+
+        return [.. kept];
+    }
+
+    /// <summary>
+    /// Describes the global flags for a host verb's help: the adapter's own flags (without <paramref name="exceptFlags"/>)
+    /// followed by <paramref name="globalOptions"/>.
+    /// </summary>
+    public static string RenderGlobalFlagHelp(IReadOnlyList<CommandLineGlobalOption>? globalOptions = null, IEnumerable<string>? exceptFlags = null)
+    {
+        var excluded = new HashSet<string>((exceptFlags ?? []).Select(OperationNaming.ToMatchKey), StringComparer.Ordinal);
+        var lines = new List<string> { "Global flags (accepted before or after the command):" };
+        if (!excluded.Contains("output"))
+        {
+            lines.Add("  --output <toon|json> (alias: --format)");
+        }
+        else if (!excluded.Contains("format"))
+        {
+            lines.Add("  --format <toon|json>");
+        }
+
+        lines.Add("  --fields <name,...>");
+        lines.Add("  --full");
+        lines.Add("  --confirm");
+        lines.Add("  --yes");
+        lines.AddRange((globalOptions ?? []).Select(static option =>
+            $"  --{option.FlagName} <value>{(string.IsNullOrWhiteSpace(option.Description) ? string.Empty : " - " + option.Description)}"));
+        return string.Join("\n", lines);
+    }
+    /// <summary>
     /// Reads the values of <paramref name="globalOptions"/> that declare a <see cref="CommandLineGlobalOption.ConfigKey"/>
     /// from <paramref name="args"/>, so a host can apply them to its configuration before building. The catalog does
     /// not exist yet at that point, so the flags are recognized anywhere in the arguments; avoid naming a configuration

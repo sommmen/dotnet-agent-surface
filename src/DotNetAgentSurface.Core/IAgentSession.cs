@@ -33,6 +33,7 @@ public interface IAgentSession
     /// <summary>Removes the value stored under <paramref name="key"/>, if any.</summary>
     void Remove(string key);
 
+#if NET
     /// <summary>
     /// Returns the value stored under <paramref name="key"/>, creating it with <paramref name="factory"/> when there is none.
     /// </summary>
@@ -43,7 +44,6 @@ public interface IAgentSession
     /// implementation is a non-atomic <see cref="Get{T}(string)"/> then <see cref="Set{T}(string, T)"/>; it persists whenever
     /// the implementation does.
     /// </remarks>
-#if NET
     T GetOrAdd<T>(string key, Func<T> factory)
     {
         if (Get<T>(key) is { } existing)
@@ -55,7 +55,6 @@ public interface IAgentSession
         Set(key, created);
         return created;
     }
-#endif
 
     /// <summary>
     /// Replaces the value under <paramref name="key"/> with <c>update(current)</c> (<c>current</c> is <see langword="default"/>
@@ -68,7 +67,6 @@ public interface IAgentSession
     /// side-effect free. The default implementation is a non-atomic <see cref="Get{T}(string)"/> then
     /// <see cref="Set{T}(string, T)"/>.
     /// </remarks>
-#if NET
     T Update<T>(string key, Func<T?, T> update)
     {
         var updated = update(Get<T>(key));
@@ -80,13 +78,13 @@ public interface IAgentSession
 
 #if !NET
 /// <summary>
-/// <see cref="IAgentSession.GetOrAdd{T}(string, Func{T})"/> and <see cref="IAgentSession.Update{T}(string, Func{T, T})"/> for
+/// <c>GetOrAdd</c> and <c>Update</c> for <see cref="IAgentSession"/> on
 /// targets without default interface members: <see cref="InMemoryAgentSession"/> (and file-backed subclasses) use their
 /// atomic implementation; any other session falls back to a non-atomic get-then-set.
 /// </summary>
 public static class AgentSessionExtensions
 {
-    /// <inheritdoc cref="IAgentSession.GetOrAdd{T}(string, Func{T})" />
+    /// <summary>Returns the value under <paramref name="key"/>, creating it with <paramref name="factory"/> when there is none; atomic for <see cref="InMemoryAgentSession"/> sessions, a non-atomic get-then-set otherwise.</summary>
     public static T GetOrAdd<T>(this IAgentSession session, string key, Func<T> factory)
     {
         Guard.ThrowIfNull(session);
@@ -106,7 +104,7 @@ public static class AgentSessionExtensions
         return created;
     }
 
-    /// <inheritdoc cref="IAgentSession.Update{T}(string, Func{T, T})" />
+    /// <summary>Replaces the value under <paramref name="key"/> with <c>update(current)</c>; atomic for <see cref="InMemoryAgentSession"/> sessions, a non-atomic get-then-set otherwise.</summary>
     public static T Update<T>(this IAgentSession session, string key, Func<T?, T> update)
     {
         Guard.ThrowIfNull(session);

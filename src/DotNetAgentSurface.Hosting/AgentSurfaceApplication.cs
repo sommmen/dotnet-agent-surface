@@ -394,7 +394,7 @@ public sealed class AgentSurfaceApplication
 
             if (string.Equals(command, "session", StringComparison.Ordinal) && !hasSessionEntry)
             {
-                return RunSessionCommand(args.Skip(commandStart + 1).ToArray(), session);
+                return RunSessionCommand(OperationCommandLineAdapter.RemoveGlobalFlags(args.Skip(commandStart + 1).ToArray(), globalOptions), session, globalOptions);
             }
 
             foreach (var service in host.Services.GetServices<IHostedService>())
@@ -408,12 +408,17 @@ public sealed class AgentSurfaceApplication
 
             if (string.Equals(command, "skill", StringComparison.Ordinal) && !hasSkillEntry)
             {
-                return await SkillGeneratorCommand.ExecuteAsync(
-                    args.Skip(commandStart + 1).ToArray(),
+                // `--output` is the skill verb's own alias of `--out-dir`, so it is not stripped as the output-format flag.
+                var skillArgs = OperationCommandLineAdapter.RemoveGlobalFlags(args.Skip(commandStart + 1).ToArray(), globalOptions, SkillOwnFlags);
+                var skillResult = await SkillGeneratorCommand.ExecuteAsync(
+                    skillArgs,
                     catalog,
                     SkillOutputDirectory,
                     cancellationToken,
                     CreateSkillOptions(options)).ConfigureAwait(false);
+                return IsHelpRequest(skillArgs)
+                    ? skillResult with { Output = skillResult.Output + "\n\n" + OperationCommandLineAdapter.RenderGlobalFlagHelp(globalOptions, SkillOwnFlags) }
+                    : skillResult;
             }
 
             var isRootHelp = command is null || command is "--help" or "-h";
@@ -539,9 +544,14 @@ public sealed class AgentSurfaceApplication
         }
     }
 
-    private static CommandLineExecutionResult RunSessionCommand(string[] args, FileAgentSession session)
+    private static readonly string[] SkillOwnFlags = ["output"];
+
+    private static bool IsHelpRequest(string[] args) => args is [] or ["--help" or "-h"];
+
+    private static CommandLineExecutionResult RunSessionCommand(string[] args, FileAgentSession session, IReadOnlyList<CommandLineGlobalOption> globalOptions)
     {
-        const string help = "Usage: session <show|clear>\n  show    Print the session id, file path and stored values.\n  clear   Delete the session file and its stored values.";
+        var help = "Usage: session <show|clear>\n  show    Print the session id, file path and stored values.\n  clear   Delete the session file and its stored values.\n\n"
+            + OperationCommandLineAdapter.RenderGlobalFlagHelp(globalOptions);
         switch (args)
         {
             case [] or ["--help" or "-h"]:

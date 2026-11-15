@@ -36,6 +36,10 @@ versioning and removals go through a deprecation cycle.
 - `FileAgentSession.Save` no longer loses updates from concurrent CLI processes. It takes a short exclusive lock on `<id>.json.lock`, re-reads the file, applies only the keys the invocation changed and replaces the file atomically. `Set` on the *same* key is still last-writer-wins.
 - `IAgentSession.GetOrAdd<T>(key, factory)` and `IAgentSession.Update<T>(key, update)` are new. They are default interface members on `net10.0` (existing implementers keep compiling; the default is a non-atomic get-then-set) and extension methods on `netstandard2.0`. `InMemoryAgentSession` runs them atomically in process; `FileAgentSession` runs them under the cross-process lock against freshly read state and persists immediately (not on `Save`).
 
+### Fixed (global options after built-in subcommands, #102)
+
+- `cli session show|clear` and `cli skill generate|check` now accept global flags (`--session`, `--output`/`--format`, `--fields`, `--full`, `--confirm`, `--yes` and host `AddGlobalOption` flags) after the subcommand as well as before it. `skill` keeps `--output` as its alias of `--out-dir`. Unknown trailing flags still exit 2 with usage text, and `session --help` / `skill --help` list the honoured global flags. New helpers: `OperationCommandLineAdapter.RemoveGlobalFlags` and `RenderGlobalFlagHelp`.
+
 ### Added
 
 - `DotNetAgentSurface.Hosting` package with `AgentSurfaceApplication`: one executable and

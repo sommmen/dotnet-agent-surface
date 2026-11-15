@@ -116,6 +116,64 @@ public sealed class AgentSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Global_options_are_accepted_after_the_session_subcommands()
+    {
+        await RunAsync(["cli", "--session", "flow", "select-target", "--name", "alpha"]);
+        await RunAsync(["cli", "--session", "other", "select-target", "--name", "beta"]);
+
+        var shown = await RunAsync(["cli", "session", "show", "--session", "flow"]);
+        var leading = await RunAsync(["cli", "--session", "other", "session", "clear"]);
+        var trailing = await RunAsync(["cli", "session", "clear", "--session", "flow", "--audit-name", "x", "--format", "json"]);
+
+        Assert.Equal(0, shown.ExitCode);
+        Assert.Contains("id: flow", shown.Output);
+        Assert.Equal(0, leading.ExitCode);
+        Assert.Equal(0, trailing.ExitCode);
+        Assert.False(File.Exists(Path.Combine(SessionsDirectory, "flow.json")));
+        Assert.False(File.Exists(Path.Combine(SessionsDirectory, "other.json")));
+    }
+
+    [Fact]
+    public async Task Global_options_are_accepted_after_the_skill_subcommands()
+    {
+        var directory = Path.Combine(_stateDirectory, "skill-out");
+
+        var check = await RunAsync(["cli", "skill", "check", "--out-dir", directory, "--session", "x"]);
+        var generate = await RunAsync(["cli", "skill", "generate", "--out-dir", directory, "--audit-name=x", "--session=x"]);
+        var current = await RunAsync(["cli", "--session", "x", "skill", "check", "--out-dir", directory]);
+
+        Assert.Equal(1, check.ExitCode);
+        Assert.Contains("missing or stale", check.Error + check.Output);
+        Assert.Equal(0, generate.ExitCode);
+        Assert.Equal(0, current.ExitCode);
+    }
+
+    [Fact]
+    public async Task Unknown_trailing_flags_on_builtin_subcommands_still_exit_with_a_usage_error()
+    {
+        var session = await RunAsync(["cli", "session", "clear", "--bogus", "x"]);
+        var skill = await RunAsync(["cli", "skill", "check", "--bogus", "x"]);
+
+        Assert.Equal(2, session.ExitCode);
+        Assert.Contains("Usage: session", session.Error + session.Output);
+        Assert.Equal(2, skill.ExitCode);
+        Assert.Contains("Skill reference commands", skill.Error + skill.Output);
+    }
+
+    [Fact]
+    public async Task Session_and_skill_help_list_the_global_options()
+    {
+        var session = await RunAsync(["cli", "session", "--help"]);
+        var skill = await RunAsync(["cli", "skill", "--help"]);
+
+        foreach (var help in new[] { session.Output, skill.Output })
+        {
+            Assert.Contains("--session", help);
+            Assert.Contains("--audit-name", help);
+            Assert.Contains("--fields", help);
+        }
+    }
+    [Fact]
     public async Task Initializers_run_before_the_operation_and_can_rehydrate_live_state()
     {
         await RunAsync(["cli", "--session", "flow", "select-target", "--name", "alpha"]);

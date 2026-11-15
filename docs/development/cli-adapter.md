@@ -137,7 +137,12 @@ public sealed class TargetInitializer(TargetRegistry registry) : IAgentSessionIn
   and before the operation is invoked (not for help, `skill` or `session` commands). A
   throwing initializer is logged as a warning and does not block the command.
 - **Commands:** `cli session show` prints the id, the file path and the stored values;
-  `cli session clear` deletes the file. An operation named `session` takes precedence.
+  `cli session clear` deletes the file. An operation named `session` takes precedence. Global
+  flags (`--session`, `--output`/`--format`, `--fields`, `--full`, `--confirm`, `--yes` and every
+  `AddGlobalOption`) are accepted before or after `session show|clear` and
+  `skill generate|check` (`OperationCommandLineAdapter.RemoveGlobalFlags`); `skill` keeps its own
+  `--output` as an alias of `--out-dir`. An unknown trailing flag still exits 2 with the usage
+  text, and `session --help` / `skill --help` list the honoured global flags.
 - **Configuration:** `app.ConfigureSession(o => ...)` sets `AppName` (state directory and
   env var; defaults to the entry assembly name), `StateDirectory`, `TimeToLive` (default 30
   days; expired files are pruned when a session opens, `null` disables) and

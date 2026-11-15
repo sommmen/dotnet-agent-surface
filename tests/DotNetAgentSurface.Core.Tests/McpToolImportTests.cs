@@ -83,7 +83,7 @@ public sealed class McpToolImportTests
         var catalog = Import(options => options.SafetyMapping = McpToolSafetyMapping.DestructiveIsDangerous);
         var operation = catalog.Operations.Single(operation => operation.Name == "echo");
 
-        var result = await EmptyInvoker().InvokeAsync(operation);
+        var result = await EmptyInvoker().InvokeAsync(operation, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.Succeeded);
         Assert.Contains("IConfirmationEnforcingPolicy", result.Error);
@@ -95,7 +95,7 @@ public sealed class McpToolImportTests
         var catalog = Import(options => options.SafetyMapping = McpToolSafetyMapping.DestructiveIsDangerous);
         var cli = new OperationCommandLineAdapter(catalog, EmptyInvoker());
 
-        var result = await cli.ExecuteAsync(["echo", "--text", "hi"]);
+        var result = await cli.ExecuteAsync(["echo", "--text", "hi"], TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("IConfirmationEnforcingPolicy", result.Error);
@@ -108,7 +108,7 @@ public sealed class McpToolImportTests
         var adapter = new McpOperationAdapter(catalog, EmptyInvoker());
         var arguments = new Dictionary<string, JsonElement> { ["text"] = JsonSerializer.SerializeToElement("hi") };
 
-        var result = await adapter.InvokeAsync("echo", arguments);
+        var result = await adapter.InvokeAsync("echo", arguments, TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
         Assert.Contains("IConfirmationEnforcingPolicy", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
@@ -119,7 +119,7 @@ public sealed class McpToolImportTests
     {
         var cli = new OperationCommandLineAdapter(Import(), EmptyInvoker());
 
-        var result = await cli.ExecuteAsync(["echo", "--text", "hi"]);
+        var result = await cli.ExecuteAsync(["echo", "--text", "hi"], TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
     }
@@ -132,8 +132,8 @@ public sealed class McpToolImportTests
         var catalog = OperationCatalog.Discover(typeof(DocumentedOperations));
         var arguments = new Dictionary<string, JsonElement> { ["text"] = JsonSerializer.SerializeToElement("a") };
 
-        await new OperationCommandLineAdapter(catalog, invoker).ExecuteAsync(["documented", "--text", "a"], invocationContext: new OperationInvocationContext { RequestId = "r1" });
-        await new McpOperationAdapter(catalog, invoker).InvokeAsync("documented", arguments);
+        await new OperationCommandLineAdapter(catalog, invoker).ExecuteAsync(["documented", "--text", "a"], TestContext.Current.CancellationToken, invocationContext: new OperationInvocationContext { RequestId = "r1" });
+        await new McpOperationAdapter(catalog, invoker).InvokeAsync("documented", arguments, TestContext.Current.CancellationToken);
 
         Assert.Equal([AgentSurface.Cli, AgentSurface.Mcp], recorder.Surfaces);
         Assert.Equal("r1", recorder.RequestIds[0]);
@@ -147,8 +147,8 @@ public sealed class McpToolImportTests
         var catalog = OperationCatalog.Discover(typeof(DocumentedOperations));
         var message = "line one\nline two";
 
-        var cli = await new OperationCommandLineAdapter(catalog, invoker).ExecuteAsync(["throws"]);
-        var mcp = await new McpOperationAdapter(catalog, invoker).InvokeAsync("throws");
+        var cli = await new OperationCommandLineAdapter(catalog, invoker).ExecuteAsync(["throws"], TestContext.Current.CancellationToken);
+        var mcp = await new McpOperationAdapter(catalog, invoker).InvokeAsync("throws", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, cli.ExitCode);
         Assert.Equal(message, cli.Error);
@@ -186,7 +186,7 @@ public sealed class McpToolImportTests
 
     private sealed class StubDocumentationSource : IOperationDocumentationSource
     {
-        public OperationDocumentation? GetDocumentation(System.Reflection.MethodInfo method) => new(
+        public OperationDocumentation GetDocumentation(System.Reflection.MethodInfo method) => new(
             "Summary",
             null,
             new Dictionary<string, string> { ["text"] = "XML text", ["other"] = "XML other" },

@@ -55,4 +55,28 @@ await server.RunStdioAsync();
 `serverInstructions` is optional and defaults to `null`, so existing callers
 are unaffected.
 
+### Importing native SDK tools
+
+`AddMcpServerTools(assembly, targetFactory, configure)` imports `[McpServerTool]`
+methods into a catalog. SDK hint attributes (`Destructive`, `ReadOnly`,
+`Idempotent`, `OpenWorld`, `Title`) are hints: they become MCP tool annotations and
+do **not** set `SafetyLevel`, because `Destructive` defaults to `true` and cannot be
+told apart from an explicit value. Opt in to gating with
+`options.SafetyMapping = McpToolSafetyMapping.DestructiveIsDangerous` (then a
+confirmation-enforcing policy is required, see
+[operation confirmation](operation-confirmation.md)), and leave tools out of a
+surface with `options.Include = method => ...`.
+
+Parameter descriptions come from `[Description]` on the parameter first and fall
+back to the XML `<param>` text; the attribute wins when both exist.
+
+### Invocation context, failures and `OperationException`
+
+Both adapters pass a context with `Surface` set to `AgentSurface.Mcp` or
+`AgentSurface.Cli` (creating one when the host supplies none) and the host's
+optional `RequestId`. `OperationInvoker` never throws for pre-invocation failures
+such as a missing confirmation policy; it returns a failed result and the adapters
+report it (`IsError = true` / exit code 1). An `OperationException` thrown by an
+operation is shown to the caller verbatim, newlines included.
+
 See also: the [`tasktracker-mcp` sample](../../samples/README.md), which hosts `McpOperationServer` over stdio.

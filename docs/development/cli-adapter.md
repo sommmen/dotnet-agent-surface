@@ -24,6 +24,118 @@ Hosts that authenticate a caller out of band can pass an
 
 Human-friendly formatting can be layered on later, but automation must have a stable output mode from the start.
 
+## Argument and output conventions
+
+Operation inputs are flags after the operation name:
+
+- `--name value`, `--name=value`, bare boolean switches (`--include-all-builds`)
+  and `--no-<name>`.
+- Parameter names accept kebab-case aliases (`--context-name` for `contextName`),
+  and operation names treat `_` and `-` alike (`run-query` invokes `run_query`).
+  Help and generated skills show the kebab-case form.
+- Text is parsed as JSON only when the parameter type needs it. `string`, `char`,
+  `Guid`, enum, date and time parameters receive the text verbatim, so `123`,
+  `null` and `true` bind to a `string` parameter.
+- `@path` reads the value from a file (`@@` escapes a literal leading `@`) and `-`
+  reads standard input, for long queries.
+- Array parameters take repeated flags (`--include A --include B`) or one JSON array.
+
+A `string` result is written verbatim: never JSON-quoted, projected or truncated.
+`--output`, `--fields` and `--full` shape object results only. Operation errors keep
+their newlines unless `OperationCommandLineOptions.FlattenOperationErrors` is set;
+usage errors stay single-line. `OperationCommandLineOptions.ResultRenderer` receives
+the raw object result. Exit codes: 0 success, 1 operation failure, 2 usage error,
+130 cancellation.
+
+Adapter flags (`--output`, alias `--format`, `--fields`, `--full`, `--confirm`,
+`--yes`) and host-declared global options are global before the operation name.
+After the operation name they are global only when the operation does not declare a
+parameter with the same name, so an operation can own `--output`.
+
+`OperationCatalog.ForSurface(AgentSurface.Cli)` filters by
+`AgentOperationAttribute.Surfaces` (`All`, `Mcp`, `Cli`); the adapter and the skill
+generator hide operations that are not exposed on the CLI.
+
+## Dual-surface hosting
+
+`DotNetAgentSurface.Hosting` runs one executable as an MCP server and a CLI over
+`Microsoft.Extensions.Hosting`:
+
+```csharp
+return await AgentSurfaceApplication.RunAsync(args, app =>
+{
+    app.ConfigureServices(builder => builder.Services.AddSingleton<MyService>());
+    app.ConfigureMcp(mcp => mcp.WithStdioServerTransport().WithAgentSurfaceCatalog());
+    app.ConfigureCatalog(services => OperationCatalog.Discover(typeof(MyService)));
+    app.AddGlobalOption("--connection", injectAs: "connectionName");
+    app.AddGlobalOption("--assembly", configKey: "TargetAssemblyPath");
+    app.AddVerb("hooks", HooksCommand.RunAsync);
+});
+```
+
+- **Mode selection:** a registered verb runs its handler before any host is built;
+  `CliVerb` (default `cli`) runs the CLI; `McpVerb` (default `mcp`) runs the server;
+  otherwise `DefaultSurface` (default `Mcp`) applies. In MCP mode `--Key=Value`
+  arguments still reach the host builder.
+- **CLI mode:** the host is built from configuration only, never from operation
+  arguments. Hosted services are not started unless they implement
+  `ICliHostedService`. Logging goes to standard error at `Warning`. Ctrl+C cancels
+  the operation (exit 130). Output goes to stdout, errors to stderr, and the host is
+  disposed with `DisposeAsync`, so async-only disposable singletons are safe.
+- **Global options:** `injectAs` fills the named parameter only on operations that
+  declare it; `configKey` becomes a configuration value before the host is built.
+- **Skills:** `cli skill generate --out-dir <dir>` and `cli skill check` render the
+  skill with a Global options section and the `<exe> cli` command prefix.
+- `ConfigureCatalog` receives the built service provider, so a `targetFactory` can
+  resolve from DI.
+
+### Session state
+
+Stateful flows such as `load_assembly` → `list_contexts` → `run_query` need state that
+outlives one operation call. MCP servers are long-lived, but every CLI invocation is a new
+process, so the host provides an `IAgentSession` (`Id`, `Get<T>`, `Set<T>`, `Remove`) that
+works the same on both surfaces. Operations take it as an injected service (a constructor
+parameter); it is never an operation parameter and never appears in a schema.
+
+```csharp
+public sealed class TargetOperations(IAgentSession session, TargetRegistry registry)
+{
+    [AgentOperation("load_assembly")]
+    public string Load(string path) { registry.Load(path); session.Set("target", path); return path; }
+}
+
+// Rebuild live state from the persisted intent before each CLI invocation.
+public sealed class TargetInitializer(TargetRegistry registry) : IAgentSessionInitializer
+{
+    public ValueTask InitializeAsync(IAgentSession session, CancellationToken ct)
+    {
+        if (session.Get<string>("target") is { } path) registry.Load(path);
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+- **MCP:** an in-memory session (process lifetime for stdio). It never touches disk.
+- **CLI:** a JSON file at `%LOCALAPPDATA%\<app>\sessions\<id>.json` on Windows or
+  `$XDG_STATE_HOME/<app>/sessions/<id>.json` (default `~/.local/state`) elsewhere, readable
+  by the current user only (an ACL on Windows, mode 0600 on Unix). It is loaded before the
+  invocation and saved only after a successful one; the write is atomic (temp file plus
+  rename), last writer wins, and the file records `updatedAt`.
+- **Session id**, in order: `--session <id>`, the `<APP>_SESSION` environment variable, then
+  a hash of the current directory (`cwd-<hash>`), which gives per-workspace state by default.
+  Ids are 1-128 letters, digits, `.`, `_` or `-`.
+- **Initializers:** every registered `IAgentSessionInitializer` runs after the host is built
+  and before the operation is invoked (not for help, `skill` or `session` commands). A
+  throwing initializer is logged as a warning and does not block the command.
+- **Commands:** `cli session show` prints the id, the file path and the stored values;
+  `cli session clear` deletes the file. An operation named `session` takes precedence.
+- **Configuration:** `app.ConfigureSession(o => ...)` sets `AppName` (state directory and
+  env var; defaults to the entry assembly name), `StateDirectory`, `TimeToLive` (default 30
+  days; expired files are pruned when a session opens, `null` disables) and
+  `WorkingDirectory`.
+
+**Never store secrets in a session.** The file is plain JSON. Keep connection strings,
+tokens and passwords in configuration or user secrets, and store only names and paths.
 ## Discovering commands
 
 The root invocation (`<executable> --help`, or no arguments) lists uncategorized
@@ -56,7 +168,7 @@ var result = SkillGeneratorCommand.CanHandle(args)
 
 When using that optional command surface, make its two verbs visible in the
 host's own root help or usage banner (for example,
-`generate [--output <directory>]` and `check [--output <directory>]`). Keeping
+`generate [--out-dir <directory>]` and `check [--out-dir <directory>]`). Keeping
 this host-level avoids claiming those verbs exist for hosts that don't wire
 `SkillGeneratorCommand`.
 

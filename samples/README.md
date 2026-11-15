@@ -14,11 +14,11 @@ DotNetAgentSurface, without duplicating any operation definitions.
   `TaskTrackerService` operation catalog and executes a single command per
   process invocation via `OperationCommandLineAdapter`.
 - **DotNetAgentSurface.Samples.Mcp** (`tasktracker-mcp`) — discovers the same
-  catalog and exposes it as an MCP server over stdio via `McpOperationServer`.
+  catalog and exposes it as an MCP server over stdio through the SDK host builder (`AddMcpServer().WithStdioServerTransport().WithOperations(...)`); `DotNetAgentSurface.Samples.CliAndMcp` still shows the zero-DI `McpOperationServer`.
 - **DotNetAgentSurface.Samples.CliAndMcp** (`tasktracker`) — a single
-  executable that supports both surfaces: it discovers the same catalog once
-  and dispatches to the CLI adapter or the MCP stdio server depending on the
-  first argument (`mcp` vs. everything else). See "Running the combined
+  executable that serves both surfaces through `AgentSurfaceApplication` over
+  `Microsoft.Extensions.Hosting` with real dependency injection: no verb runs the
+  MCP stdio server, `cli <operation>` runs the CLI. See "Running the combined
   CLI+MCP sample" below.
 - **DotNetAgentSurface.Samples.LegacyDesktop** (`legacy-desktop-cli`) — a
   separate, self-contained sample that targets `net472` instead of `net10.0`
@@ -202,30 +202,36 @@ annotations.
 
 `DotNetAgentSurface.Samples.Cli` and `DotNetAgentSurface.Samples.Mcp` are
 separate executables, which can make it look like a host has to pick one
-surface or the other. `DotNetAgentSurface.Samples.CliAndMcp` shows that isn't
-the case: it discovers `TaskTrackerService`'s operation catalog exactly once
-and wires up *both* `OperationCommandLineAdapter` and `McpOperationServer`
-against it in the same `Program.cs`, choosing which one to run based on the
-first command-line argument.
+surface or the other. `DotNetAgentSurface.Samples.CliAndMcp` uses
+`AgentSurfaceApplication` (`DotNetAgentSurface.Hosting`) to serve both from one
+executable and one dependency-injection composition: the services, the
+operation catalog and the `--audit-name` global option are declared once.
 
 ```powershell
-# CLI mode - same behavior/output as DotNetAgentSurface.Samples.Cli
-dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- --help
-dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- tasks add-task --title "Write docs"
-dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- tasks list-tasks
-
-# MCP mode - same stdio JSON-RPC server as DotNetAgentSurface.Samples.Mcp
+# MCP mode (default) - stdio JSON-RPC server
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp
 dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- mcp
+
+# CLI mode - the "cli" verb
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- cli --help
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- cli tasks add-task --title "Write docs"
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- cli --audit-name nightly reports export-report --lines 3
+
+# Host-owned verb and skill generation
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- version
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- cli skill generate --out-dir skill
+dotnet run --project samples\DotNetAgentSurface.Samples.CliAndMcp -- cli skill check --out-dir skill
 ```
 
-The two modes are not active at the same time within one process invocation:
-MCP's stdio transport reserves stdout exclusively for JSON-RPC protocol
-traffic, so a process actively writing normal CLI output to stdout could not
-also run the MCP server on the same stream without corrupting it. Selecting
-the mode from the first argument avoids that conflict while still proving the
-two surfaces share one catalog/invoker and one executable - a host application
-can add an `mcp` verb alongside its normal commands instead of shipping and
-maintaining a second binary.
+The two modes are never active in the same process: MCP's stdio transport
+reserves stdout for JSON-RPC traffic. In CLI mode stdout carries only the
+result (a `string` result such as `export-report` is written byte for byte),
+errors and logging go to stderr, hosted services are not started, and the exit
+code is 0, 1 (operation failure), 2 (usage error) or 130 (cancelled).
+`load-context` is declared `Surfaces = AgentSurfaces.Mcp`, so it is listed over
+MCP and hidden from the CLI. The `DotNetAgentSurface.Hosting.Tests` project
+runs this sample end to end to verify those guarantees. Task state does not
+persist across CLI invocations.
 
 ## Running the offline Hangfire CLI composition sample
 

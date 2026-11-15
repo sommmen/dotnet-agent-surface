@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Reflection;
 
 namespace DotNetAgentSurface.Core;
@@ -11,7 +12,8 @@ public sealed class OperationDescriptor
         IReadOnlyList<object>? policyMetadata = null,
         IReadOnlyList<IOperationInvocationPolicy>? invocationPolicies = null,
         IOperationDocumentationSource? documentationSource = null,
-        OperationDocumentationOptions? documentationOptions = null)
+        OperationDocumentationOptions? documentationOptions = null,
+        OperationHints? hints = null)
     {
         Method = method;
         BoundTarget = boundTarget;
@@ -23,13 +25,30 @@ public sealed class OperationDescriptor
         Examples = Array.AsReadOnly(operation.Examples);
         Aliases = Array.AsReadOnly(operation.Aliases);
         IsIdempotent = operation.IsIdempotent;
+        Hints = (hints ?? OperationHints.Empty).WithFallback(operation.GetHints());
+        Surfaces = operation.Surfaces;
         PolicyMetadata = Array.AsReadOnly((policyMetadata ?? []).ToArray());
         InvocationPolicies = Array.AsReadOnly((invocationPolicies ?? []).ToArray());
         Parameters = Array.AsReadOnly(method.GetParameters().Select(parameter =>
         {
             var paramName = parameter.Name ?? throw new ArgumentException($"Method parameter at index {Array.IndexOf(method.GetParameters(), parameter)} has no name.");
-            return new OperationParameterDescriptor(parameter, documentation?.Parameters.TryGetValue(paramName, out var description) == true ? description : null);
+            return new OperationParameterDescriptor(parameter, ResolveParameterDescription(parameter, documentation, paramName));
         }).ToArray());
+    }
+
+    /// <summary>
+    /// A <see cref="DescriptionAttribute"/> on the parameter wins over the XML documentation <c>&lt;param&gt;</c> text;
+    /// the XML text is the fallback when the attribute is absent or blank.
+    /// </summary>
+    private static string? ResolveParameterDescription(ParameterInfo parameter, OperationDocumentation? documentation, string paramName)
+    {
+        var attributeDescription = parameter.GetCustomAttribute<DescriptionAttribute>(inherit: false)?.Description;
+        if (!string.IsNullOrWhiteSpace(attributeDescription))
+        {
+            return attributeDescription;
+        }
+
+        return documentation?.Parameters.TryGetValue(paramName, out var description) == true ? description : null;
     }
 
     private static string ResolveDescription(string? explicitDescription, OperationDocumentation? documentation, OperationDocumentationOptions? options)
@@ -68,6 +87,19 @@ public sealed class OperationDescriptor
 
     public bool IsIdempotent { get; }
 
+    /// <summary>Gets the independent descriptive hints (title, read-only, destructive, idempotent, open-world) for this operation.</summary>
+    public OperationHints Hints { get; }
+    /// <summary>Gets the adapter surfaces this operation is exposed on.</summary>
+    public AgentSurfaces Surfaces { get; }
+
+    /// <summary>Returns whether this operation is exposed on <paramref name="surface"/>. <see cref="AgentSurface.Unknown"/> matches every operation that is exposed anywhere.</summary>
+    public bool IsAvailableOn(AgentSurface surface) => surface switch
+    {
+        AgentSurface.Mcp => (Surfaces & AgentSurfaces.Mcp) != 0,
+        AgentSurface.Cli => (Surfaces & AgentSurfaces.Cli) != 0,
+        _ => Surfaces != AgentSurfaces.None,
+    };
+
     public MethodInfo Method { get; }
 
     internal object? BoundTarget { get; }
@@ -95,6 +127,7 @@ public sealed class OperationParameterDescriptor
         IsOptional = parameter.IsOptional;
         DefaultValue = parameter.IsOptional ? parameter.DefaultValue : null;
         IsCancellationToken = parameter.ParameterType == typeof(CancellationToken);
+        IsAmbient = AmbientParameters.IsAmbient(parameter.ParameterType);
         IsNullable = NullabilityReader.IsNullable(parameter);
     }
 
@@ -109,6 +142,13 @@ public sealed class OperationParameterDescriptor
     public object? DefaultValue { get; }
 
     public bool IsCancellationToken { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the parameter is supplied by the host (cancellation token, <see cref="IServiceProvider"/>,
+    /// <see cref="IOperationContext"/>, <see cref="IOperationProgress"/>, <see cref="System.Security.Claims.ClaimsPrincipal"/> and the MCP
+    /// SDK request types) instead of by the caller. Ambient parameters are excluded from schemas, help and skill output.
+    /// </summary>
+    public bool IsAmbient { get; }
 
     public bool IsNullable { get; }
 }

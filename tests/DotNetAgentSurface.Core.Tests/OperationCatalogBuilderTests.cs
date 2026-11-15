@@ -25,6 +25,19 @@ public sealed class OperationCatalogBuilderTests
     }
 
     [Fact]
+    public void Surfaces_default_to_all_and_can_be_restricted_by_registration_option()
+    {
+        var catalog = new OperationCatalogBuilder()
+            .Add("everywhere", "Both surfaces", () => "x")
+            .Add("mcp-only", "MCP only", () => "x", options => options.Surfaces = AgentSurfaces.Mcp)
+            .Add("cli-only", "CLI only", () => "x", options => options.Surfaces = AgentSurfaces.Cli)
+            .Build();
+
+        Assert.Equal(["cli-only", "everywhere"], catalog.ForSurface(AgentSurface.Cli).Operations.Select(operation => operation.Name));
+        Assert.Equal(["everywhere", "mcp-only"], catalog.ForSurface(AgentSurface.Mcp).Operations.Select(operation => operation.Name));
+    }
+
+    [Fact]
     public async Task Add_invokes_capturing_lambda_without_service_registration()
     {
         var message = "captured";

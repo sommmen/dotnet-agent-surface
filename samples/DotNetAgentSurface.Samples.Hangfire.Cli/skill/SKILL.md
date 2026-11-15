@@ -12,7 +12,7 @@ Run `skill --help` to list available commands, then read the detailed reference 
 ## Command index
 
 - [Hangfire](commands/hangfire.md) — 2 operations
-- [Hangfire / Workflow / Tests](commands/hangfire-workflow-tests.md) — 1 operation
+- [Hangfire / Workflow / Tests](commands/hangfire-workflow-tests.md) — 2 operations
 
 ## Examples
 

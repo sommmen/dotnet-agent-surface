@@ -1,5 +1,12 @@
 # hangfire workflow tests
 
+## `archive-old-records-job`
+
+Runs ArchiveOldRecordsJob directly and captures its log transcript.
+
+- Safety: `Confirm`
+- Idempotent: `no`
+
 ## `damage-sync-job`
 
 Runs DamageSyncJob directly and captures its log transcript.
@@ -8,4 +15,4 @@ Runs DamageSyncJob directly and captures its log transcript.
 - Idempotent: `no`
 
 ### Parameters
-- `--workflowOptions` (WorkflowJobOptions), required
+- `--workflow-options` (WorkflowJobOptions), required

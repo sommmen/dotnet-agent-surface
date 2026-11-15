@@ -2,8 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DotNetAgentSurface.Core\DotNetAgentSurface.Core.csproj" />
-    <ProjectReference Include="..\..\src\DotNetAgentSurface.CommandLine\DotNetAgentSurface.CommandLine.csproj" />
-    <ProjectReference Include="..\..\src\DotNetAgentSurface.Mcp\DotNetAgentSurface.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\DotNetAgentSurface.Hosting\DotNetAgentSurface.Hosting.csproj" />
     <ProjectReference Include="..\DotNetAgentSurface.Samples.TaskTracker\DotNetAgentSurface.Samples.TaskTracker.csproj" />
   </ItemGroup>
 

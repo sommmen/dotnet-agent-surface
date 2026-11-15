@@ -42,6 +42,18 @@ public sealed record OperationInvocationContext(ClaimsPrincipal? Principal = nul
 {
     public static OperationInvocationContext Empty { get; } = new();
 
+    /// <summary>The adapter surface performing the invocation. Adapters set this on the context they pass to the invoker.</summary>
+    public AgentSurface Surface { get; init; }
+
+    /// <summary>An optional host-supplied correlation identifier for the request, for logging and tracing.</summary>
+    public string? RequestId { get; init; }
+
+    /// <summary>
+    /// Gets the request-scoped service provider. When set, it resolves operation targets and ambient parameters instead of
+    /// the invoker's root provider, so scoped services work.
+    /// </summary>
+    public IServiceProvider? Services { get; init; }
+
     public bool HasAuthenticatedPrincipal => Principal?.Identity?.IsAuthenticated == true;
 }
 

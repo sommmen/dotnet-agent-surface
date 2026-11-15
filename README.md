@@ -98,6 +98,13 @@ myapp-cli customers find-customer --email customer@example.com
 
 The category is the command group and the operation name is the leaf command. Nested categories extend the chain from left to right (for example, `projects archived list`), while an operation without a category stays at the root (`myapp-cli find-customer ...`). Category and operation lookup is case-insensitive, but help output is sorted using ordinal rules so the result is deterministic. Two operations that normalize to the same full command path are rejected during catalog construction; the CLI reports the collision as a structured error rather than selecting one based on discovery order.
 
+One executable can serve both surfaces. `DotNetAgentSurface.Hosting` provides
+`AgentSurfaceApplication`: `myserver` runs the MCP stdio server and `myserver cli <operation> ...` runs the
+CLI over the same `Microsoft.Extensions.Hosting` composition. See
+[docs/development/cli-adapter.md](docs/development/cli-adapter.md#dual-surface-hosting) and
+`samples/DotNetAgentSurface.Samples.CliAndMcp`. A `string` result is printed verbatim; flags accept
+`--name=value`, bare booleans, `--no-name`, kebab-case names, `@file` and `-` (stdin) values.
+
 CLI operation output defaults to token-efficient TOON. Use `--output json` for compact JSON (or `--output toon` explicitly). For object lists, `--fields name,id` selects output fields; `--full` disables the default truncation of long string values.
 
 It is also exposed as an MCP tool named `find-customer` and an entry in generated skill documentation. The category-chain behavior is the current routing decision; the fluent registration, diagnostics, projection, and output-rendering work needed to complete it are tracked in [docs/development/testing-and-open-decisions.md](docs/development/testing-and-open-decisions.md#planned-work-items).
@@ -149,9 +156,9 @@ The core catalog, invocation pipeline, CLI/MCP adapters, skill generator, and th
 
 ### Testing prerelease packages
 
-The `publish` workflow automatically pushes `.nupkg` files to GitHub Packages on every push to `main`, producing git-versioned prerelease packages such as `0.1.8-preview.g<commit>`. It can also be run manually (`workflow_dispatch`) from any branch. The workflow only publishes to NuGet.org for a stable GitHub Release, or when its explicit `publish_nuget` input is selected on a manual run.
+The `publish` workflow automatically pushes `.nupkg` files to both NuGet.org (through trusted publishing) and GitHub Packages on every push to `main`, producing git-versioned prerelease packages such as `0.1.8-preview.g<commit>`. It can also be run manually (`workflow_dispatch`) from any branch; a manual run publishes to NuGet.org only when its `publish_nuget` input is selected, and a stable GitHub Release also publishes there.
 
-To consume those packages from another repository, add the GitHub Packages feed. Use a GitHub personal access token with `read:packages` if the package is private:
+To consume a preview from NuGet.org, no extra feed is needed: `dotnet add package DotNetAgentSurface.Mcp --prerelease`. Packages are `0.x` previews and may break between versions, so pin an exact version (see [CHANGELOG.md](CHANGELOG.md#versioning-and-breaking-changes-before-10)). To consume the same packages from GitHub Packages instead, add that feed. Use a GitHub personal access token with `read:packages` if the package is private:
 
 ```powershell
 dotnet nuget add source https://nuget.pkg.github.com/sommmen/index.json `

@@ -67,7 +67,9 @@ public sealed class OperationInvocationPolicyTests
             .InvokeAsync(operation, invocationContext: context);
 
         Assert.True(result.Succeeded);
-        Assert.Same(context, policy.Context);
+        Assert.Same(context.Principal, policy.Context!.Principal);
+        Assert.Equal(context.Credential, policy.Context.Credential);
+        Assert.False(string.IsNullOrEmpty(policy.Context.RequestId));
     }
 
     private sealed class DangerousOperations

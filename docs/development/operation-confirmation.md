@@ -16,8 +16,9 @@ carries) a policy implementing `IConfirmationEnforcingPolicy` — the interface
 `DangerousOperationConfirmationPolicy` implements.
 
 To catch the common mistake of registering `Confirm`/`Dangerous` operations
-without such a policy, `OperationInvoker.InvokeAsync` throws
-`ConfirmationPolicyMissingException` when it is asked to invoke an operation
+without such a policy, `OperationInvoker.InvokeAsync` returns a failed
+`OperationInvocationResult` (with the `ConfirmationPolicyMissingException` message, so the CLI exits
+with code 1 and MCP returns `IsError = true` instead of crashing) when it is asked to invoke an operation
 whose `SafetyLevel` is above `Safe` and no confirmation-enforcing policy is
 present (checked across both the invoker's own `policies` and the operation's
 own `InvocationPolicies`). This is a fail-fast guard, not a substitute for

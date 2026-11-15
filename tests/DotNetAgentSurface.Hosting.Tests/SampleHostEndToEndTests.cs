@@ -6,6 +6,8 @@ namespace DotNetAgentSurface.Hosting.Tests;
 
 public sealed class SampleHostEndToEndTests
 {
+    private static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(60);
+
     [Fact]
     public async Task Long_string_result_is_written_byte_identical_and_alone_on_stdout()
     {
@@ -128,6 +130,27 @@ public sealed class SampleHostEndToEndTests
     }
 
     [Fact]
+    public async Task Leading_global_flags_before_skill_and_help_are_skipped()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"agent-surface-skill-{Guid.NewGuid():N}");
+        try
+        {
+            var generated = await RunAsync("cli", "--audit-name", "x", "skill", "generate", "--out-dir", directory);
+            var help = await RunAsync("cli", "--audit-name", "x", "--help");
+
+            Assert.Equal(0, generated.ExitCode);
+            Assert.True(File.Exists(Path.Combine(directory, "SKILL.md")));
+            Assert.Contains("Skill commands:", Encoding.UTF8.GetString(help.StdOut));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+    [Fact]
     public async Task Default_mode_serves_mcp_with_only_protocol_traffic_on_stdout()
     {
         const string input =
@@ -136,22 +159,23 @@ public sealed class SampleHostEndToEndTests
             "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}\n" +
             "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"export-report\",\"arguments\":{\"lines\":1}}}\n";
 
-        var startInfo = CreateStartInfo([]);
-        using var process = Process.Start(startInfo)!;
-        await process.StandardInput.WriteAsync(input);
-        await process.StandardInput.FlushAsync(TestContext.Current.CancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(RunTimeout);
+        using var process = Process.Start(CreateStartInfo([]))!;
+        using var killOnCancel = timeout.Token.Register(static state => KillTree((Process)state!), process);
+        var stderr = ReadAllAsync(process.StandardError.BaseStream);
+        await process.StandardInput.WriteAsync(input.AsMemory(), timeout.Token);
+        await process.StandardInput.FlushAsync(timeout.Token);
 
         var lines = new List<string>();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
         while (lines.Count < 3 && await process.StandardOutput.ReadLineAsync(timeout.Token) is { } line)
         {
             lines.Add(line);
         }
 
         process.StandardInput.Close();
-        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(0, process.ExitCode);
+        await process.WaitForExitAsync(timeout.Token);
+        await stderr;        Assert.Equal(0, process.ExitCode);
         Assert.Equal(3, lines.Count);
         Assert.All(lines, line => Assert.StartsWith("{", line));
         var tools = Assert.Single(lines, line => line.Contains("\"id\":2", StringComparison.Ordinal));
@@ -163,16 +187,30 @@ public sealed class SampleHostEndToEndTests
 
     private static async Task<RunResult> RunAsync(params string[] args)
     {
-        var startInfo = CreateStartInfo(args);
-
-        using var process = Process.Start(startInfo)!;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(RunTimeout);
+        using var process = Process.Start(CreateStartInfo(args))!;
+        using var killOnCancel = timeout.Token.Register(static state => KillTree((Process)state!), process);
         process.StandardInput.Close();
         var stdout = ReadAllAsync(process.StandardOutput.BaseStream);
         var stderr = ReadAllAsync(process.StandardError.BaseStream);
-        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(timeout.Token);
         return new RunResult(process.ExitCode, await stdout, await stderr);
     }
 
+    private static void KillTree(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+        }
+    }
     private static ProcessStartInfo CreateStartInfo(string[] args)
     {
         var path = typeof(SampleHostEndToEndTests).Assembly

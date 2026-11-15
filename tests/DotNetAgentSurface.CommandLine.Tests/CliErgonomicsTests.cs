@@ -155,6 +155,40 @@ public sealed class CliErgonomicsTests : IDisposable
     }
 
     [Fact]
+    public async Task Stdin_read_failures_and_renderer_exceptions_map_to_exit_one()
+    {
+        var failingInput = new OperationCommandLineOptions { Input = new ThrowingReader() };
+        var failingRenderer = new OperationCommandLineOptions { ResultRenderer = (_, _) => throw new InvalidOperationException("renderer exploded") };
+
+        var stdin = await CreateAdapter(new Operations(), options: failingInput).ExecuteAsync(["echo", "--value", "-"], TestContext.Current.CancellationToken);
+        var rendered = await CreateAdapter(new Operations(), new ToonAgentOutputRenderer(), failingRenderer).ExecuteAsync(["long-object"], TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, stdin.ExitCode);
+        Assert.Contains("pipe closed", stdin.Error);
+        Assert.Equal(1, rendered.ExitCode);
+        Assert.Equal("renderer exploded", rendered.Error);
+    }
+
+    [Theory]
+    [InlineData(new[] { "skill", "generate" }, 0)]
+    [InlineData(new[] { "--confirm", "skill" }, 1)]
+    [InlineData(new[] { "--output", "json", "--fields", "a", "skill" }, 4)]
+    [InlineData(new[] { "--connection", "x", "skill" }, 2)]
+    [InlineData(new[] { "--connection=x", "--full", "--help" }, 2)]
+    [InlineData(new[] { "--help" }, 0)]
+    [InlineData(new string[0], 0)]
+    public void FindCommandStart_skips_leading_global_flags_and_their_values(string[] args, int expected)
+    {
+        var options = new[] { new CommandLineGlobalOption("--connection") };
+
+        Assert.Equal(expected, OperationCommandLineAdapter.FindCommandStart(args, options));
+    }
+
+    private sealed class ThrowingReader : TextReader
+    {
+        public override string ReadToEnd() => throw new IOException("pipe closed");
+    }
+    [Fact]
     public async Task Repeatable_flags_build_arrays()
     {
         var adapter = CreateAdapter(new Operations());

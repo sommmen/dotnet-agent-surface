@@ -10,15 +10,35 @@ namespace DotNetAgentSurface.Samples.CliAndMcp;
 /// </summary>
 public sealed class AuditLog : IAsyncDisposable
 {
+    private readonly object _gate = new();
     private readonly List<string> _entries = [];
 
-    public int Count => _entries.Count;
+    public int Count
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _entries.Count;
+            }
+        }
+    }
 
-    public void Record(string entry) => _entries.Add(entry);
+    public void Record(string entry)
+    {
+        lock (_gate)
+        {
+            _entries.Add(entry);
+        }
+    }
 
     public ValueTask DisposeAsync()
     {
-        _entries.Clear();
+        lock (_gate)
+        {
+            _entries.Clear();
+        }
+
         return ValueTask.CompletedTask;
     }
 }

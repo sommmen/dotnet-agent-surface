@@ -45,6 +45,15 @@ versioning and removals go through a deprecation cycle.
   and operation names, `@file` and `-` values, repeatable array flags, `--format` alias,
   parameter descriptions, defaults, required markers and examples in help.
 - `skill generate|check --out-dir`, `SkillGenerationOptions.GlobalOptions` and `CommandPrefix`.
+- Session state (#91): `IAgentSession` and `IAgentSessionInitializer` in Core, an in-memory
+  `InMemoryAgentSession` for MCP, and a file-backed `FileAgentSession` for the CLI that
+  persists across invocations (`--session <id>`, `<APP>_SESSION`, then a hash of the working
+  directory), written atomically after a successful run and TTL-pruned.
+  `AgentSurfaceApplication.ConfigureSession`, built-in `cli session show|clear`. Never store
+  secrets in a session: names and paths only.
+- `OperationCommandLineAdapter.FindCommandStart` skips leading global flags, so
+  `cli --connection x skill generate` and `cli --connection x --help` work; the adapter now
+  maps stdin and renderer exceptions to exit code 1.
 
 ### Breaking changes
 

@@ -30,6 +30,14 @@ namespace DotNetAgentSurface.Hosting;
 /// verbatim.
 /// </para>
 /// <para>
+/// <b>Session state:</b> an <see cref="IAgentSession"/> is registered for operations and services. MCP mode uses an
+/// in-memory session that never touches disk. CLI mode uses a <see cref="FileAgentSession"/> that is loaded before the
+/// invocation and saved after a successful one; its id comes from <c>--session &lt;id&gt;</c>, then the
+/// <c>&lt;APP&gt;_SESSION</c> environment variable, then a hash of the working directory. Every registered
+/// <see cref="IAgentSessionInitializer"/> runs after the host is built and before the operation is invoked. The built-in
+/// <c>cli session show|clear</c> commands inspect and reset the file. Never store secrets in a session.
+/// </para>
+/// <para>
 /// Console logging is routed to standard error in both modes so it can never corrupt MCP stdio traffic or CLI output.
 /// </para>
 /// </remarks>
@@ -41,6 +49,9 @@ public sealed class AgentSurfaceApplication
     private readonly List<Action<OperationCommandLineOptions>> _cliConfigurations = [];
     private readonly Dictionary<string, Func<string[], CancellationToken, Task<int>>> _verbs = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CommandLineGlobalOption> _globalOptions = [];
+    private const string SessionConfigurationKey = "DotNetAgentSurface:Session";
+
+    private readonly AgentSessionOptions _sessionOptions = new();
     private Func<IServiceProvider, OperationCatalog>? _catalogFactory;
 
     /// <summary>Gets or sets the verb that selects the CLI. Defaults to <c>cli</c>.</summary>
@@ -119,6 +130,16 @@ public sealed class AgentSurfaceApplication
     public AgentSurfaceApplication ConfigureCatalog(Action<IServiceProvider, OperationCatalogBuilder> configure)
     {
         _catalogConfigurations.Add(configure ?? throw new ArgumentNullException(nameof(configure)));
+        return this;
+    }
+
+    /// <summary>
+    /// Configures session state: the application name (state directory and <c>&lt;APP&gt;_SESSION</c> variable), the state
+    /// directory, and the time-to-live for pruning. See <see cref="IAgentSession"/>.
+    /// </summary>
+    public AgentSurfaceApplication ConfigureSession(Action<AgentSessionOptions> configure)
+    {
+        (configure ?? throw new ArgumentNullException(nameof(configure)))(_sessionOptions);
         return this;
     }
 
@@ -274,7 +295,7 @@ public sealed class AgentSurfaceApplication
     private async Task<int> RunMcpAsync(string[] args, CancellationToken cancellationToken)
     {
         var builder = Host.CreateApplicationBuilder(args);
-        ConfigureCommon(builder);
+        ConfigureCommon(builder, session: null);
         var mcp = builder.Services.AddMcpServer();
         foreach (var configure in _mcpConfigurations)
         {
@@ -338,7 +359,19 @@ public sealed class AgentSurfaceApplication
 
     private async Task<CommandLineExecutionResult> ExecuteCliAsync(string[] args, CancellationToken cancellationToken)
     {
-        var configuration = OperationCommandLineAdapter.ReadConfigurationValues(args, _globalOptions);
+        var globalOptions = GetCliGlobalOptions();
+        var configuration = OperationCommandLineAdapter.ReadConfigurationValues(args, globalOptions);
+
+        FileAgentSession session;
+        try
+        {
+            session = OpenSession(configuration);
+        }
+        catch (ArgumentException exception)
+        {
+            return CommandLineExecutionResult.Failure(exception.Message, 2);
+        }
+
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings());
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
         if (configuration.Count > 0)
@@ -346,12 +379,24 @@ public sealed class AgentSurfaceApplication
             builder.Configuration.AddInMemoryCollection(configuration.Select(static pair => new KeyValuePair<string, string?>(pair.Key, pair.Value)));
         }
 
-        ConfigureCommon(builder);
+        ConfigureCommon(builder, session);
 
         var host = builder.Build();
         var started = new List<IHostedService>();
         try
         {
+            var catalog = host.Services.GetRequiredService<OperationCatalog>();
+            var options = CreateCliOptions(globalOptions);
+            var commandStart = OperationCommandLineAdapter.FindCommandStart(args, globalOptions);
+            var command = commandStart < args.Length ? args[commandStart] : null;
+            var hasSkillEntry = HasRootEntry(catalog, "skill");
+            var hasSessionEntry = HasRootEntry(catalog, "session");
+
+            if (string.Equals(command, "session", StringComparison.Ordinal) && !hasSessionEntry)
+            {
+                return RunSessionCommand(args.Skip(commandStart + 1).ToArray(), session);
+            }
+
             foreach (var service in host.Services.GetServices<IHostedService>())
             {
                 if (service is ICliHostedService)
@@ -361,25 +406,56 @@ public sealed class AgentSurfaceApplication
                 }
             }
 
-            var catalog = host.Services.GetRequiredService<OperationCatalog>();
-            var invoker = host.Services.GetRequiredService<OperationInvoker>();
-            var options = CreateCliOptions();
-
-            if (args is ["skill", ..] && !HasRootEntry(catalog, "skill"))
+            if (string.Equals(command, "skill", StringComparison.Ordinal) && !hasSkillEntry)
             {
                 return await SkillGeneratorCommand.ExecuteAsync(
-                    args.Skip(1).ToArray(),
+                    args.Skip(commandStart + 1).ToArray(),
                     catalog,
                     SkillOutputDirectory,
                     cancellationToken,
                     CreateSkillOptions(options)).ConfigureAwait(false);
             }
 
-            var adapter = new OperationCommandLineAdapter(catalog, invoker, CliRenderer ?? new ToonAgentOutputRenderer(), options: options);
+            var isRootHelp = command is null || command is "--help" or "-h";
+            if (!isRootHelp)
+            {
+                await InitializeSessionAsync(host.Services, session, cancellationToken).ConfigureAwait(false);
+            }
+
+            var adapter = new OperationCommandLineAdapter(catalog, invoker: host.Services.GetRequiredService<OperationInvoker>(), CliRenderer ?? new ToonAgentOutputRenderer(), options: options);
             var result = await adapter.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
-            return IsRootHelp(args) && result.ExitCode == 0 && !HasRootEntry(catalog, "skill")
-                ? result with { Output = result.Output + "\n\nSkill commands:\n  skill generate [--out-dir <dir>] [--force]\n  skill check [--out-dir <dir>]" }
-                : result;
+            if (isRootHelp && result.ExitCode == 0)
+            {
+                var hints = new List<string>();
+                if (!hasSkillEntry)
+                {
+                    hints.Add("Skill commands:\n  skill generate [--out-dir <dir>] [--force]\n  skill check [--out-dir <dir>]");
+                }
+
+                if (!hasSessionEntry)
+                {
+                    hints.Add("Session commands:\n  session show\n  session clear");
+                }
+
+                if (hints.Count > 0)
+                {
+                    result = result with { Output = result.Output + "\n\n" + string.Join("\n\n", hints) };
+                }
+            }
+
+            if (result.ExitCode == 0)
+            {
+                try
+                {
+                    session.Save();
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    return CommandLineExecutionResult.Failure($"The operation succeeded but session '{session.Id}' could not be saved to '{session.Path}': {exception.Message}");
+                }
+            }
+
+            return result;
         }
         finally
         {
@@ -392,6 +468,115 @@ public sealed class AgentSurfaceApplication
         }
     }
 
+    private IReadOnlyList<CommandLineGlobalOption> GetCliGlobalOptions()
+    {
+        var options = new List<CommandLineGlobalOption>(_globalOptions);
+        if (!options.Any(static option => OperationNaming.ToMatchKey(option.FlagName) == "session"))
+        {
+            options.Add(new CommandLineGlobalOption(
+                "--session",
+                ConfigKey: SessionConfigurationKey,
+                Description: $"Session id for persisted state. Defaults to the {ResolveSessionEnvironmentVariable()} environment variable, then a hash of the working directory."));
+        }
+
+        return options;
+    }
+
+    private string ResolveSessionAppName()
+    {
+        if (!string.IsNullOrWhiteSpace(_sessionOptions.AppName))
+        {
+            return _sessionOptions.AppName!;
+        }
+
+        return System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? "app";
+    }
+
+    private string ResolveSessionEnvironmentVariable()
+    {
+        var builder = new StringBuilder();
+        foreach (var character in ResolveSessionAppName())
+        {
+            builder.Append(char.IsLetterOrDigit(character) ? char.ToUpperInvariant(character) : '_');
+        }
+
+        return builder.Append("_SESSION").ToString();
+    }
+
+    private FileAgentSession OpenSession(IReadOnlyDictionary<string, string> configuration)
+    {
+        var directory = FileAgentSession.GetSessionsDirectory(ResolveSessionAppName(), _sessionOptions.StateDirectory);
+        string? id = configuration.TryGetValue(SessionConfigurationKey, out var flag) ? flag : null;
+        id = string.IsNullOrWhiteSpace(id) ? Environment.GetEnvironmentVariable(ResolveSessionEnvironmentVariable()) : id;
+        id = string.IsNullOrWhiteSpace(id)
+            ? FileAgentSession.CreateWorkingDirectoryId(string.IsNullOrWhiteSpace(_sessionOptions.WorkingDirectory) ? Directory.GetCurrentDirectory() : _sessionOptions.WorkingDirectory!)
+            : id.Trim();
+
+        if (_sessionOptions.TimeToLive is { } timeToLive)
+        {
+            FileAgentSession.PruneExpired(directory, timeToLive, id);
+        }
+
+        return FileAgentSession.Open(directory, id);
+    }
+
+    private static async Task InitializeSessionAsync(IServiceProvider services, IAgentSession session, CancellationToken cancellationToken)
+    {
+        var logger = services.GetService<ILoggerFactory>()?.CreateLogger<AgentSurfaceApplication>();
+        foreach (var initializer in services.GetServices<IAgentSessionInitializer>())
+        {
+            try
+            {
+                await initializer.InitializeAsync(session, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException and not OutOfMemoryException)
+            {
+                // A stale session (for example a moved assembly) must not block the very commands that repair it.
+                logger?.LogWarning(exception, "Session initializer {Initializer} failed; continuing without its state.", initializer.GetType().Name);
+            }
+        }
+    }
+
+    private static CommandLineExecutionResult RunSessionCommand(string[] args, FileAgentSession session)
+    {
+        const string help = "Usage: session <show|clear>\n  show    Print the session id, file path and stored values.\n  clear   Delete the session file and its stored values.";
+        switch (args)
+        {
+            case [] or ["--help" or "-h"]:
+                return CommandLineExecutionResult.Success(help);
+            case ["show"]:
+                var lines = new List<string>
+                {
+                    $"id: {session.Id}",
+                    $"path: {session.Path}",
+                    $"exists: {(session.UpdatedAt is null ? "false" : "true")}",
+                };
+                if (session.UpdatedAt is { } updatedAt)
+                {
+                    lines.Add($"updatedAt: {updatedAt:O}");
+                }
+
+                var values = session.Values;
+                lines.Add(values.Count == 0 ? "values: (none)" : "values:");
+                lines.AddRange(values.OrderBy(static pair => pair.Key, StringComparer.Ordinal).Select(pair => $"  {pair.Key}: {pair.Value.GetRawText()}"));
+                return CommandLineExecutionResult.Success(string.Join("\n", lines)) with { IsVerbatimOutput = true };
+            case ["clear"]:
+                try
+                {
+                    var deleted = session.Clear();
+                    return CommandLineExecutionResult.Success(deleted
+                        ? $"Cleared session '{session.Id}' ({session.Path})."
+                        : $"Session '{session.Id}' has no stored state ({session.Path}).") with { IsVerbatimOutput = true };
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    return CommandLineExecutionResult.Failure($"Could not clear session '{session.Id}': {exception.Message}");
+                }
+
+            default:
+                return CommandLineExecutionResult.Failure($"Unknown session command '{string.Join(' ', args)}'.\n\n{help}", 2);
+        }
+    }
     // IHost only exposes sync Dispose, which throws for a singleton that is IAsyncDisposable-only.
     private static async ValueTask DisposeHostAsync(IHost host)
     {
@@ -405,17 +590,15 @@ public sealed class AgentSurfaceApplication
         }
     }
 
-    private static bool IsRootHelp(string[] args) => args.Length == 0 || args[0] is "--help" or "-h";
-
     private static bool HasRootEntry(OperationCatalog catalog, string name) =>
         catalog.ForSurface(AgentSurface.Cli).Operations.Any(operation =>
             string.Equals(OperationCatalog.GetCategorySegments(operation.Category).FirstOrDefault() ?? operation.Name, name, StringComparison.OrdinalIgnoreCase));
 
-    private OperationCommandLineOptions CreateCliOptions()
+    private OperationCommandLineOptions CreateCliOptions(IReadOnlyList<CommandLineGlobalOption> globalOptions)
     {
         var options = new OperationCommandLineOptions
         {
-            GlobalOptions = [.. _globalOptions],
+            GlobalOptions = [.. globalOptions],
             Input = Input,
         };
         foreach (var configure in _cliConfigurations)
@@ -466,12 +649,21 @@ public sealed class AgentSurfaceApplication
             : name;
     }
 
-    private void ConfigureCommon(HostApplicationBuilder builder)
+    private void ConfigureCommon(HostApplicationBuilder builder, IAgentSession? session)
     {
         builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
         foreach (var configure in _serviceConfigurations)
         {
             configure(builder);
+        }
+
+        if (session is not null)
+        {
+            builder.Services.TryAddSingleton(session);
+        }
+        else
+        {
+            builder.Services.TryAddSingleton<IAgentSession>(static _ => new InMemoryAgentSession());
         }
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IOperationInvocationPolicy, DangerousOperationConfirmationPolicy>());

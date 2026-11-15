@@ -89,6 +89,53 @@ return await AgentSurfaceApplication.RunAsync(args, app =>
 - `ConfigureCatalog` receives the built service provider, so a `targetFactory` can
   resolve from DI.
 
+### Session state
+
+Stateful flows such as `load_assembly` → `list_contexts` → `run_query` need state that
+outlives one operation call. MCP servers are long-lived, but every CLI invocation is a new
+process, so the host provides an `IAgentSession` (`Id`, `Get<T>`, `Set<T>`, `Remove`) that
+works the same on both surfaces. Operations take it as an injected service (a constructor
+parameter); it is never an operation parameter and never appears in a schema.
+
+```csharp
+public sealed class TargetOperations(IAgentSession session, TargetRegistry registry)
+{
+    [AgentOperation("load_assembly")]
+    public string Load(string path) { registry.Load(path); session.Set("target", path); return path; }
+}
+
+// Rebuild live state from the persisted intent before each CLI invocation.
+public sealed class TargetInitializer(TargetRegistry registry) : IAgentSessionInitializer
+{
+    public ValueTask InitializeAsync(IAgentSession session, CancellationToken ct)
+    {
+        if (session.Get<string>("target") is { } path) registry.Load(path);
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+- **MCP:** an in-memory session (process lifetime for stdio). It never touches disk.
+- **CLI:** a JSON file at `%LOCALAPPDATA%\<app>\sessions\<id>.json` on Windows or
+  `$XDG_STATE_HOME/<app>/sessions/<id>.json` (default `~/.local/state`) elsewhere, readable
+  by the current user only (an ACL on Windows, mode 0600 on Unix). It is loaded before the
+  invocation and saved only after a successful one; the write is atomic (temp file plus
+  rename), last writer wins, and the file records `updatedAt`.
+- **Session id**, in order: `--session <id>`, the `<APP>_SESSION` environment variable, then
+  a hash of the current directory (`cwd-<hash>`), which gives per-workspace state by default.
+  Ids are 1-128 letters, digits, `.`, `_` or `-`.
+- **Initializers:** every registered `IAgentSessionInitializer` runs after the host is built
+  and before the operation is invoked (not for help, `skill` or `session` commands). A
+  throwing initializer is logged as a warning and does not block the command.
+- **Commands:** `cli session show` prints the id, the file path and the stored values;
+  `cli session clear` deletes the file. An operation named `session` takes precedence.
+- **Configuration:** `app.ConfigureSession(o => ...)` sets `AppName` (state directory and
+  env var; defaults to the entry assembly name), `StateDirectory`, `TimeToLive` (default 30
+  days; expired files are pruned when a session opens, `null` disables) and
+  `WorkingDirectory`.
+
+**Never store secrets in a session.** The file is plain JSON. Keep connection strings,
+tokens and passwords in configuration or user secrets, and store only names and paths.
 ## Discovering commands
 
 The root invocation (`<executable> --help`, or no arguments) lists uncategorized

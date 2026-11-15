@@ -209,6 +209,20 @@ public sealed class AgentSessionTests : IDisposable
     }
 
     [Fact]
+    public void Touching_a_read_only_session_protects_it_from_pruning()
+    {
+        var directory = SessionsDirectory;
+        var session = FileAgentSession.Open(directory, "active");
+        session.Set("k", 1);
+        session.Save();
+        File.SetLastWriteTimeUtc(session.Path, DateTime.UtcNow.AddDays(-40));
+
+        FileAgentSession.Open(directory, "active").Touch();
+        FileAgentSession.PruneExpired(directory, TimeSpan.FromDays(30));
+
+        Assert.True(File.Exists(session.Path));
+    }
+    [Fact]
     public void Values_round_trip_and_a_corrupt_file_yields_an_empty_session()
     {
         var directory = SessionsDirectory;

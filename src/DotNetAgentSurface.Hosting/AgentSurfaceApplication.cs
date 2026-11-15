@@ -517,7 +517,9 @@ public sealed class AgentSurfaceApplication
             FileAgentSession.PruneExpired(directory, timeToLive, id);
         }
 
-        return FileAgentSession.Open(directory, id);
+        var session = FileAgentSession.Open(directory, id);
+        session.Touch();
+        return session;
     }
 
     private static async Task InitializeSessionAsync(IServiceProvider services, IAgentSession session, CancellationToken cancellationToken)

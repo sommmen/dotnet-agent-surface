@@ -149,9 +149,9 @@ The core catalog, invocation pipeline, CLI/MCP adapters, skill generator, and th
 
 ### Testing prerelease packages
 
-The `publish` workflow automatically pushes `.nupkg` files to GitHub Packages on every push to `main`, producing git-versioned prerelease packages such as `0.1.8-preview.g<commit>`. It can also be run manually (`workflow_dispatch`) from any branch. The workflow only publishes to NuGet.org for a stable GitHub Release, or when its explicit `publish_nuget` input is selected on a manual run.
+The `publish` workflow automatically pushes `.nupkg` files to both NuGet.org (through trusted publishing) and GitHub Packages on every push to `main`, producing git-versioned prerelease packages such as `0.1.8-preview.g<commit>`. It can also be run manually (`workflow_dispatch`) from any branch; a manual run publishes to NuGet.org only when its `publish_nuget` input is selected, and a stable GitHub Release also publishes there.
 
-To consume those packages from another repository, add the GitHub Packages feed. Use a GitHub personal access token with `read:packages` if the package is private:
+To consume a preview from NuGet.org, no extra feed is needed: `dotnet add package DotNetAgentSurface.Mcp --prerelease`. Packages are `0.x` previews and may break between versions, so pin an exact version (see [CHANGELOG.md](CHANGELOG.md#versioning-and-breaking-changes-before-10)). To consume the same packages from GitHub Packages instead, add that feed. Use a GitHub personal access token with `read:packages` if the package is private:
 
 ```powershell
 dotnet nuget add source https://nuget.pkg.github.com/sommmen/index.json `

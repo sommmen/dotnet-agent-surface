@@ -23,6 +23,33 @@ public static class McpOperationCatalogBuilderExtensions
         this OperationCatalogBuilder builder,
         Assembly assembly,
         Func<Type, object?>? targetFactory = null)
+        => AddMcpServerTools(
+            builder,
+            assembly,
+            targetFactory,
+            static options => options.SafetyMapping = McpToolSafetyMapping.DestructiveIsDangerous);
+
+    /// <summary>
+    /// Discovers native MCP SDK tools like <see cref="AddMcpServerTools(OperationCatalogBuilder, Assembly, Func{Type, object?}?)"/>
+    /// and applies <paramref name="configure"/> to choose which tools to import and how SDK hints map to safety.
+    /// </summary>
+    /// <remarks>
+    /// SDK hint attributes (<c>Destructive</c>, <c>ReadOnly</c>, <c>Idempotent</c>, <c>OpenWorld</c>, <c>Title</c>) are
+    /// imported as MCP annotations and do not affect <see cref="AgentSafetyLevel"/> unless
+    /// <see cref="McpToolImportOptions.SafetyMapping"/> says so; hint-only is the default here, whereas the overload
+    /// without <paramref name="configure"/> keeps mapping destructive tools to <see cref="AgentSafetyLevel.Dangerous"/>.
+    /// A <see cref="DescriptionAttribute"/> on a parameter
+    /// becomes that parameter's description and wins over XML documentation.
+    /// </remarks>
+    /// <param name="builder">The catalog builder to populate.</param>
+    /// <param name="assembly">Assembly containing native MCP SDK tool types.</param>
+    /// <param name="targetFactory">Optional factory for instances of non-static tool types.</param>
+    /// <param name="configure">Optional import options callback.</param>
+    public static OperationCatalogBuilder AddMcpServerTools(
+        this OperationCatalogBuilder builder,
+        Assembly assembly,
+        Func<Type, object?>? targetFactory,
+        Action<McpToolImportOptions>? configure)
     {
         if (builder is null)
         {
@@ -34,15 +61,20 @@ public static class McpOperationCatalogBuilderExtensions
             throw new ArgumentNullException(nameof(assembly));
         }
 
+        var importOptions = new McpToolImportOptions();
+        configure?.Invoke(importOptions);
+        var include = importOptions.Include ?? (static _ => true);
+
         foreach (var toolType in GetLoadableTypes(assembly)
                      .Where(static type => type.IsClass && type.IsDefined(typeof(McpServerToolTypeAttribute), inherit: false)))
         {
-            object? target = null;
-            var instanceMethods = toolType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            var toolMethods = toolType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                 .Where(static method => method.IsDefined(typeof(McpServerToolAttribute), inherit: false))
+                .Where(include)
                 .ToArray();
 
-            if (instanceMethods.Length > 0)
+            object? target = null;
+            if (toolMethods.Any(static method => !method.IsStatic))
             {
                 target = targetFactory?.Invoke(toolType) ?? Activator.CreateInstance(toolType);
                 if (target is null)
@@ -53,8 +85,7 @@ public static class McpOperationCatalogBuilderExtensions
                 }
             }
 
-            foreach (var method in toolType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
-                         .Where(static method => method.IsDefined(typeof(McpServerToolAttribute), inherit: false)))
+            foreach (var method in toolMethods)
             {
                 var attribute = method.GetCustomAttribute<McpServerToolAttribute>(inherit: false)!;
                 var name = string.IsNullOrWhiteSpace(attribute.Name) ? method.Name : attribute.Name!;
@@ -64,14 +95,19 @@ public static class McpOperationCatalogBuilderExtensions
 
                 builder.Add(name, description, CreateDelegate(method, method.IsStatic ? null : target), options =>
                 {
-                    options.SafetyLevel = attribute.Destructive
+                    options.SafetyLevel = importOptions.SafetyMapping == McpToolSafetyMapping.DestructiveIsDangerous && attribute.Destructive
                         ? AgentSafetyLevel.Dangerous
                         : AgentSafetyLevel.Safe;
                     options.IsIdempotent = attribute.Idempotent;
+                    options.PolicyMetadata.Add(new McpToolHints(
+                        string.IsNullOrWhiteSpace(attribute.Title) ? null : attribute.Title,
+                        attribute.ReadOnly,
+                        attribute.Destructive,
+                        attribute.Idempotent,
+                        attribute.OpenWorld));
                 });
             }
         }
-
         return builder;
     }
 

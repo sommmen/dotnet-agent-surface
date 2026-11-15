@@ -125,8 +125,14 @@ public sealed class McpOperationAdapterTests
     public async Task AddMcpServerTools_registers_native_tools_for_catalog_projection()
     {
         var catalog = new OperationCatalogBuilder()
-            .AddMcpServerTools(typeof(NativeMcpTools).Assembly, type =>
-                type == typeof(NativeMcpTools) ? new NativeMcpTools() : null)
+            .AddMcpServerTools(
+                typeof(NativeMcpTools).Assembly,
+                type => type == typeof(NativeMcpTools) ? new NativeMcpTools() : null,
+                options =>
+                {
+                    options.SafetyMapping = McpToolSafetyMapping.DestructiveIsDangerous;
+                    options.Include = method => method.DeclaringType == typeof(NativeMcpTools);
+                })
             .Build();
         var confirmationPolicies = new IOperationInvocationPolicy[]
         {

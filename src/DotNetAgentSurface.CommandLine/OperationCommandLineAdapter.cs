@@ -132,11 +132,14 @@ public sealed class OperationCommandLineAdapter
                 inputs,
                 cancellationToken,
                 confirmation,
-                invocationContext ?? _invocationContext).ConfigureAwait(false);
+                WithSurface(invocationContext ?? _invocationContext)).ConfigureAwait(false);
 
             if (!invocation.Succeeded)
             {
-                return CommandLineExecutionResult.Failure(CleanOperationError(invocation.Error), invocation.IsCancelled ? 130 : 1);
+                var error = invocation.ErrorIsVerbatim && !string.IsNullOrWhiteSpace(invocation.Error)
+                    ? invocation.Error!
+                    : CleanOperationError(invocation.Error);
+                return CommandLineExecutionResult.Failure(error, invocation.IsCancelled ? 130 : 1);
             }
 
             if (operation.IsIdempotent && invocation.Value is OperationNoOp noOp)
@@ -160,6 +163,11 @@ public sealed class OperationCommandLineAdapter
             return CommandLineExecutionResult.Failure(exception.Message, 2);
         }
     }
+
+    private static OperationInvocationContext WithSurface(OperationInvocationContext? context) =>
+        context is null
+            ? new OperationInvocationContext { Surface = AgentSurface.Cli }
+            : context with { Surface = AgentSurface.Cli };
 
     /// <summary>
     /// Strips exception-style noise (stack traces, provider dumps) from operation error text so CLI users get an

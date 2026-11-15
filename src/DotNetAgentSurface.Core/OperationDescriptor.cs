@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Reflection;
 
 namespace DotNetAgentSurface.Core;
@@ -28,8 +29,23 @@ public sealed class OperationDescriptor
         Parameters = Array.AsReadOnly(method.GetParameters().Select(parameter =>
         {
             var paramName = parameter.Name ?? throw new ArgumentException($"Method parameter at index {Array.IndexOf(method.GetParameters(), parameter)} has no name.");
-            return new OperationParameterDescriptor(parameter, documentation?.Parameters.TryGetValue(paramName, out var description) == true ? description : null);
+            return new OperationParameterDescriptor(parameter, ResolveParameterDescription(parameter, documentation, paramName));
         }).ToArray());
+    }
+
+    /// <summary>
+    /// A <see cref="DescriptionAttribute"/> on the parameter wins over the XML documentation <c>&lt;param&gt;</c> text;
+    /// the XML text is the fallback when the attribute is absent or blank.
+    /// </summary>
+    private static string? ResolveParameterDescription(ParameterInfo parameter, OperationDocumentation? documentation, string paramName)
+    {
+        var attributeDescription = parameter.GetCustomAttribute<DescriptionAttribute>(inherit: false)?.Description;
+        if (!string.IsNullOrWhiteSpace(attributeDescription))
+        {
+            return attributeDescription;
+        }
+
+        return documentation?.Parameters.TryGetValue(paramName, out var description) == true ? description : null;
     }
 
     private static string ResolveDescription(string? explicitDescription, OperationDocumentation? documentation, OperationDocumentationOptions? options)

@@ -57,7 +57,7 @@ public sealed class McpOperationAdapter
             arguments,
             cancellationToken,
             confirmation,
-            invocationContext ?? _invocationContext).ConfigureAwait(false);
+            WithSurface(invocationContext ?? _invocationContext)).ConfigureAwait(false);
         if (invocation.IsCancelled)
         {
             return Error("Operation was cancelled.");
@@ -82,11 +82,34 @@ public sealed class McpOperationAdapter
             Name = operation.Name,
             Description = operation.Description,
             InputSchema = schema.RootElement.Clone(),
-            Annotations = new ToolAnnotations
+            Annotations = CreateAnnotations(operation)
+        };
+    }
+
+    private static OperationInvocationContext WithSurface(OperationInvocationContext? context) =>
+        context is null
+            ? new OperationInvocationContext { Surface = AgentSurface.Mcp }
+            : context with { Surface = AgentSurface.Mcp };
+
+    private static ToolAnnotations CreateAnnotations(OperationDescriptor operation)
+    {
+        var hints = operation.PolicyMetadata.OfType<McpToolHints>().FirstOrDefault();
+        if (hints is null)
+        {
+            return new ToolAnnotations
             {
                 ReadOnlyHint = operation.SafetyLevel == AgentSafetyLevel.Safe,
                 DestructiveHint = operation.SafetyLevel == AgentSafetyLevel.Dangerous
-            }
+            };
+        }
+
+        return new ToolAnnotations
+        {
+            Title = hints.Title,
+            ReadOnlyHint = hints.ReadOnlyHint,
+            DestructiveHint = hints.DestructiveHint,
+            IdempotentHint = hints.IdempotentHint,
+            OpenWorldHint = hints.OpenWorldHint
         };
     }
 

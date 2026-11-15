@@ -25,8 +25,8 @@ public sealed class AgentOperationAttribute : Attribute
     /// itself, prevent unconfirmed invocation. Enforcement only happens if the <see cref="OperationInvoker"/>
     /// that executes the operation is configured with a policy implementing
     /// <see cref="IConfirmationEnforcingPolicy"/> (for example <see cref="DangerousOperationConfirmationPolicy"/>).
-    /// Without such a policy, <see cref="OperationInvoker.InvokeAsync"/> throws
-    /// <see cref="ConfirmationPolicyMissingException"/> for any operation whose <see cref="SafetyLevel"/> is
+    /// Without such a policy, <see cref="OperationInvoker.InvokeAsync"/> returns a failed result
+    /// (carrying the <see cref="ConfirmationPolicyMissingException"/> message) for any operation whose <see cref="SafetyLevel"/> is
     /// above <see cref="AgentSafetyLevel.Safe"/>, so this trap is hard to miss at runtime.
     /// </summary>
     public AgentSafetyLevel SafetyLevel { get; init; } = AgentSafetyLevel.Safe;
@@ -47,8 +47,8 @@ public sealed class AgentOperationAttribute : Attribute
 /// unconfirmed execution of a <see cref="Confirm"/> or <see cref="Dangerous"/> operation. Enforcement requires
 /// pairing the operation with an <see cref="OperationInvoker"/> policy implementing
 /// <see cref="IConfirmationEnforcingPolicy"/>, such as <see cref="DangerousOperationConfirmationPolicy"/>. If no
-/// such policy is supplied, <see cref="OperationInvoker.InvokeAsync"/> throws
-/// <see cref="ConfirmationPolicyMissingException"/> rather than silently running the operation unconfirmed.
+/// such policy is supplied, <see cref="OperationInvoker.InvokeAsync"/> returns a failed result
+/// (carrying the <see cref="ConfirmationPolicyMissingException"/> message) rather than silently running the operation unconfirmed.
 /// </remarks>
 public enum AgentSafetyLevel
 {

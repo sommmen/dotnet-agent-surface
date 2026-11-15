@@ -16,10 +16,15 @@ on:
 permissions:
   pull-requests: read
 
+concurrency:
+  group: pr-title-lint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   lint-pr-title:
     name: Validate PR title
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Validate PR title
         uses: actions/github-script@v9

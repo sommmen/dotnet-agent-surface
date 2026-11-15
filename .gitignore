@@ -11,6 +11,8 @@
 *.userosscache
 *.sln.docstates
 *.env
+.env.*
+!.env.example
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -415,6 +417,7 @@ FodyWeavers.xsd
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
+!*.code-workspace
 
 # Local History for Visual Studio Code
 .history/
@@ -428,19 +431,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
-
-### VisualStudioCode ###
-# Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
-!*.code-workspace
-
-# Built Visual Studio Code Extensions
-*.vsix
 
 ### Agent tooling ###
 # Copilot Orchestrator and agent harness scratch directories.

@@ -288,9 +288,9 @@ public sealed class CliErgonomicsTests : IDisposable
     {
         var help = await CreateAdapter(new Operations()).ExecuteAsync(["sum", "--help"], TestContext.Current.CancellationToken);
 
-        Assert.Contains("Usage: sum [--numbers <int[]>]", help.Output);
-        Assert.Contains("(optional, repeatable) - Numbers to add.", help.Output);
-        Assert.Contains("--offset <int> (optional, default: 1)", help.Output);
+        Assert.Contains("Usage: sum [--numbers <integer[]>]", help.Output);
+        Assert.Contains("--numbers <integer[] (repeatable)> (optional) - Numbers to add.", help.Output);
+        Assert.Contains("--offset <integer> (optional, default: 1)", help.Output);
         Assert.Contains("Examples:", help.Output);
         Assert.Contains("  sum --numbers 1 --numbers 2", help.Output);
         Assert.Contains("--format", help.Output);

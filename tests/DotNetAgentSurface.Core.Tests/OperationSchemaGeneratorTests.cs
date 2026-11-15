@@ -57,6 +57,25 @@ public sealed class OperationSchemaGeneratorTests
         Assert.Equal("The limit", properties.GetProperty("limit").GetProperty("description").GetString());
     }
 
+    [Fact]
+    public void Parameter_IsRequired_matches_the_schema_required_list()
+    {
+        var operation = OperationCatalog.Discover(typeof(RequiredOperations)).Operations.Single();
+        var schema = Generate(typeof(RequiredOperations));
+        var required = schema.GetProperty("required").EnumerateArray().Select(static item => item.GetString()).Order().ToArray();
+
+        Assert.Equal(required, operation.Parameters.Where(static parameter => parameter.IsRequired).Select(static parameter => parameter.Name).Order().ToArray());
+        Assert.Equal(["a", "b", "c", "d"], required);
+    }
+
+    private sealed class RequiredOperations
+    {
+        [AgentOperation("required", "Required parameters")]
+        public void Required(string a, string? b, int c, int? d, int e = 1, string? f = null, string g = "x", CancellationToken cancellationToken = default)
+        {
+        }
+    }
+
     private sealed class SchemaOperations
     {
         [AgentOperation("schema", "Creates a schema")]

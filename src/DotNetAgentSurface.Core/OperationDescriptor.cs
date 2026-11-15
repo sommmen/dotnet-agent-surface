@@ -151,4 +151,10 @@ public sealed class OperationParameterDescriptor
     public bool IsAmbient { get; }
 
     public bool IsNullable { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the caller must supply the parameter: it is not ambient and has no default value. This
+    /// is exactly the <c>required</c> list of the generated MCP input schema, so the CLI and MCP agree.
+    /// </summary>
+    public bool IsRequired => !IsAmbient && !IsOptional;
 }

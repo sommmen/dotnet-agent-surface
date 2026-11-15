@@ -49,6 +49,8 @@ public sealed class AgentSurfaceApplication
     private readonly List<Action<OperationCommandLineOptions>> _cliConfigurations = [];
     private readonly Dictionary<string, Func<string[], CancellationToken, Task<int>>> _verbs = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CommandLineGlobalOption> _globalOptions = [];
+    private string? _outputFormatConfigKey;
+    private Func<string, string>? _outputFormatMap;
     private const string SessionConfigurationKey = "DotNetAgentSurface:Session";
 
     private readonly AgentSessionOptions _sessionOptions = new();
@@ -202,6 +204,25 @@ public sealed class AgentSurfaceApplication
         }
 
         _globalOptions.Add(new CommandLineGlobalOption(name, injectAs, configKey, description));
+        return this;
+    }
+
+    /// <summary>
+    /// Maps the CLI's <c>--output</c>/<c>--format</c> value (<c>json</c> or <c>toon</c>) to a host configuration key before the
+    /// host is built, so a host whose operations return pre-rendered strings can render in the requested format. The same
+    /// value is available to operations as <see cref="IOperationContext.OutputFormat"/>. Nothing is set when the flag is absent.
+    /// </summary>
+    /// <param name="configKey">The configuration key, for example <c>Output:Format</c>.</param>
+    /// <param name="map">Translates the format (<c>json</c> or <c>toon</c>) to the value stored under the key. Defaults to the format itself.</param>
+    public AgentSurfaceApplication BindOutputFormat(string configKey, Func<string, string>? map = null)
+    {
+        if (string.IsNullOrWhiteSpace(configKey))
+        {
+            throw new ArgumentException("A configuration key is required.", nameof(configKey));
+        }
+
+        _outputFormatConfigKey = configKey;
+        _outputFormatMap = map;
         return this;
     }
 
@@ -360,7 +381,14 @@ public sealed class AgentSurfaceApplication
     private async Task<CommandLineExecutionResult> ExecuteCliAsync(string[] args, CancellationToken cancellationToken)
     {
         var globalOptions = GetCliGlobalOptions();
-        var configuration = OperationCommandLineAdapter.ReadConfigurationValues(args, globalOptions);
+        var configuration = new Dictionary<string, string>(
+            OperationCommandLineAdapter.ReadConfigurationValues(args, globalOptions),
+            StringComparer.OrdinalIgnoreCase);
+        if (_outputFormatConfigKey is not null && OperationCommandLineAdapter.ReadOutputFormat(args, globalOptions) is { } outputFormat)
+        {
+            configuration[_outputFormatConfigKey] = _outputFormatMap?.Invoke(outputFormat) ?? outputFormat;
+        }
+
 
         FileAgentSession session;
         try
@@ -394,7 +422,7 @@ public sealed class AgentSurfaceApplication
 
             if (string.Equals(command, "session", StringComparison.Ordinal) && !hasSessionEntry)
             {
-                return RunSessionCommand(OperationCommandLineAdapter.RemoveGlobalFlags(args.Skip(commandStart + 1).ToArray(), globalOptions), session, globalOptions);
+                return RunSessionCommand(OperationCommandLineAdapter.RemoveGlobalFlags(args.Skip(commandStart + 1).ToArray(), globalOptions), session, globalOptions, _sessionOptions.SensitiveKeys);
             }
 
             foreach (var service in host.Services.GetServices<IHostedService>())
@@ -416,9 +444,15 @@ public sealed class AgentSurfaceApplication
                     SkillOutputDirectory,
                     cancellationToken,
                     CreateSkillOptions(options)).ConfigureAwait(false);
-                return IsHelpRequest(skillArgs)
-                    ? skillResult with { Output = skillResult.Output + "\n\n" + OperationCommandLineAdapter.RenderGlobalFlagHelp(globalOptions, SkillOwnFlags) }
-                    : skillResult;
+                var globalHelp = "\n\n" + OperationCommandLineAdapter.RenderGlobalFlagHelp(globalOptions, SkillOwnFlags);
+                if (!IsHelpRequest(skillArgs))
+                {
+                    return skillResult;
+                }
+
+                return skillResult.ExitCode == 0
+                    ? skillResult with { Output = skillResult.Output + globalHelp }
+                    : skillResult with { Error = skillResult.Error + globalHelp };
             }
 
             var isRootHelp = command is null || command is "--help" or "-h";
@@ -544,17 +578,21 @@ public sealed class AgentSurfaceApplication
         }
     }
 
+    private const string SensitiveMask = "***";
+
     private static readonly string[] SkillOwnFlags = ["output"];
 
     private static bool IsHelpRequest(string[] args) => args is [] or ["--help" or "-h"];
 
-    private static CommandLineExecutionResult RunSessionCommand(string[] args, FileAgentSession session, IReadOnlyList<CommandLineGlobalOption> globalOptions)
+    private static CommandLineExecutionResult RunSessionCommand(string[] args, FileAgentSession session, IReadOnlyList<CommandLineGlobalOption> globalOptions, ISet<string> sensitiveKeys)
     {
         var help = "Usage: session <show|clear>\n  show    Print the session id, file path and stored values.\n  clear   Delete the session file and its stored values.\n\n"
             + OperationCommandLineAdapter.RenderGlobalFlagHelp(globalOptions);
         switch (args)
         {
-            case [] or ["--help" or "-h"]:
+            case []:
+                return CommandLineExecutionResult.Failure(help, 2);
+            case ["--help" or "-h"]:
                 return CommandLineExecutionResult.Success(help);
             case ["show"]:
                 var lines = new List<string>
@@ -570,7 +608,7 @@ public sealed class AgentSurfaceApplication
 
                 var values = session.Values;
                 lines.Add(values.Count == 0 ? "values: (none)" : "values:");
-                lines.AddRange(values.OrderBy(static pair => pair.Key, StringComparer.Ordinal).Select(pair => $"  {pair.Key}: {pair.Value.GetRawText()}"));
+                lines.AddRange(values.OrderBy(static pair => pair.Key, StringComparer.Ordinal).Select(pair => $"  {pair.Key}: {(sensitiveKeys.Contains(pair.Key) ? SensitiveMask : pair.Value.GetRawText())}"));
                 return CommandLineExecutionResult.Success(string.Join("\n", lines)) with { IsVerbatimOutput = true };
             case ["clear"]:
                 try
@@ -626,9 +664,9 @@ public sealed class AgentSurfaceApplication
         var executable = ResolveExecutableName();
         var globals = new List<SkillGlobalOption>
         {
-            new("--output <toon|json>", "Output format for object results (alias `--format`). String results are always written verbatim."),
-            new("--fields <name,...>", "Select fields of list results."),
-            new("--full", "Do not truncate long values in object results."),
+            new("--output <toon|json>", "Output format for object results (alias `--format`). String results are written verbatim; a host may use the format to render them."),
+            new("--fields <name,...>", "Select fields of list results (exit 2 for operations that return text)."),
+            new("--full", "Do not truncate long values in object results (exit 2 for operations that return text)."),
             new("--confirm", "Confirm an operation that requires confirmation."),
             new("--yes", "With `--confirm`, also confirm a dangerous operation."),
         };

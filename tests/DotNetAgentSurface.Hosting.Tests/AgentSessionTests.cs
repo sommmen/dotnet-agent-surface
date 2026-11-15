@@ -409,6 +409,69 @@ public sealed class AgentSessionTests : IDisposable
         Assert.False(File.Exists(session.Path));
     }
 
+
+    [Fact]
+    public async Task Bound_output_format_reaches_the_host_configuration_before_it_is_built()
+    {
+        string? seen = null;
+        var json = await RunAsync(["cli", "--session", "f", "--output", "json", "current-target"], app =>
+        {
+            app.BindOutputFormat("Render:Format", format => format.ToUpperInvariant());
+            app.ConfigureServices(builder => seen = builder.Configuration["Render:Format"]);
+        });
+        var jsonSeen = seen;
+        seen = "unset";
+        await RunAsync(["cli", "--session", "f", "current-target"], app =>
+        {
+            app.BindOutputFormat("Render:Format");
+            app.ConfigureServices(builder => seen = builder.Configuration["Render:Format"]);
+        });
+
+        Assert.Equal(0, json.ExitCode);
+        Assert.Equal("JSON", jsonSeen);
+        Assert.Null(seen);
+    }
+
+    [Fact]
+    public async Task Session_show_masks_sensitive_keys_but_keeps_their_stored_values()
+    {
+        await RunAsync(["cli", "--session", "s", "select-target", "--name", "alpha"]);
+        await RunAsync(["cli", "--session", "s", "select-target", "--name", "alpha"], app =>
+            app.ConfigureServices(builder => builder.Services.AddSingleton<IAgentSessionInitializer, SecretInitializer>()));
+
+        var shown = await RunAsync(["cli", "--session", "s", "session", "show"], app => app.ConfigureSession(options => options.SensitiveKeys.Add("CURSORKEY")));
+        var unmasked = await RunAsync(["cli", "--session", "s", "session", "show"]);
+
+        Assert.DoesNotContain("top-secret", shown.Output);
+        Assert.Contains("cursorKey: ***", shown.Output);
+        Assert.Contains("target: \"alpha\"", shown.Output);
+        Assert.Contains("top-secret", unmasked.Output);
+    }
+
+    [Theory]
+    [InlineData("session")]
+    [InlineData("skill")]
+    public async Task Builtin_verbs_without_a_subcommand_exit_2_with_usage_on_stderr(string verb)
+    {
+        var bare = await RunAsync(["cli", verb]);
+        var help = await RunAsync(["cli", verb, "--help"]);
+
+        Assert.Equal(2, bare.ExitCode);
+        Assert.Equal(string.Empty, bare.Output);
+        Assert.Contains("--session", bare.Error);
+        Assert.Equal(0, help.ExitCode);
+        Assert.Contains("--session", help.Output);
+    }
+
+    private sealed class SecretInitializer : IAgentSessionInitializer
+    {
+        public ValueTask InitializeAsync(IAgentSession session, CancellationToken cancellationToken)
+        {
+            session.Set("cursorKey", "top-secret");
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private string SessionsDirectory => FileAgentSession.GetSessionsDirectory(_appName, _stateDirectory);
 
     private Task<(int ExitCode, string Output, string Error)> RunAsync(string[] args, Action<AgentSurfaceApplication>? configure = null) =>

@@ -40,8 +40,20 @@ Operation inputs are flags after the operation name:
   reads standard input, for long queries.
 - Array parameters take repeated flags (`--include A --include B`) or one JSON array.
 
+Required parameters are enforced: a parameter without a default value (exactly the `required`
+list of the MCP input schema, `OperationParameterDescriptor.IsRequired`, so a nullable parameter
+without a default is still required) must be supplied, otherwise the command exits 2 with
+`missing required --context-name`. Help prints friendly type names (`string`, `integer`, `boolean`,
+`string[] (repeatable)`, `object (JSON: skip, take)` with the property names, enum values as
+`Alpha|Beta`). An unknown operation exits 2 and prints the operation names only, with up to three
+did-you-mean suggestions.
+
 A `string` result is written verbatim: never JSON-quoted, projected or truncated.
-`--output`, `--fields` and `--full` shape object results only. Operation errors keep
+`--output` and `--format` also reach the operation: the requested `json` or `toon` is available as
+`IOperationContext.OutputFormat` (`null` when the flag is absent), so an operation that renders its
+own text can honour it. `--fields` and `--full` shape object results only; combined with an operation
+that returns a string they exit 2 with `--fields is not supported for this operation's text output`
+instead of being silently ignored. Operation errors keep
 their newlines unless `OperationCommandLineOptions.FlattenOperationErrors` is set;
 usage errors stay single-line. `OperationCommandLineOptions.ResultRenderer` receives
 the raw object result. Exit codes: 0 success, 1 operation failure, 2 usage error,
@@ -84,6 +96,11 @@ return await AgentSurfaceApplication.RunAsync(args, app =>
   disposed with `DisposeAsync`, so async-only disposable singletons are safe.
 - **Global options:** `injectAs` fills the named parameter only on operations that
   declare it; `configKey` becomes a configuration value before the host is built.
+- **Output format:** `app.BindOutputFormat("Render:Format", format => format)` maps the
+  `--output`/`--format` value (`json` or `toon`) to that configuration key before the host is built, so
+  a host whose operations return pre-rendered strings can render in the requested format. The optional
+  map translates the value; nothing is set when the flag is absent or is a host verb's own `--output`
+  (`skill`, `session`). `OperationCommandLineAdapter.ReadOutputFormat` is the underlying helper.
 - **Skills:** `cli skill generate --out-dir <dir>` and `cli skill check` render the
   skill with a Global options section and the `<exe> cli` command prefix.
 - `ConfigureCatalog` receives the built service provider, so a `targetFactory` can
@@ -138,7 +155,8 @@ public sealed class TargetInitializer(TargetRegistry registry) : IAgentSessionIn
   and before the operation is invoked (not for help, `skill` or `session` commands). A
   throwing initializer is logged as a warning and does not block the command.
 - **Commands:** `cli session show` prints the id, the file path and the stored values;
-  `cli session clear` deletes the file. An operation named `session` takes precedence. Global
+  `cli session clear` deletes the file. `cli session` and `cli skill` without a subcommand exit 2
+  with the usage text on stderr (`--help` still exits 0). An operation named `session` takes precedence. Global
   flags (`--session`, `--output`/`--format`, `--fields`, `--full`, `--confirm`, `--yes` and every
   `AddGlobalOption`) are accepted before or after `session show|clear` and
   `skill generate|check` (`OperationCommandLineAdapter.RemoveGlobalFlags`); `skill` keeps its own
@@ -148,9 +166,13 @@ public sealed class TargetInitializer(TargetRegistry registry) : IAgentSessionIn
   env var; defaults to the entry assembly name), `StateDirectory`, `TimeToLive` (default 30
   days; expired files are pruned when a session opens, `null` disables) and
   `WorkingDirectory`.
+- **Sensitive keys:** `app.ConfigureSession(o => o.SensitiveKeys.Add("cursorKey"))` makes `session show`
+  print `***` instead of the value (keys match case-insensitively). Masking only keeps the value out of
+  terminal output and logs; the file still holds it.
 
 **Never store secrets in a session.** The file is plain JSON. Keep connection strings,
-tokens and passwords in configuration or user secrets, and store only names and paths.
+tokens and passwords in configuration or user secrets, and store only names and paths. Use
+`SensitiveKeys` for values such as a signing key that must persist but should not be displayed.
 ## Discovering commands
 
 The root invocation (`<executable> --help`, or no arguments) lists uncategorized

@@ -33,6 +33,16 @@
   </PropertyGroup>
 
   <!--
+    API compatibility gate against the latest published nuget.org preview (checked on `dotnet pack`).
+    Bump PackageValidationBaselineVersion after a release that is meant to become the new baseline; intentional
+    0.x breaks are recorded in each project's CompatibilitySuppressions.xml (see CHANGELOG.md, "Package validation").
+  -->
+  <PropertyGroup>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>0.1.81-preview</PackageValidationBaselineVersion>
+  </PropertyGroup>
+
+  <!--
     Automated, git-height-based semantic versioning (see ../version.json) plus deterministic,
     reproducible builds with normalized source paths and GitHub-flavored SourceLink. These flow to
     every packable project under src/ so no individual csproj needs to reference them directly.

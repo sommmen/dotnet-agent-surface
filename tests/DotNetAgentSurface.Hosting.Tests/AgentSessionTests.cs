@@ -116,6 +116,64 @@ public sealed class AgentSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Global_options_are_accepted_after_the_session_subcommands()
+    {
+        await RunAsync(["cli", "--session", "flow", "select-target", "--name", "alpha"]);
+        await RunAsync(["cli", "--session", "other", "select-target", "--name", "beta"]);
+
+        var shown = await RunAsync(["cli", "session", "show", "--session", "flow"]);
+        var leading = await RunAsync(["cli", "--session", "other", "session", "clear"]);
+        var trailing = await RunAsync(["cli", "session", "clear", "--session", "flow", "--audit-name", "x", "--format", "json"]);
+
+        Assert.Equal(0, shown.ExitCode);
+        Assert.Contains("id: flow", shown.Output);
+        Assert.Equal(0, leading.ExitCode);
+        Assert.Equal(0, trailing.ExitCode);
+        Assert.False(File.Exists(Path.Combine(SessionsDirectory, "flow.json")));
+        Assert.False(File.Exists(Path.Combine(SessionsDirectory, "other.json")));
+    }
+
+    [Fact]
+    public async Task Global_options_are_accepted_after_the_skill_subcommands()
+    {
+        var directory = Path.Combine(_stateDirectory, "skill-out");
+
+        var check = await RunAsync(["cli", "skill", "check", "--out-dir", directory, "--session", "x"]);
+        var generate = await RunAsync(["cli", "skill", "generate", "--out-dir", directory, "--audit-name=x", "--session=x"]);
+        var current = await RunAsync(["cli", "--session", "x", "skill", "check", "--out-dir", directory]);
+
+        Assert.Equal(1, check.ExitCode);
+        Assert.Contains("missing or stale", check.Error + check.Output);
+        Assert.Equal(0, generate.ExitCode);
+        Assert.Equal(0, current.ExitCode);
+    }
+
+    [Fact]
+    public async Task Unknown_trailing_flags_on_builtin_subcommands_still_exit_with_a_usage_error()
+    {
+        var session = await RunAsync(["cli", "session", "clear", "--bogus", "x"]);
+        var skill = await RunAsync(["cli", "skill", "check", "--bogus", "x"]);
+
+        Assert.Equal(2, session.ExitCode);
+        Assert.Contains("Usage: session", session.Error + session.Output);
+        Assert.Equal(2, skill.ExitCode);
+        Assert.Contains("Skill reference commands", skill.Error + skill.Output);
+    }
+
+    [Fact]
+    public async Task Session_and_skill_help_list_the_global_options()
+    {
+        var session = await RunAsync(["cli", "session", "--help"]);
+        var skill = await RunAsync(["cli", "skill", "--help"]);
+
+        foreach (var help in new[] { session.Output, skill.Output })
+        {
+            Assert.Contains("--session", help);
+            Assert.Contains("--audit-name", help);
+            Assert.Contains("--fields", help);
+        }
+    }
+    [Fact]
     public async Task Initializers_run_before_the_operation_and_can_rehydrate_live_state()
     {
         await RunAsync(["cli", "--session", "flow", "select-target", "--name", "alpha"]);
@@ -187,6 +245,107 @@ public sealed class AgentSessionTests : IDisposable
         Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
     }
 
+    [Fact]
+    public async Task Parallel_updates_to_one_dictionary_key_all_survive()
+    {
+        const int writers = 24;
+        var directory = SessionsDirectory;
+        await Task.WhenAll(Enumerable.Range(0, writers).Select(index => Task.Run(() =>
+        {
+            var session = FileAgentSession.Open(directory, "shared");
+            session.Update<Dictionary<string, int>>("targets", targets =>
+            {
+                targets ??= [];
+                targets[$"target-{index}"] = index;
+                return targets;
+            });
+        })));
+
+        var targets = FileAgentSession.Open(directory, "shared").Get<Dictionary<string, int>>("targets");
+        Assert.NotNull(targets);
+        Assert.Equal(writers, targets.Count);
+        Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task Parallel_get_or_add_returns_one_value_to_every_caller()
+    {
+        var directory = SessionsDirectory;
+        var results = await Task.WhenAll(Enumerable.Range(0, 24).Select(_ => Task.Run(() =>
+            FileAgentSession.Open(directory, "shared").GetOrAdd("cursorKey", () => Guid.NewGuid().ToString("N")))));
+
+        Assert.Single(results.Distinct());
+        Assert.Equal(results[0], FileAgentSession.Open(directory, "shared").Get<string>("cursorKey"));
+    }
+
+    [Fact]
+    public void Get_or_add_and_update_persist_immediately_without_save()
+    {
+        var directory = SessionsDirectory;
+        var session = FileAgentSession.Open(directory, "immediate");
+
+        var created = session.GetOrAdd("count", () => 1);
+        var again = session.GetOrAdd("count", () => 2);
+        var updated = session.Update<int>("count", current => current + 10);
+
+        Assert.Equal(1, created);
+        Assert.Equal(1, again);
+        Assert.Equal(11, updated);
+        Assert.False(session.Save());
+        Assert.Equal(11, FileAgentSession.Open(directory, "immediate").Get<int>("count"));
+    }
+
+    [Fact]
+    public void Save_merges_only_the_changed_keys_into_the_current_file()
+    {
+        var directory = SessionsDirectory;
+        var seed = FileAgentSession.Open(directory, "merge");
+        seed.Set("shared", "seed");
+        seed.Set("removed", 1);
+        seed.Save();
+
+        var first = FileAgentSession.Open(directory, "merge");
+        var second = FileAgentSession.Open(directory, "merge");
+        first.Set("a", 1);
+        first.Remove("removed");
+        second.Set("b", 2);
+        first.Save();
+        second.Save();
+
+        var merged = FileAgentSession.Open(directory, "merge");
+        Assert.Equal(1, merged.Get<int>("a"));
+        Assert.Equal(2, merged.Get<int>("b"));
+        Assert.Equal("seed", merged.Get<string>("shared"));
+        Assert.Equal(0, merged.Get<int>("removed"));
+        Assert.Equal(2, second.Get<int>("b"));
+        Assert.Equal(1, second.Get<int>("a"));
+    }
+
+    [Fact]
+    public void Save_after_update_keeps_both_changes_and_leaves_no_pending_state()
+    {
+        var directory = SessionsDirectory;
+        var session = FileAgentSession.Open(directory, "mixed");
+        session.Set("local", "x");
+        session.Update<int>("counter", current => current + 1);
+
+        Assert.True(session.Save());
+        Assert.False(session.Save());
+        var reopened = FileAgentSession.Open(directory, "mixed");
+        Assert.Equal("x", reopened.Get<string>("local"));
+        Assert.Equal(1, reopened.Get<int>("counter"));
+    }
+
+    [Fact]
+    public void In_memory_get_or_add_and_update_are_atomic_in_process()
+    {
+        IAgentSession session = new InMemoryAgentSession();
+        var values = Enumerable.Range(0, 32).AsParallel().Select(_ => session.GetOrAdd("k", () => Guid.NewGuid().ToString("N"))).ToList();
+        Enumerable.Range(0, 32).AsParallel().ForAll(_ => session.Update<int>("n", current => current + 1));
+
+        Assert.Single(values.Distinct());
+        Assert.Equal(32, session.Get<int>("n"));
+    }
     [Fact]
     public void Expired_sessions_are_pruned_and_the_current_one_is_kept()
     {

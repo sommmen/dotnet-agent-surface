@@ -20,10 +20,18 @@ permissions:
   packages: write
   contents: read
 
+# Serialise publishes so two pushes to main never race on the same package versions; queued runs wait rather than cancel.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  publish:
-    name: Pack and Publish (.NET)
+  build:
+    name: Build, Test and Pack (.NET)
     runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -42,8 +50,35 @@ jobs:
       - name: Build
         run: dotnet build DotNetAgentSurface.slnx --no-restore --configuration Release
 
+      - name: Run tests
+        run: dotnet test DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --verbosity normal --report-gh
+
       - name: Pack
         run: dotnet pack DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --output ./artifacts
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: ./artifacts
+          if-no-files-found: error
+
+  publish:
+    name: Publish (.NET)
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: ./artifacts
 
       - name: Publish to GitHub Packages
         run: |
@@ -85,7 +120,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' && inputs.publish_nuget))
         env:
           NUGET_USER: ${{ secrets.NUGET_USER }}
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: nuget-login
         with:
           user: ${{ secrets.NUGET_USER }}

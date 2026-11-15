@@ -52,8 +52,12 @@ dotnet build
 dotnet test
 ```
 
-CI runs the same build and test steps; see
-[`.github/workflows`](.github/workflows) for the current workflow.
+CI runs the same build and test steps, a second job that repeats them at the lowest supported
+dependency versions (`dotnet test DotNetAgentSurface.slnx -p:UseLowestSupportedDependencies=true`; the
+floors live in `Directory.Packages.props`), and `dotnet pack`, which validates the public API against
+the latest published preview (`PackageValidationBaselineVersion` in `src/Directory.Build.props`; record
+intentional breaks with `-p:ApiCompatGenerateSuppressionFile=true`). See
+[`.github/workflows`](.github/workflows) for the current workflows.
 
 ## Design documentation
 

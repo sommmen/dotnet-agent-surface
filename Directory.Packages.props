@@ -3,6 +3,21 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
+  <!--
+    Lowest supported versions of the runtime dependencies that flow into the published packages. The regular
+    PackageVersion entries below track the latest versions (Renovate bumps them); building with
+    -p:UseLowestSupportedDependencies=true (the "lowest-dependencies" job in ci.yml) swaps them for these floors so
+    CI proves the code still compiles and passes its tests against the oldest versions we claim to support.
+    Raise a floor only when the code starts to need something newer. Build and test tooling is not overridden.
+  -->
+  <PropertyGroup>
+    <MinModelContextProtocolVersion>2.3.1</MinModelContextProtocolVersion>
+    <MinToonDotNetVersion>4.1.1</MinToonDotNetVersion>
+    <MinMicrosoftExtensionsVersion>10.0.0</MinMicrosoftExtensionsVersion>
+    <MinMicrosoftExtensionsAIAbstractionsVersion>10.0.0</MinMicrosoftExtensionsAIAbstractionsVersion>
+    <MinSystemTextJsonVersion>10.0.1</MinSystemTextJsonVersion>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageVersion Include="DotNet.ReproducibleBuilds" Version="2.0.5" />
     <PackageVersion Include="Hangfire.Core" Version="1.8.25" />
@@ -26,5 +41,16 @@
     <PackageVersion Include="Testcontainers.MsSql" Version="4.16.0" />
     <PackageVersion Include="Toon.DotNet" Version="4.1.1" />
     <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLowestSupportedDependencies)' == 'true'">
+    <PackageVersion Update="ModelContextProtocol" Version="$(MinModelContextProtocolVersion)" />
+    <PackageVersion Update="Toon.DotNet" Version="$(MinToonDotNetVersion)" />
+    <PackageVersion Update="Microsoft.Extensions.AI.Abstractions" Version="$(MinMicrosoftExtensionsAIAbstractionsVersion)" />
+    <PackageVersion Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="$(MinMicrosoftExtensionsVersion)" />
+    <PackageVersion Update="Microsoft.Extensions.Hosting" Version="$(MinMicrosoftExtensionsVersion)" />
+    <PackageVersion Update="Microsoft.Extensions.Logging" Version="$(MinMicrosoftExtensionsVersion)" />
+    <PackageVersion Update="Microsoft.Extensions.Logging.Abstractions" Version="$(MinMicrosoftExtensionsVersion)" />
+    <PackageVersion Update="Microsoft.Bcl.AsyncInterfaces" Version="$(MinSystemTextJsonVersion)" />
+    <PackageVersion Update="System.Text.Json" Version="$(MinSystemTextJsonVersion)" />
   </ItemGroup>
 </Project>

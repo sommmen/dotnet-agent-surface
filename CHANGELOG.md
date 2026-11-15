@@ -31,6 +31,21 @@ versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
+### Added (CI and release hardening, #89)
+
+- **Lowest-supported-dependency CI job** (`lowest-dependencies` in `ci.yml`). Restoring, building and testing with `-p:UseLowestSupportedDependencies=true` swaps the `PackageVersion` entries in `Directory.Packages.props` for the `Min*Version` floors declared there (ModelContextProtocol 2.3.1, Toon.DotNet 4.1.1, Microsoft.Extensions.* 10.0.0, System.Text.Json 10.0.1). Raise a floor only when the code needs something newer. Run it locally with the same switch.
+- **Package validation.** `EnablePackageValidation` is on for every packable project, compared against `PackageValidationBaselineVersion` (the latest nuget.org preview, set in `src/Directory.Build.props`) whenever `dotnet pack` runs; CI packs after testing. Policy: an unintended API break fails the build. An *intentional* `0.x` break is recorded with `dotnet pack -p:ApiCompatGenerateSuppressionFile=true`, which writes a reviewed `CompatibilitySuppressions.xml` next to the project, and is listed under **Breaking changes** here; validation is never disabled. Bump the baseline (and delete the suppressions it made obsolete) after a release that should become the new reference.
+- `publish.yml` now runs the tests before packing, so a red build never reaches nuget.org, adds `concurrency` (publishes are serialised, never cancelled) and `timeout-minutes`, and pins `NuGet/login` to the `v1.2.0` commit SHA.
+
+### Fixed (session concurrency, #101)
+
+- `FileAgentSession.Save` no longer loses updates from concurrent CLI processes. It takes a short exclusive lock on `<id>.json.lock`, re-reads the file, applies only the keys the invocation changed and replaces the file atomically. `Set` on the *same* key is still last-writer-wins.
+- `IAgentSession.GetOrAdd<T>(key, factory)` and `IAgentSession.Update<T>(key, update)` are new. They are default interface members on `net10.0` (existing implementers keep compiling; the default is a non-atomic get-then-set) and extension methods on `netstandard2.0`. `InMemoryAgentSession` runs them atomically in process; `FileAgentSession` runs them under the cross-process lock against freshly read state and persists immediately (not on `Save`).
+
+### Fixed (global options after built-in subcommands, #102)
+
+- `cli session show|clear` and `cli skill generate|check` now accept global flags (`--session`, `--output`/`--format`, `--fields`, `--full`, `--confirm`, `--yes` and host `AddGlobalOption` flags) after the subcommand as well as before it. `skill` keeps `--output` as its alias of `--out-dir`. Unknown trailing flags still exit 2 with usage text, and `session --help` / `skill --help` list the honoured global flags. New helpers: `OperationCommandLineAdapter.RemoveGlobalFlags` and `RenderGlobalFlagHelp`.
+
 ### Added
 
 - `DotNetAgentSurface.Hosting` package with `AgentSurfaceApplication`: one executable and

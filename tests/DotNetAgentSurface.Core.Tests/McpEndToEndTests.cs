@@ -410,7 +410,7 @@ public sealed class McpEndToEndTests
     public sealed class AmbientOperations
     {
         [AgentOperation("ambient", "Uses ambient parameters")]
-        public string Ambient(
+        public async Task<string> Ambient(
             string value,
             McpServer server,
             RequestContext<CallToolRequestParams> context,
@@ -421,6 +421,7 @@ public sealed class McpEndToEndTests
             CancellationToken cancellationToken)
         {
             progress.Report(new ProgressNotificationValue { Progress = 1, Total = 2, Message = "half" });
+            await Task.Delay(300, cancellationToken);
             var scoped = services.GetRequiredService<ScopedCounter>().Value;
             return $"{value}|{operationContext.Surface}|server={!ReferenceEquals(server, null)}|ctx={!ReferenceEquals(context, null)}|scoped={scoped}|id={operationContext.RequestId.Length > 0}";
         }

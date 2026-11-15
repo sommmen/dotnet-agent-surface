@@ -53,6 +53,17 @@ public sealed class McpToolImportTests
     }
 
     [Fact]
+    public void Surface_callback_marks_imported_tools_mcp_only_and_the_cli_hides_them()
+    {
+        var catalog = Import(options => options.Surfaces = method => method.Name == nameof(ImportedTools.Echo) ? AgentSurfaces.Mcp : AgentSurfaces.All);
+
+        Assert.Equal(AgentSurfaces.Mcp, catalog.Operations.Single(operation => operation.Name == "echo").Surfaces);
+        Assert.Equal(AgentSurfaces.All, catalog.Operations.Single(operation => operation.Name == "peek").Surfaces);
+        Assert.DoesNotContain(catalog.ForSurface(AgentSurface.Cli).Operations, operation => operation.Name == "echo");
+        Assert.Contains(catalog.ForSurface(AgentSurface.Mcp).Operations, operation => operation.Name == "echo");
+    }
+
+    [Fact]
     public void Parameter_description_attribute_is_imported_and_wins_over_xml_documentation()
     {
         var catalog = Import();

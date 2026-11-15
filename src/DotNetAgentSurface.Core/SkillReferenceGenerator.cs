@@ -11,6 +11,20 @@ public sealed record SkillGenerationOptions
     public string ExecutableName { get; }
     public int CategoryShardThreshold { get; } = 20;
 
+    /// <summary>
+    /// Gets the host-level flags documented in a generated <c>SKILL.md</c>. When <see langword="null"/> (the default)
+    /// no global-options section is written.
+    /// </summary>
+    public IReadOnlyList<SkillGlobalOption>? GlobalOptions { get; init; }
+
+    /// <summary>
+    /// Gets the text that precedes an operation name in generated commands, for hosts whose CLI sits behind a verb (for example
+    /// <c>myserver cli</c>). Defaults to <see cref="ExecutableName"/>.
+    /// </summary>
+    public string? CommandPrefix { get; init; }
+
+    internal string EffectivePrefix => string.IsNullOrWhiteSpace(CommandPrefix) ? ExecutableName : CommandPrefix!;
+
     public SkillGenerationOptions(string skillName, string skillDescription, string executableName, int categoryShardThreshold = 20)
     {
         if (string.IsNullOrWhiteSpace(skillName))
@@ -40,6 +54,11 @@ public sealed record SkillGenerationOptions
     }
 }
 
+/// <summary>A host-level flag documented in a generated skill.</summary>
+/// <param name="Flag">The flag including its value placeholder, for example <c>--output &lt;toon|json&gt;</c>.</param>
+/// <param name="Description">What the flag does.</param>
+public sealed record SkillGlobalOption(string Flag, string Description);
+
 public sealed class SkillReferenceGenerator
 {
     private readonly OperationSchemaGenerator _schemaGenerator = new();
@@ -51,6 +70,7 @@ public sealed class SkillReferenceGenerator
     {
         Guard.ThrowIfNull(catalog);
         Guard.ThrowIfNullOrWhiteSpace(outputDirectory);
+        catalog = catalog.ForSurface(AgentSurface.Cli);
         var effectiveOptions = options ?? DefaultOptions(outputDirectory);
 
         var referenceDirectory = Path.Combine(outputDirectory, "references");
@@ -97,6 +117,7 @@ public sealed class SkillReferenceGenerator
     {
         Guard.ThrowIfNull(catalog);
         Guard.ThrowIfNullOrWhiteSpace(outputDirectory);
+        catalog = catalog.ForSurface(AgentSurface.Cli);
         var effectiveOptions = options ?? DefaultOptions(outputDirectory);
         var expectedFiles = GetExpectedFiles(catalog, effectiveOptions);
 
@@ -191,7 +212,7 @@ public sealed class SkillReferenceGenerator
         builder.AppendLine($"# {options.SkillName}");
         builder.AppendLine();
         builder.AppendLine($"Use this skill when you need to invoke generated operations via the `{options.ExecutableName}` CLI.");
-        builder.AppendLine($"Run `{options.ExecutableName} --help` to list available commands, then read the detailed reference in [references/commands.md](references/commands.md) when you need parameter details or examples.");
+        builder.AppendLine($"Run `{options.EffectivePrefix} --help` to list available commands, then read the detailed reference in [references/commands.md](references/commands.md) when you need parameter details or examples.");
         builder.AppendLine();
         builder.AppendLine("## Command index");
         builder.AppendLine();
@@ -209,6 +230,19 @@ public sealed class SkillReferenceGenerator
             }
         }
 
+        if (options.GlobalOptions is { Count: > 0 })
+        {
+            builder.AppendLine();
+            builder.AppendLine("## Global options");
+            builder.AppendLine();
+            builder.AppendLine("Place global options before the operation name; after it they are global only when the operation has no parameter of the same name.");
+            builder.AppendLine();
+            foreach (var option in options.GlobalOptions)
+            {
+                builder.AppendLine($"- `{option.Flag}` — {option.Description}");
+            }
+        }
+
         builder.AppendLine();
         builder.AppendLine("## Examples");
         builder.AppendLine();
@@ -220,7 +254,7 @@ public sealed class SkillReferenceGenerator
 
         if (examples.Count == 0)
         {
-            builder.AppendLine("- `" + options.ExecutableName + " --help`");
+            builder.AppendLine("- `" + options.EffectivePrefix + " --help`");
         }
         else
         {
@@ -280,7 +314,7 @@ public sealed class SkillReferenceGenerator
                 builder.AppendLine("### Parameters");
                 foreach (var parameter in parameters)
                 {
-                    builder.AppendLine($"- `--{parameter.Name}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}{(string.IsNullOrWhiteSpace(parameter.Description) ? string.Empty : $" — {parameter.Description}")}");
+                    builder.AppendLine($"- `--{OperationNaming.ToKebabCase(parameter.Name)}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}{(string.IsNullOrWhiteSpace(parameter.Description) ? string.Empty : $" — {parameter.Description}")}");
                 }
             }
 
@@ -342,7 +376,7 @@ public sealed class SkillReferenceGenerator
                 builder.AppendLine("### Parameters");
                 foreach (var parameter in parameters)
                 {
-                    builder.AppendLine($"- `--{parameter.Name}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}{(string.IsNullOrWhiteSpace(parameter.Description) ? string.Empty : $" — {parameter.Description}")}");
+                    builder.AppendLine($"- `--{OperationNaming.ToKebabCase(parameter.Name)}` ({parameter.ParameterType.Name}){(parameter.IsOptional ? ", optional" : ", required")}{(string.IsNullOrWhiteSpace(parameter.Description) ? string.Empty : $" — {parameter.Description}")}");
                 }
             }
 
@@ -372,7 +406,7 @@ public sealed class SkillReferenceGenerator
     /// </summary>
     private static string FormatExampleCommand(SkillGenerationOptions options, OperationDescriptor operation, string example)
     {
-        var segments = new List<string> { options.ExecutableName };
+        var segments = new List<string> { options.EffectivePrefix };
         segments.AddRange(OperationCatalog.GetCategorySegments(operation.Category));
         segments.Add(operation.Name);
 

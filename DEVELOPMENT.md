@@ -15,12 +15,14 @@ src/
   DotNetAgentSurface.Core/         Shared catalog, invocation, schema generation
   DotNetAgentSurface.CommandLine/  CLI adapter
   DotNetAgentSurface.Mcp/          MCP adapter
+  DotNetAgentSurface.Hosting/      Dual-surface (MCP + CLI) host application
   DotNetAgentSurface.AspNetCore/   ApiExplorer discovery satellite
   DotNetAgentSurface.Hangfire/     Hangfire recurring-job discovery satellite
   DotNetAgentSurface.SignalR/      SignalR server-to-client messaging satellite
 tests/
   DotNetAgentSurface.Core.Tests/         Core, MCP, and cross-adapter test suite
-  DotNetAgentSurface.CommandLine.Tests/  CLI/AXI output contract tests
+  DotNetAgentSurface.CommandLine.Tests/  CLI/AXI output contract and argument tests
+  DotNetAgentSurface.Hosting.Tests/      Host tests and end-to-end runs of the CliAndMcp sample
   DotNetAgentSurface.AspNetCore.Tests/   ApiExplorer satellite tests
   DotNetAgentSurface.Hangfire.Tests/     Hangfire satellite tests
   DotNetAgentSurface.SignalR.Tests/      SignalR satellite tests
@@ -28,7 +30,7 @@ samples/
   DotNetAgentSurface.Samples.TaskTracker/    Shared sample service
   DotNetAgentSurface.Samples.Cli/            tasktracker-cli host
   DotNetAgentSurface.Samples.Mcp/            tasktracker-mcp host
-  DotNetAgentSurface.Samples.CliAndMcp/      combined tasktracker host
+  DotNetAgentSurface.Samples.CliAndMcp/      combined tasktracker host (AgentSurfaceApplication)
   DotNetAgentSurface.Samples.LegacyDesktop/  legacy-desktop-cli (net472) host
   DotNetAgentSurface.Samples.AspNetCore/     ApiExplorer-discovered minimal API host
   DotNetAgentSurface.Samples.Hangfire/       Hangfire recurring-job sample

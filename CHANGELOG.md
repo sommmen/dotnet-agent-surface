@@ -31,8 +31,37 @@ versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
+### Added
+
+- `DotNetAgentSurface.Hosting` package with `AgentSurfaceApplication`: one executable and
+  one DI composition serving an MCP stdio server and a plain CLI (`<exe> cli <operation>`),
+  with host verbs, `AddGlobalOption(name, injectAs, configKey, description)`, an opt-in
+  `ICliHostedService` marker, async host disposal, stderr logging and Ctrl+C cancellation.
+- `AgentOperationAttribute.Surfaces` / `OperationRegistrationOptions.Surfaces` /
+  `OperationDescriptor.Surfaces` (`AgentSurfaces.All|Mcp|Cli`), `OperationCatalog.ForSurface`
+  and `McpToolImportOptions.Surfaces`. The CLI adapter and skill generator hide operations
+  that are not exposed on the CLI.
+- CLI ergonomics: `--name=value`, bare boolean switches, `--no-<name>`, kebab-case parameter
+  and operation names, `@file` and `-` values, repeatable array flags, `--format` alias,
+  parameter descriptions, defaults, required markers and examples in help.
+- `skill generate|check --out-dir`, `SkillGenerationOptions.GlobalOptions` and `CommandPrefix`.
+
 ### Breaking changes
 
+- The CLI adapter writes `string` results verbatim instead of JSON-quoted, and no longer
+  truncates them or applies `--fields` to them; `--output`, `--fields` and `--full` affect
+  object results only.
+- The CLI parses a value as JSON only for parameters that are not `string`, `char`, `Guid`,
+  enum, date or time types; `--name 123` now binds to a `string` parameter as text.
+- Multi-line operation errors keep their newlines. Set
+  `OperationCommandLineOptions.FlattenOperationErrors` for the old single-line output.
+- Adapter flags (`--output`, `--fields`, `--full`, `--confirm`, `--yes`) are only global
+  before the operation name or when the operation has no parameter of that name; they are no
+  longer stripped from anywhere in the arguments.
+- Generated skills show kebab-case flag names (`--context-name`); camelCase still works.
+- `SkillGeneratorCommand` accepts `--out-dir` (`--output` still works).
+- `OperationCommandLineAdapter.CleanOperationError` behaviour moved behind
+  `FlattenOperationErrors`; the adapter constructor gained an optional `options` parameter.
 - `AddMcpServerTools` no longer maps the MCP SDK's `McpServerToolAttribute.Destructive`
   (default `true`) to `AgentSafetyLevel.Dangerous`; imported tools are `Safe` and the
   SDK hints are surfaced as MCP annotations (`Title`, `ReadOnlyHint`, `DestructiveHint`,

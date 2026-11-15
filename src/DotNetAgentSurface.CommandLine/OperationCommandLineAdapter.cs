@@ -80,7 +80,7 @@ public sealed class OperationCommandLineAdapter
         _root = BuildCommandTree(_catalog.Operations);
     }
 
-    /// <summary>Executes one command line. Never throws for usage, operation, or cancellation failures; they map to exit codes 2, 1 and 130.</summary>
+    /// <summary>Executes one command line. Never throws for usage, operation, input, rendering, or cancellation failures; they map to exit codes 2, 1, 1 and 130.</summary>
     public async ValueTask<CommandLineExecutionResult> ExecuteAsync(
         string[] args,
         CancellationToken cancellationToken = default,
@@ -100,6 +100,41 @@ public sealed class OperationCommandLineAdapter
         {
             return CommandLineExecutionResult.Failure("Operation was cancelled.", 130);
         }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Standard input failures and exceptions from a custom renderer must not escape the adapter.
+            return CommandLineExecutionResult.Failure(exception.Message, 1);
+        }
+    }
+
+    /// <summary>
+    /// Returns the index of the first argument that is not a leading global flag (or a global flag's value), so a host can
+    /// recognize its own verbs (<c>skill</c>, <c>session</c>) after flags such as <c>--connection x</c>. A help flag
+    /// stops the scan and its index is returned.
+    /// </summary>
+    public static int FindCommandStart(string[] args, IReadOnlyList<CommandLineGlobalOption>? globalOptions = null)
+    {
+        if (args is null)
+        {
+            return 0;
+        }
+
+        var hostKeys = new HashSet<string>(
+            (globalOptions ?? []).Select(static option => OperationNaming.ToMatchKey(option.FlagName)),
+            StringComparer.Ordinal);
+        var index = 0;
+        while (index < args.Length && args[index] is not ("--help" or "-h") && TrySplitFlag(args[index], out var name, out var inline))
+        {
+            var key = OperationNaming.ToMatchKey(name);
+            if (inline is null && (IsValueTakingBuiltin(key) || hostKeys.Contains(key)))
+            {
+                index++;
+            }
+
+            index++;
+        }
+
+        return Math.Min(index, args.Length);
     }
 
     /// <summary>

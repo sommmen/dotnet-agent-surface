@@ -25,3 +25,7 @@ inject a principal or credential. ASP.NET Core endpoint authorization uses the
 resolved principal and fails closed when it is absent.
 
 See also: [core catalog and abstractions](core-catalog.md) for `OperationInvocationPolicy` and the shared invocation pipeline.
+
+## Session state
+
+`IAgentSession` persists as plain JSON on disk in CLI mode (user-only permissions, but not encrypted). **Never store secrets in it**: connection strings, tokens and passwords stay in configuration or user secrets, and the session holds only names and paths. `cli session show` prints the file path so users can audit it. See [CLI adapter](cli-adapter.md#session-state).

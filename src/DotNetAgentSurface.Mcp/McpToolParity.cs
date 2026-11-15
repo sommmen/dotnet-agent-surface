@@ -36,22 +36,43 @@ public static class McpToolParity
         }
 
         var differences = new List<McpToolDifference>();
-        var expected = sdkTools.ToDictionary(static tool => tool.Name, StringComparer.Ordinal);
-        var actual = adapterTools.ToDictionary(static tool => tool.Name, StringComparer.Ordinal);
+        var expected = sdkTools.GroupBy(static tool => tool.Name, StringComparer.Ordinal).ToDictionary(static group => group.Key, static group => group.ToList(), StringComparer.Ordinal);
+        var actual = adapterTools.GroupBy(static tool => tool.Name, StringComparer.Ordinal).ToDictionary(static group => group.Key, static group => group.ToList(), StringComparer.Ordinal);
 
         foreach (var name in expected.Keys.Union(actual.Keys).OrderBy(static name => name, StringComparer.Ordinal))
         {
-            if (!expected.TryGetValue(name, out var sdk))
+            var duplicate = false;
+            if (expected.TryGetValue(name, out var sdkGroup) && sdkGroup.Count > 1)
+            {
+                differences.Add(new McpToolDifference(name, "duplicate", $"{sdkGroup.Count} tools named this in SDK", null));
+                duplicate = true;
+            }
+
+            if (actual.TryGetValue(name, out var adapterGroup) && adapterGroup.Count > 1)
+            {
+                differences.Add(new McpToolDifference(name, "duplicate", null, $"{adapterGroup.Count} tools named this in adapter"));
+                duplicate = true;
+            }
+
+            if (duplicate)
+            {
+                continue;
+            }
+
+            if (sdkGroup is null)
             {
                 differences.Add(new McpToolDifference(name, "presence", null, "only in adapter"));
                 continue;
             }
 
-            if (!actual.TryGetValue(name, out var adapter))
+            if (adapterGroup is null)
             {
                 differences.Add(new McpToolDifference(name, "presence", "only in SDK", null));
                 continue;
             }
+
+            var sdk = sdkGroup[0];
+            var adapter = adapterGroup[0];
 
             Add(differences, name, "title", sdk.Title, adapter.Title);
             Add(differences, name, "description", sdk.Description, adapter.Description);

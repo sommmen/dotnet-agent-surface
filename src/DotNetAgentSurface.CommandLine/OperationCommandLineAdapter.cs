@@ -144,7 +144,7 @@ public sealed class OperationCommandLineAdapter
     /// names flags (without dashes) that must be left in place because the verb uses them itself. A value-taking flag
     /// without a value is left in place so the verb rejects it. Everything else, including unknown flags, is kept.
     /// </summary>
-    public static string[] RemoveGlobalFlags(string[] args, IReadOnlyList<CommandLineGlobalOption>? globalOptions = null, IEnumerable<string>? exceptFlags = null)
+    public static string[] RemoveGlobalFlags(string[]? args, IReadOnlyList<CommandLineGlobalOption>? globalOptions = null, IEnumerable<string>? exceptFlags = null)
     {
         if (args is null)
         {

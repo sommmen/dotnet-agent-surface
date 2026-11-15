@@ -18,8 +18,8 @@ namespace DotNetAgentSurface.Core;
 /// constructor policies or on the individual <see cref="OperationDescriptor.InvocationPolicies"/>.
 /// </para>
 /// <para>
-/// To make this hard to miss, <see cref="InvokeAsync"/> throws <see cref="ConfirmationPolicyMissingException"/>
-/// before running any operation whose <see cref="OperationDescriptor.SafetyLevel"/> is above <see
+/// To make this hard to miss, <see cref="InvokeAsync"/> returns a failed <see cref="OperationInvocationResult"/>
+/// (carrying a <see cref="ConfirmationPolicyMissingException"/> message) before running any operation whose <see cref="OperationDescriptor.SafetyLevel"/> is above <see
 /// cref="AgentSafetyLevel.Safe"/> if no confirmation-enforcing policy is present. Attach a <see
 /// cref="DangerousOperationConfirmationPolicy"/> (or a custom policy implementing <see
 /// cref="IConfirmationEnforcingPolicy"/>) to avoid this, and pass an <see cref="OperationConfirmation"/> at
@@ -59,10 +59,11 @@ public sealed class OperationInvoker
         OperationInvocationContext? invocationContext = null)
     {
         Guard.ThrowIfNull(operation);
-        EnsureConfirmationIsEnforceable(operation);
 
         try
         {
+            EnsureConfirmationIsEnforceable(operation);
+
             foreach (var policy in _policies.Concat(operation.InvocationPolicies))
             {
                 var decision = await policy.EvaluateAsync(operation, inputs, confirmation, cancellationToken, invocationContext).ConfigureAwait(false);
@@ -86,9 +87,17 @@ public sealed class OperationInvoker
         {
             return OperationInvocationResult.Cancelled();
         }
+        catch (TargetInvocationException exception) when (exception.InnerException is OperationException inner)
+        {
+            return OperationInvocationResult.VerbatimFailure(inner.Message);
+        }
         catch (TargetInvocationException exception) when (exception.InnerException is not null)
         {
             return OperationInvocationResult.Failure(exception.InnerException.Message);
+        }
+        catch (OperationException exception)
+        {
+            return OperationInvocationResult.VerbatimFailure(exception.Message);
         }
         catch (OperationBindingException exception)
         {
@@ -253,11 +262,24 @@ public sealed record OperationNoOp(string Message)
     public static OperationNoOp AlreadyApplied(string message = "Already applied.") => new(message);
 }
 
+/// <summary>
+/// The outcome of <see cref="OperationInvoker.InvokeAsync"/>, which reports failures here instead of throwing,
+/// including a missing confirmation policy, policy denials, binding errors and exceptions from the operation.
+/// </summary>
 public sealed record OperationInvocationResult(bool Succeeded, bool IsCancelled, object? Value, string? Error)
 {
+    /// <summary>
+    /// Gets a value indicating whether <see cref="Error"/> came from an <see cref="OperationException"/> and must be
+    /// shown to callers exactly as written, including newlines.
+    /// </summary>
+    public bool ErrorIsVerbatim { get; init; }
+
     public static OperationInvocationResult Success(object? value) => new(true, false, value, null);
 
     public static OperationInvocationResult Failure(string error) => new(false, false, null, error);
+
+    /// <summary>Creates a failure whose <paramref name="error"/> adapters must surface unmodified.</summary>
+    public static OperationInvocationResult VerbatimFailure(string error) => new(false, false, null, error) { ErrorIsVerbatim = true };
 
     public static OperationInvocationResult Cancelled() => new(false, true, null, "Operation was cancelled.");
 }

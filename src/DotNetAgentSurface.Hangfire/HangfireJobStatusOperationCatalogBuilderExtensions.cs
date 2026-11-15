@@ -44,7 +44,7 @@ public static class HangfireJobStatusOperationCatalogBuilderExtensions
     /// respectively (see <see cref="HangfireJobStatusOperationsOptions"/>), but <see cref="AgentSafetyLevel"/> is
     /// metadata only. Invoking <c>continue-hangfire-job</c> through an <see cref="OperationInvoker"/> without a
     /// policy implementing <see cref="IConfirmationEnforcingPolicy"/> (for example
-    /// <see cref="DangerousOperationConfirmationPolicy"/>) will throw <see cref="ConfirmationPolicyMissingException"/>
+    /// <see cref="DangerousOperationConfirmationPolicy"/>) will fail with the <see cref="ConfirmationPolicyMissingException"/> message
     /// rather than silently bypassing confirmation.
     /// </para>
     /// <para>

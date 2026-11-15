@@ -13,17 +13,44 @@ push to `main` (see [`.github/workflows/publish.yml`](.github/workflows/publish.
 Only versions with a breaking change, a notable addition, or a deprecation are
 listed. Each entry links the pull request(s) that shipped it.
 
-> **Package availability:** these packages are currently published only to
-> GitHub Packages, not to NuGet.org. There is no public badge/version-discovery
-> surface yet ([issue #28](https://github.com/sommmen/dotnet-agent-surface/issues/28)
-> tracks this as deferred until the package is published more broadly).
+> **Package availability:** every push to `main` publishes a preview to both
+> NuGet.org (trusted publishing) and GitHub Packages, so
+> `dotnet add package DotNetAgentSurface.Mcp --prerelease` works with no extra
+> feed. There is no public badge/version-discovery surface yet
+> ([issue #28](https://github.com/sommmen/dotnet-agent-surface/issues/28)).
+
+## Versioning and breaking changes before 1.0
+
+Every version is a `0.x` preview. Until 1.0 the public API may change between
+any two previews, and nothing is deprecated first: a change can break the
+build or the behaviour of a consumer. Consumers should pin an exact version
+(not a floating `0.*` or `*-preview*` range) and read this changelog before
+bumping. Breaking changes are always listed under a **Breaking changes**
+heading with the migration step. From 1.0 onward the project follows semantic
+versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
 ### Breaking changes
 
-- `OperationInvoker.InvokeAsync` now throws `ConfirmationPolicyMissingException`
-  when an operation's `SafetyLevel` is `AgentSafetyLevel.Confirm` or
+- `AddMcpServerTools` no longer maps the MCP SDK's `McpServerToolAttribute.Destructive`
+  (default `true`) to `AgentSafetyLevel.Dangerous`; imported tools are `Safe` and the
+  SDK hints are surfaced as MCP annotations (`Title`, `ReadOnlyHint`, `DestructiveHint`,
+  `IdempotentHint`, `OpenWorldHint`) instead. Hosts that relied on the old mapping must
+  opt in with `options.SafetyMapping = McpToolSafetyMapping.DestructiveIsDangerous`.
+  Annotations of imported tools now mirror the SDK attribute values rather than being
+  derived from the safety level.
+- `OperationInvoker.InvokeAsync` no longer throws `ConfirmationPolicyMissingException`
+  or any other pre-invocation exception; it returns a failed `OperationInvocationResult`
+  with the actionable message, so the CLI adapter exits with code 1 and the MCP adapter
+  returns `IsError = true`. Previously the exception escaped to the host.
+- `DotNetAgentSurface.CommandLine` is now a plain library: the stub `Program.cs` host and
+  `OutputType=Exe` were removed. Use `samples/DotNetAgentSurface.Samples.Cli` for a
+  runnable host.
+- `ModelContextProtocol` is now 2.3.1 and `Toon.DotNet` is now 4.1.1; consumers pinning
+  older versions must align them.
+- `OperationInvoker.InvokeAsync` now fails with a `ConfirmationPolicyMissingException`
+  message (as a failed result, see above) when an operation's `SafetyLevel` is `AgentSafetyLevel.Confirm` or
   `AgentSafetyLevel.Dangerous` but no supplied policy implements the new
   `IConfirmationEnforcingPolicy` marker interface (`DangerousOperationConfirmationPolicy`
   is the built-in implementation). Previously, `SafetyLevel` was metadata only:
@@ -42,6 +69,20 @@ listed. Each entry links the pull request(s) that shipped it.
   `result.Value` after invoking a job-type or `RegisterJobs<>` operation.
 
 ### Added
+
+- `McpToolImportOptions` with an `Include` predicate and `SafetyMapping`
+  (`McpToolSafetyMapping.None` default | `DestructiveIsDangerous`), used through the new
+  `AddMcpServerTools(assembly, targetFactory, configure)` overload.
+- `[Description]` on operation parameters is read by the catalog and wins over the XML
+  `<param>` text, which remains the fallback. `AddMcpServerTools` benefits automatically.
+- Shared adapter contracts in `DotNetAgentSurface.Core`: `AgentSurface` (`Unknown`, `Mcp`,
+  `Cli`), the `OperationInvocationContext.Surface` and `RequestId` init properties (set to
+  `Mcp`/`Cli` by the adapters), and `OperationException`, whose message is surfaced
+  verbatim (including newlines) by both adapters. `OperationInvocationResult.ErrorIsVerbatim`
+  marks such failures.
+- `publish.yml` now also pushes every `main` build to NuGet.org via trusted publishing.
+  One-time setup of the trusted-publishing policy and the `NUGET_USER` secret on nuget.org
+  is required before the first push succeeds.
 
 - `AddAgentSurfaceFromApiExplorer` in `DotNetAgentSurface.AspNetCore` now has an
   overload accepting `Action<OperationCatalogBuilder, IServiceProvider>`, so a

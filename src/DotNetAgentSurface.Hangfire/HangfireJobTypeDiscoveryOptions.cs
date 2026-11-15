@@ -31,7 +31,7 @@ public sealed class HangfireJobTypeDiscoveryOptions
     /// <para>
     /// Consumers who call <see cref="HangfireJobTypeOperationCatalogBuilderExtensions.AddHangfireJobTypes"/> and
     /// then construct an <see cref="OperationInvoker"/> without such a policy will find that
-    /// <see cref="OperationInvoker.InvokeAsync"/> throws <see cref="ConfirmationPolicyMissingException"/> instead
+    /// <see cref="OperationInvoker.InvokeAsync"/> fails with the <see cref="ConfirmationPolicyMissingException"/> message instead
     /// of silently enqueuing the job unconfirmed &#8212; wire a confirmation-enforcing policy into the invoker to
     /// enable (and gate) execution.
     /// </para>

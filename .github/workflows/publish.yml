@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_nuget:
-        description: Publish a stable release to NuGet.org
+        description: Publish this build to NuGet.org (pushes to main always publish)
         required: true
         default: false
         type: boolean
@@ -80,7 +80,8 @@ jobs:
 
       - name: NuGet login (OIDC to temporary API key)
         if: >-
-          ((github.event_name == 'release' && !github.event.release.prerelease) ||
+          (github.event_name == 'push' ||
+          (github.event_name == 'release' && !github.event.release.prerelease) ||
           (github.event_name == 'workflow_dispatch' && inputs.publish_nuget))
         env:
           NUGET_USER: ${{ secrets.NUGET_USER }}

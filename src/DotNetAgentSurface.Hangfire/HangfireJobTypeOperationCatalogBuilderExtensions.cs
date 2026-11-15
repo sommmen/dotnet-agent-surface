@@ -27,7 +27,7 @@ public static class HangfireJobTypeOperationCatalogBuilderExtensions
     /// <see cref="HangfireJobTypeDiscoveryOptions.SafetyLevel"/>), but that is metadata only. Enqueuing these
     /// jobs through an <see cref="OperationInvoker"/> without a policy implementing
     /// <see cref="IConfirmationEnforcingPolicy"/> (for example <see cref="DangerousOperationConfirmationPolicy"/>)
-    /// will throw <see cref="ConfirmationPolicyMissingException"/> rather than silently bypassing confirmation.
+    /// will fail with the <see cref="ConfirmationPolicyMissingException"/> message rather than silently bypassing confirmation.
     /// </remarks>
     public static OperationCatalogBuilder AddHangfireJobTypes(
         this OperationCatalogBuilder builder,

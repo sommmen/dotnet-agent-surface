@@ -441,7 +441,7 @@ public sealed class OperationCommandLineAdapter
         var flag = state.Fields is not null ? "--fields" : state.Full ? "--full" : null;
         return flag is null
             ? null
-            : $"{flag} is not supported for this operation's text output: it returns a pre-rendered string, which is written verbatim. Use --output <toon|json> to ask the operation for a different format, or drop {flag}.";
+            : $"{flag} is not supported for this operation's text output: it returns a pre-rendered string, which is written verbatim. Field selection cannot be applied to text output, whatever --output format is requested; drop {flag}.";
     }
 
     private static bool ReturnsText(Type returnType)

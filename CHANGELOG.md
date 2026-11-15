@@ -31,6 +31,10 @@ versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
+### Fixed
+
+- The `--fields`/`--full` rejection for text results no longer suggests `--output <toon|json>`, which cannot make field selection apply to text output either.
+
 ### Fixed and added (CLI e2e findings from dotnet-efcore-mcp, #106)
 
 - **Output format reaches the host.** `IOperationContext.OutputFormat` (new interface member, recorded in `CompatibilitySuppressions.xml`: only a custom `IOperationContext` implementation must add it, and the library supplies the only implementation hosts receive; `null` without the flag) and `OperationInvocationContext.OutputFormat` carry the CLI's `--output`/`--format` value (`json` or `toon`). `AgentSurfaceApplication.BindOutputFormat(configKey, map)` maps it to a host configuration key before the host is built, via the new `OperationCommandLineAdapter.ReadOutputFormat`. `--fields` / `--full` with an operation that returns a string now exit 2 with `--fields is not supported for this operation's text output` instead of being silently ignored.

@@ -207,7 +207,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
         using (AcquireLock())
         {
             var changes = SnapshotChanges(out var version);
-            var fresh = ReadFile(out _);
+            var fresh = ReadFile(out _, underLock: true);
             ApplyChanges(fresh, changes);
             var updatedAt = Write(fresh);
             ApplyPersisted(fresh, version);
@@ -254,16 +254,18 @@ public sealed class FileAgentSession : InMemoryAgentSession
         }
 
         EnsureDirectory(System.IO.Path.GetDirectoryName(Path)!);
+        var deleted = false;
         using (AcquireLock())
         {
-            if (!File.Exists(Path))
+            if (File.Exists(Path))
             {
-                return false;
+                File.Delete(Path);
+                deleted = true;
             }
-
-            File.Delete(Path);
-            return true;
         }
+
+        TryDeleteLockFile(Path + ".lock");
+        return deleted;
     }
 
     private T Mutate<T>(string key, Func<bool, T?, T> compute)
@@ -271,7 +273,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
         EnsureDirectory(System.IO.Path.GetDirectoryName(Path)!);
         using (AcquireLock())
         {
-            var fresh = ReadFile(out _);
+            var fresh = ReadFile(out _, underLock: true);
             JsonElement? baseline = TryGetChange(key, out var pending)
                 ? pending
                 : fresh.TryGetValue(key, out var current) ? current : null;
@@ -312,7 +314,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
         UpdatedAt = updatedAt;
     }
 
-    private Dictionary<string, JsonElement> ReadFile(out DateTimeOffset? updatedAt)
+    private Dictionary<string, JsonElement> ReadFile(out DateTimeOffset? updatedAt, bool underLock = false)
     {
         var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         updatedAt = null;
@@ -340,7 +342,22 @@ public sealed class FileAgentSession : InMemoryAgentSession
                 updatedAt = parsed;
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            values.Clear();
+            updatedAt = null;
+        }
+        catch (JsonException)
+        {
+            if (underLock)
+            {
+                File.Copy(Path, Path + ".corrupt", overwrite: true);
+            }
+
+            values.Clear();
+            updatedAt = null;
+        }
+        catch (Exception exception) when (!underLock && exception is IOException or UnauthorizedAccessException)
         {
             values.Clear();
             updatedAt = null;
@@ -405,6 +422,27 @@ public sealed class FileAgentSession : InMemoryAgentSession
             }
         }
     }
+    private static FileStream? TryAcquireLockOnce(string lockPath)
+    {
+        try
+        {
+            return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    // FileShare.None is only advisory on Unix, so deleting a lock file there could let two processes into the critical section.
+    private static void TryDeleteLockFile(string lockPath)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            TryDelete(lockPath);
+        }
+    }
+
     private static FileStream CreateTemporaryFile(string path)
     {
         if (OperatingSystem.IsWindows())

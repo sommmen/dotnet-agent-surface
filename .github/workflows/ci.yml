@@ -66,3 +66,4 @@ jobs:
 
       - name: Run tests
         run: dotnet test DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --verbosity normal --report-gh -p:UseLowestSupportedDependencies=true
+

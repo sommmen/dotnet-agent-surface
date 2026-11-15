@@ -35,16 +35,22 @@ public sealed class CliE2EFindingsTests
     }
 
     [Theory]
-    [InlineData("--fields", "a,b")]
-    [InlineData("--full", null)]
-    public async Task Fields_and_full_are_rejected_for_text_results(string flag, string? value)
+    [InlineData("--fields", "a,b", false)]
+    [InlineData("--full", null, false)]
+    [InlineData("--fields", "a,b", true)]
+    public async Task Fields_and_full_are_rejected_for_text_results(string flag, string? value, bool withJsonOutput)
     {
         string[] args = value is null ? ["text", flag] : ["text", flag, value];
+        if (withJsonOutput)
+        {
+            args = [.. args, "--output", "json"];
+        }
 
         var result = await CreateAdapter().ExecuteAsync(args, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
         Assert.Contains($"{flag} is not supported for this operation's text output", result.Error);
+        Assert.DoesNotContain("Use --output", result.Error);
     }
 
     [Fact]

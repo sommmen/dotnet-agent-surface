@@ -183,6 +183,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
         EnsureDirectory(directory);
 
         var updatedAt = DateTimeOffset.UtcNow;
+        var values = Snapshot(out var version);
         var temporaryPath = System.IO.Path.Combine(directory, $".{Id}.{Guid.NewGuid():N}.tmp");
         try
         {
@@ -193,7 +194,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
                 writer.WriteString("id", Id);
                 writer.WriteString("updatedAt", updatedAt);
                 writer.WriteStartObject("values");
-                foreach (var pair in Snapshot().OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+                foreach (var pair in values.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
                 {
                     writer.WritePropertyName(pair.Key);
                     pair.Value.WriteTo(writer);
@@ -212,7 +213,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
         }
 
         UpdatedAt = updatedAt;
-        MarkClean();
+        MarkClean(version);
         return true;
     }
 
@@ -253,7 +254,7 @@ public sealed class FileAgentSession : InMemoryAgentSession
                 UpdatedAt = updatedAt;
             }
         }
-        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException or JsonException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
         }
     }
@@ -328,12 +329,17 @@ public sealed class FileAgentSession : InMemoryAgentSession
                 File.Move(source, destination, overwrite: true);
                 return;
             }
-            catch (Exception exception) when (attempt < MoveAttempts && exception is IOException or UnauthorizedAccessException)
+            catch (Exception exception) when (attempt < MoveAttempts && OperatingSystem.IsWindows() && IsTransientMoveFailure(exception))
             {
                 Thread.Sleep(Random.Shared.Next(1, 4 + Math.Min(attempt, 30)));
             }
         }
     }
+
+    // 0x80070020 ERROR_SHARING_VIOLATION and 0x80070021 ERROR_LOCK_VIOLATION; a denied replace surfaces as UnauthorizedAccessException.
+    private static bool IsTransientMoveFailure(Exception exception) =>
+        exception is UnauthorizedAccessException
+        || (exception is IOException io && io.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021));
 
     private static void TryDelete(string path)
     {

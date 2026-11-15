@@ -19,7 +19,7 @@ public sealed class AgentSessionOptions
     public string? StateDirectory { get; set; }
 
     /// <summary>
-    /// Gets or sets how long an untouched session file is kept. Expired files are deleted when a CLI invocation opens a
+    /// Gets or sets how long a session file is kept after it was last written; reading a session does not extend it. Expired files are deleted when a CLI invocation opens a
     /// session. <see langword="null"/> (or a non-positive value) disables pruning. Defaults to <see cref="DefaultTimeToLive"/>.
     /// </summary>
     public TimeSpan? TimeToLive { get; set; } = DefaultTimeToLive;

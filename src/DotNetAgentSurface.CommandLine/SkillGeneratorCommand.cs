@@ -9,7 +9,7 @@ namespace DotNetAgentSurface.CommandLine;
 /// </summary>
 public static class SkillGeneratorCommand
 {
-    /// <summary>Relative directory used when a host does not pass an explicit <c>--output</c> value.</summary>
+    /// <summary>Relative directory used when a host does not pass an explicit <c>--out-dir</c> (or <c>--output</c>) value.</summary>
     public const string DefaultOutputDirectory = "skill";
 
     /// <summary>
@@ -126,9 +126,10 @@ public static class SkillGeneratorCommand
             switch (arguments[index])
             {
                 case "--output":
+                case "--out-dir":
                     if (index + 1 >= arguments.Length)
                     {
-                        throw new CommandLineUsageException("'--output' requires a directory value.");
+                        throw new CommandLineUsageException("'--out-dir' requires a directory value.");
                     }
 
                     outputDirectory = arguments[++index];
@@ -153,9 +154,10 @@ public static class SkillGeneratorCommand
             switch (arguments[index])
             {
                 case "--output":
+                case "--out-dir":
                     if (index + 1 >= arguments.Length)
                     {
-                        throw new CommandLineUsageException("'--output' requires a directory value.");
+                        throw new CommandLineUsageException("'--out-dir' requires a directory value.");
                     }
 
                     outputDirectory = arguments[++index];
@@ -170,6 +172,6 @@ public static class SkillGeneratorCommand
 
     private static string RenderHelp() =>
         "Skill reference commands:\n" +
-        "  generate [--output <dir>] [--force]   Generate SKILL.md plus references/commands.md and references/schemas.json (default output: 'skill').\n" +
-        "  check [--output <dir>]                Verify the generated skill reference is current (exit 0 if current, 1 if stale or missing).";
+        "  generate [--out-dir <dir>] [--force]  Generate SKILL.md plus references/commands.md and references/schemas.json (default output: 'skill').\n" +
+        "  check [--out-dir <dir>]               Verify the generated skill reference is current (exit 0 if current, 1 if stale or missing).";
 }

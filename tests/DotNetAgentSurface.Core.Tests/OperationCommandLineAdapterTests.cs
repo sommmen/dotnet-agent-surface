@@ -15,7 +15,7 @@ public sealed class OperationCommandLineAdapterTests
         Assert.Equal(0, help.ExitCode);
         Assert.Contains("echo", help.Output);
         Assert.Equal(0, invocation.ExitCode);
-        Assert.Equal("\"hello\"", invocation.Output);
+        Assert.Equal("hello", invocation.Output);
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public sealed class OperationCommandLineAdapterTests
         var result = await CreateAdapter().ExecuteAsync(["echo", "--value"]);
 
         Assert.Equal(2, result.ExitCode);
-        Assert.Contains("--name JSON-value", result.Error);
+        Assert.Contains("The --value flag requires a value", result.Error);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class OperationCommandLineAdapterTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("--value", result.Output);
-        Assert.Contains("--output <toon|json>", result.Output);
+        Assert.Contains("--output <toon|json> (alias: --format)", result.Output);
         Assert.Contains("--help, -h", result.Output);
     }
 
@@ -63,7 +63,7 @@ public sealed class OperationCommandLineAdapterTests
         var result = await adapter.ExecuteAsync(["echo", "--help"]);
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("--value <String> - The value to echo back.", result.Output);
+        Assert.Contains("--value <string> (required) - The value to echo back.", result.Output);
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class OperationCommandLineAdapterTests
         var invocation = await CreateAdapter().ExecuteAsync(["say", "--value", "hello"]);
 
         Assert.Equal(0, invocation.ExitCode);
-        Assert.Equal("\"hello\"", invocation.Output);
+        Assert.Equal("hello", invocation.Output);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public sealed class OperationCommandLineAdapterTests
         var invocation = await adapter.ExecuteAsync(["projects", "archived", "list", "--value", "hello"]);
 
         Assert.Equal(0, invocation.ExitCode);
-        Assert.Equal("\"hello\"", invocation.Output);
+        Assert.Equal("hello", invocation.Output);
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class OperationCommandLineAdapterTests
         var invocation = await adapter.ExecuteAsync(["ping", "--value", "hello"]);
 
         Assert.Equal(0, invocation.ExitCode);
-        Assert.Equal("\"hello\"", invocation.Output);
+        Assert.Equal("hello", invocation.Output);
     }
 
     [Fact]
@@ -171,9 +171,9 @@ public sealed class OperationCommandLineAdapterTests
         var projectsList = await adapter.ExecuteAsync(["projects", "list-items", "--value", "projects-list"]);
 
         Assert.Equal(0, customersList.ExitCode);
-        Assert.Equal("\"customers-list\"", customersList.Output);
+        Assert.Equal("customers-list", customersList.Output);
         Assert.Equal(0, projectsList.ExitCode);
-        Assert.Equal("\"projects-list\"", projectsList.Output);
+        Assert.Equal("projects-list", projectsList.Output);
     }
 
     [Fact]

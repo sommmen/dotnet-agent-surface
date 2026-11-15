@@ -14,6 +14,20 @@ public sealed class OperationCatalog
 
     public IReadOnlyList<OperationDocumentationDiagnostic> DocumentationDiagnostics { get; }
 
+    /// <summary>
+    /// Returns a catalog containing only the operations exposed on <paramref name="surface"/> (see
+    /// <see cref="AgentOperationAttribute.Surfaces"/>). Returns this instance when nothing is filtered out.
+    /// </summary>
+    public OperationCatalog ForSurface(AgentSurface surface)
+    {
+        var visible = Operations.Where(operation => operation.IsAvailableOn(surface)).ToArray();
+        return visible.Length == Operations.Count
+            ? this
+            : new OperationCatalog(
+                Array.AsReadOnly(visible),
+                Array.AsReadOnly(DocumentationDiagnostics.Where(diagnostic => visible.Any(operation => operation.Name == diagnostic.OperationName)).ToArray()));
+    }
+
     public static OperationCatalog Discover(params Type[] serviceTypes)
         => Discover(null, null, serviceTypes);
 

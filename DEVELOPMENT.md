@@ -25,6 +25,7 @@ tests/
   DotNetAgentSurface.Hosting.Tests/      Host tests and end-to-end runs of the CliAndMcp sample
   DotNetAgentSurface.AspNetCore.Tests/   ApiExplorer satellite tests
   DotNetAgentSurface.Hangfire.Tests/     Hangfire satellite tests
+  DotNetAgentSurface.Hangfire.SqlServer.Tests/  Opt-in SQL Server compatibility runs for the Hangfire satellite (Testcontainers)
   DotNetAgentSurface.SignalR.Tests/      SignalR satellite tests
 samples/
   DotNetAgentSurface.Samples.TaskTracker/    Shared sample service
@@ -34,6 +35,7 @@ samples/
   DotNetAgentSurface.Samples.LegacyDesktop/  legacy-desktop-cli (net472) host
   DotNetAgentSurface.Samples.AspNetCore/     ApiExplorer-discovered minimal API host
   DotNetAgentSurface.Samples.Hangfire/       Hangfire recurring-job sample
+  DotNetAgentSurface.Samples.Hangfire.Cli/   hangfire-cli-sample (offline Hangfire CLI composition)
   DotNetAgentSurface.Samples.SignalR/        SignalR server-to-client messaging sample
 docs/
   development/  Design slices and the ongoing-work tracker (linked below)

@@ -445,7 +445,7 @@ public sealed class OperationCommandLineAdapter
 
     private Dictionary<string, JsonElement> ParseInputs(OperationDescriptor operation, string[] arguments, GlobalState state)
     {
-        var parameters = operation.Parameters.Where(static parameter => !parameter.IsCancellationToken).ToArray();
+        var parameters = operation.Parameters.Where(static parameter => !parameter.IsAmbient).ToArray();
         var byKey = new Dictionary<string, OperationParameterDescriptor>(StringComparer.Ordinal);
         foreach (var parameter in parameters)
         {
@@ -579,7 +579,7 @@ public sealed class OperationCommandLineAdapter
             }
 
             var parameter = operation.Parameters.FirstOrDefault(candidate =>
-                !candidate.IsCancellationToken
+                !candidate.IsAmbient
                 && OperationNaming.ToMatchKey(candidate.Name) == OperationNaming.ToMatchKey(option.InjectAs));
             if (parameter is not null && !inputs.ContainsKey(parameter.Name))
             {
@@ -698,7 +698,7 @@ public sealed class OperationCommandLineAdapter
 
     private string RenderOperationHelp(OperationDescriptor operation)
     {
-        var parameters = operation.Parameters.Where(static parameter => !parameter.IsCancellationToken).ToArray();
+        var parameters = operation.Parameters.Where(static parameter => !parameter.IsAmbient).ToArray();
         var commandPath = string.Join(" ", OperationCatalog.GetCategorySegments(operation.Category).Append(OperationNaming.ToKebabCase(operation.Name)));
         var usage = string.Join(" ", parameters.Select(parameter =>
         {

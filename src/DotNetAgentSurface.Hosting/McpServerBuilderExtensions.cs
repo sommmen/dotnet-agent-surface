@@ -10,8 +10,8 @@ public static class AgentSurfaceMcpServerBuilderExtensions
 {
     /// <summary>
     /// Serves the <see cref="OperationCatalog"/> registered by <see cref="AgentSurfaceApplication"/> as MCP tools, honoring
-    /// <see cref="AgentSurfaces"/> (CLI-only operations are not listed) and confirmation metadata. Do not combine it with
-    /// another registration that supplies the tool list and call handlers.
+    /// <see cref="AgentSurfaces"/> (CLI-only operations are not listed) and confirmation metadata. The operations are added as SDK tools, so this
+    /// composes with <c>WithTools&lt;T&gt;()</c> and the SDK's own handlers.
     /// </summary>
     public static IMcpServerBuilder WithAgentSurfaceCatalog(this IMcpServerBuilder builder)
     {
@@ -22,9 +22,11 @@ public static class AgentSurfaceMcpServerBuilderExtensions
 
         builder.Services.AddOptions<McpServerOptions>().Configure<McpOperationAdapter>((options, adapter) =>
         {
-            var handlers = new McpOperationServer(adapter).CreateOptions().Handlers;
-            options.Handlers.ListToolsHandler = handlers.ListToolsHandler;
-            options.Handlers.CallToolHandler = handlers.CallToolHandler;
+            options.ToolCollection ??= [];
+            foreach (var tool in adapter.CreateServerTools())
+            {
+                options.ToolCollection.Add(tool);
+            }
         });
         return builder;
     }

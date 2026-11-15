@@ -12,7 +12,8 @@ public sealed class OperationDescriptor
         IReadOnlyList<object>? policyMetadata = null,
         IReadOnlyList<IOperationInvocationPolicy>? invocationPolicies = null,
         IOperationDocumentationSource? documentationSource = null,
-        OperationDocumentationOptions? documentationOptions = null)
+        OperationDocumentationOptions? documentationOptions = null,
+        OperationHints? hints = null)
     {
         Method = method;
         BoundTarget = boundTarget;
@@ -24,6 +25,7 @@ public sealed class OperationDescriptor
         Examples = Array.AsReadOnly(operation.Examples);
         Aliases = Array.AsReadOnly(operation.Aliases);
         IsIdempotent = operation.IsIdempotent;
+        Hints = (hints ?? OperationHints.Empty).WithFallback(operation.GetHints());
         Surfaces = operation.Surfaces;
         PolicyMetadata = Array.AsReadOnly((policyMetadata ?? []).ToArray());
         InvocationPolicies = Array.AsReadOnly((invocationPolicies ?? []).ToArray());
@@ -85,6 +87,8 @@ public sealed class OperationDescriptor
 
     public bool IsIdempotent { get; }
 
+    /// <summary>Gets the independent descriptive hints (title, read-only, destructive, idempotent, open-world) for this operation.</summary>
+    public OperationHints Hints { get; }
     /// <summary>Gets the adapter surfaces this operation is exposed on.</summary>
     public AgentSurfaces Surfaces { get; }
 
@@ -123,6 +127,7 @@ public sealed class OperationParameterDescriptor
         IsOptional = parameter.IsOptional;
         DefaultValue = parameter.IsOptional ? parameter.DefaultValue : null;
         IsCancellationToken = parameter.ParameterType == typeof(CancellationToken);
+        IsAmbient = AmbientParameters.IsAmbient(parameter.ParameterType);
         IsNullable = NullabilityReader.IsNullable(parameter);
     }
 
@@ -137,6 +142,13 @@ public sealed class OperationParameterDescriptor
     public object? DefaultValue { get; }
 
     public bool IsCancellationToken { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the parameter is supplied by the host (cancellation token, <see cref="IServiceProvider"/>,
+    /// <see cref="IOperationContext"/>, <see cref="IOperationProgress"/>, <see cref="System.Security.Claims.ClaimsPrincipal"/> and the MCP
+    /// SDK request types) instead of by the caller. Ambient parameters are excluded from schemas, help and skill output.
+    /// </summary>
+    public bool IsAmbient { get; }
 
     public bool IsNullable { get; }
 }

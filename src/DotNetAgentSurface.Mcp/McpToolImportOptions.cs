@@ -31,6 +31,14 @@ public sealed class McpToolImportOptions
 
     /// <summary>Gets or sets how SDK hint attributes map to the operation safety level. Defaults to <see cref="McpToolSafetyMapping.None"/>.</summary>
     public McpToolSafetyMapping SafetyMapping { get; set; } = McpToolSafetyMapping.None;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether instance tools are invoked on a service of their declaring type resolved from the
+    /// request's service provider for every call (constructed with <c>ActivatorUtilities</c> and disposed afterwards when it is not
+    /// registered), like <c>WithTools&lt;T&gt;()</c>. When <see langword="false"/> (default) one target is created at import time
+    /// from the <c>targetFactory</c> or the parameterless constructor and reused for every call.
+    /// </summary>
+    public bool ResolveTargetsFromServices { get; set; }
 }
 
 /// <summary>

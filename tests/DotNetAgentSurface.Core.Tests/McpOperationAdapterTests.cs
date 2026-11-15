@@ -28,7 +28,7 @@ public sealed class McpOperationAdapterTests
         Assert.Equal("greet", tool.Name);
         Assert.Equal("Greets a person", tool.Description);
         Assert.Null(result.IsError);
-        Assert.Equal("\"Hello, Ada!\"", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        Assert.Equal("Hello, Ada!", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class McpOperationAdapterTests
         var result = await adapter.InvokeAsync("hello", arguments);
 
         Assert.Null(result.IsError);
-        Assert.Equal("\"Hello, Ada!\"", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        Assert.Equal("Hello, Ada!", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
     }
 
     [Fact]
@@ -103,11 +103,13 @@ public sealed class McpOperationAdapterTests
         var result = await adapter.InvokeAsync("fail");
 
         Assert.True(result.IsError);
-        Assert.Contains("boom", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.DoesNotContain("boom", text);
+        Assert.Contains("Correlation id:", text);
     }
 
     [Fact]
-    public void GetTools_annotates_safe_and_dangerous_operations()
+    public void GetTools_emits_no_annotations_unless_hints_are_set()
     {
         var adapter = new McpOperationAdapter(
             OperationCatalog.Discover(typeof(GreetingOperations)),
@@ -115,10 +117,11 @@ public sealed class McpOperationAdapterTests
 
         var tools = adapter.GetTools().ToDictionary(tool => tool.Name);
 
-        Assert.True(tools["greet"].Annotations!.ReadOnlyHint);
-        Assert.False(tools["greet"].Annotations!.DestructiveHint);
-        Assert.False(tools["fail"].Annotations!.ReadOnlyHint);
-        Assert.True(tools["fail"].Annotations!.DestructiveHint);
+        Assert.Null(tools["greet"].Annotations);
+        Assert.Null(tools["fail"].Annotations);
+        Assert.True(tools["hinted"].Annotations!.ReadOnlyHint);
+        Assert.Null(tools["hinted"].Annotations!.DestructiveHint);
+        Assert.Equal("Hinted", tools["hinted"].Annotations!.Title);
     }
 
     [Fact]
@@ -163,7 +166,7 @@ public sealed class McpOperationAdapterTests
             Assert.Equal(0, cliResult.ExitCode);
             Assert.Equal("Hello, Ada!", cliResult.Output);
             Assert.Contains("`native-greet`", File.ReadAllText(Path.Combine(outputDirectory, "SKILL.md")));
-            Assert.Equal("\"Hello, Ada!\"", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+            Assert.Equal("Hello, Ada!", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
         }
         finally
         {
@@ -220,6 +223,9 @@ public sealed class McpOperationAdapterTests
 
         [AgentOperation("fail", "Always fails", SafetyLevel = AgentSafetyLevel.Dangerous)]
         public void Fail() => throw new InvalidOperationException("boom");
+
+        [AgentOperation("hinted", "Has hints", ReadOnly = true, Title = "Hinted")]
+        public string Hinted() => "x";
 
         [AgentOperation("slow", "Checks cancellation")]
         public void Slow(CancellationToken cancellationToken) => cancellationToken.ThrowIfCancellationRequested();

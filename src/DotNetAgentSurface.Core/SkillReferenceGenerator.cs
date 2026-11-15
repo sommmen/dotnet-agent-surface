@@ -307,7 +307,7 @@ public sealed class SkillReferenceGenerator
                 builder.AppendLine($"- Category: `{operation.Category}`");
             }
 
-            var parameters = operation.Parameters.Where(static parameter => !parameter.IsCancellationToken).ToArray();
+            var parameters = operation.Parameters.Where(static parameter => !parameter.IsAmbient).ToArray();
             if (parameters.Length > 0)
             {
                 builder.AppendLine();
@@ -369,7 +369,7 @@ public sealed class SkillReferenceGenerator
             builder.AppendLine($"- Safety: `{operation.SafetyLevel}`");
             builder.AppendLine($"- Idempotent: `{(operation.IsIdempotent ? "yes" : "no")}`");
 
-            var parameters = operation.Parameters.Where(static parameter => !parameter.IsCancellationToken).ToArray();
+            var parameters = operation.Parameters.Where(static parameter => !parameter.IsAmbient).ToArray();
             if (parameters.Length > 0)
             {
                 builder.AppendLine();

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Linq.Expressions;
 using System.Reflection;
 using DotNetAgentSurface.Core;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace DotNetAgentSurface.Mcp;
@@ -75,7 +76,7 @@ public static class McpOperationCatalogBuilderExtensions
                 .ToArray();
 
             object? target = null;
-            if (toolMethods.Any(static method => !method.IsStatic))
+            if (!importOptions.ResolveTargetsFromServices && toolMethods.Any(static method => !method.IsStatic))
             {
                 target = targetFactory?.Invoke(toolType) ?? Activator.CreateInstance(toolType);
                 if (target is null)
@@ -89,29 +90,80 @@ public static class McpOperationCatalogBuilderExtensions
             foreach (var method in toolMethods)
             {
                 var attribute = method.GetCustomAttribute<McpServerToolAttribute>(inherit: false)!;
-                var name = string.IsNullOrWhiteSpace(attribute.Name) ? method.Name : attribute.Name!;
+                var name = string.IsNullOrWhiteSpace(attribute.Name) ? DeriveName(method) : attribute.Name!;
                 var description = method.GetCustomAttribute<DescriptionAttribute>(inherit: false)?.Description;
                 description = string.IsNullOrWhiteSpace(description) ? attribute.Title : description;
                 description = string.IsNullOrWhiteSpace(description) ? name : description!;
+                var sdkAnnotations = TryGetSdkAnnotations(method);
 
-                builder.Add(name, description, CreateDelegate(method, method.IsStatic ? null : target), options =>
+                void Configure(OperationRegistrationOptions options)
                 {
                     options.SafetyLevel = importOptions.SafetyMapping == McpToolSafetyMapping.DestructiveIsDangerous && attribute.Destructive
                         ? AgentSafetyLevel.Dangerous
                         : AgentSafetyLevel.Safe;
                     options.IsIdempotent = attribute.Idempotent;
                     options.Surfaces = surfaces(method);
-                    options.PolicyMetadata.Add(new McpToolHints(
-                        string.IsNullOrWhiteSpace(attribute.Title) ? null : attribute.Title,
-                        attribute.ReadOnly,
-                        attribute.Destructive,
-                        attribute.Idempotent,
-                        attribute.OpenWorld));
-                });
+                    options.Title = string.IsNullOrWhiteSpace(attribute.Title) ? null : attribute.Title;
+                    options.ReadOnly = sdkAnnotations?.ReadOnlyHint;
+                    options.Destructive = sdkAnnotations?.DestructiveHint;
+                    options.Idempotent = sdkAnnotations?.IdempotentHint;
+                    options.OpenWorld = sdkAnnotations?.OpenWorldHint;
+                    if (attribute.UseStructuredContent)
+                    {
+                        options.PolicyMetadata.Add(new McpStructuredContentHint());
+                    }
+                }
+
+                if (importOptions.ResolveTargetsFromServices)
+                {
+                    builder.AddMethod(method, name, description, Configure);
+                }
+                else
+                {
+                    builder.Add(name, description, CreateDelegate(method, method.IsStatic ? null : target), Configure);
+                }
             }
         }
         return builder;
     }
+
+    // The SDK keeps "was this hint set explicitly" private; asking it to build the tool is the supported way to read it.
+    private static ToolAnnotations? TryGetSdkAnnotations(MethodInfo method)
+    {
+        try
+        {
+            return McpServerTool.Create(method, static _ => throw new InvalidOperationException(), options: null).ProtocolTool.Annotations;
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                $"Could not read MCP SDK annotations for '{method.DeclaringType?.FullName}.{method.Name}'; its hints are not imported. {exception.GetType().Name}: {exception.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Derives the tool name the way the SDK does: no <c>Async</c> suffix, non-alphanumerics to underscores, snake_case.</summary>
+    internal static string DeriveName(MethodInfo method)
+    {
+        var name = method.Name;
+        var type = method.ReturnType;
+        var isAsync = type == typeof(Task) || type == typeof(ValueTask)
+            || (type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(Task<>) || type.GetGenericTypeDefinition() == typeof(ValueTask<>)));
+        if (isAsync && name.EndsWith("Async", StringComparison.Ordinal) && name.Length > "Async".Length)
+        {
+            name = name.Substring(0, name.Length - "Async".Length);
+        }
+
+        name = System.Text.RegularExpressions.Regex.Replace(name, "[^0-9A-Za-z]+", "_").Trim('_');
+        if (name.Length == 0)
+        {
+            name = method.Name;
+        }
+
+        return SnakeCaseLower.ConvertName(name);
+    }
+
+    private static readonly System.Text.Json.JsonNamingPolicy SnakeCaseLower = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;
 
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
     {

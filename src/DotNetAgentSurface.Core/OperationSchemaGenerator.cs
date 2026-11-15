@@ -1,94 +1,64 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.AI;
 
 namespace DotNetAgentSurface.Core;
 
+/// <summary>
+/// Generates the JSON Schema for an operation's inputs with <see cref="AIJsonUtilities"/>, the same generator the
+/// ModelContextProtocol SDK uses for <c>McpServerTool</c>, so schemas match it for the same method and
+/// <see cref="JsonSerializerOptions"/>. Ambient (host-injected) parameters are excluded.
+/// </summary>
 public sealed class OperationSchemaGenerator
 {
+    private readonly JsonSerializerOptions _serializerOptions;
+
+    /// <param name="serializerOptions">
+    /// The options that drive property naming, converters and ignore rules. They should be the options the invoker uses
+    /// to bind inputs. Defaults to <see cref="JsonSerializerDefaults.Web"/>.
+    /// </param>
+    public OperationSchemaGenerator(JsonSerializerOptions? serializerOptions = null)
+    {
+        _serializerOptions = serializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        _serializerOptions.MakeReadOnly(populateMissingResolver: true);
+    }
+
     public JsonDocument GenerateInputSchema(OperationDescriptor operation)
     {
         Guard.ThrowIfNull(operation);
 
-        var properties = new SortedDictionary<string, object?>(StringComparer.Ordinal);
-        var required = new List<string>();
-
-        foreach (var parameter in operation.Parameters.Where(static parameter => !parameter.IsCancellationToken))
+        var ambient = new HashSet<string>(
+            operation.Parameters.Where(static parameter => parameter.IsAmbient).Select(static parameter => parameter.Name),
+            StringComparer.Ordinal);
+        var inference = new AIJsonSchemaCreateOptions
         {
-            var schema = CreateSchema(parameter.ParameterType, parameter.IsNullable);
-            if (!string.IsNullOrWhiteSpace(parameter.Description))
-            {
-                schema["description"] = parameter.Description;
-            }
-
-            properties.Add(parameter.Name, schema);
-            if (!parameter.IsOptional && !parameter.IsNullable)
-            {
-                required.Add(parameter.Name);
-            }
-        }
-
-        return JsonSerializer.SerializeToDocument(new
-        {
-            type = "object",
-            properties,
-            required = required.OrderBy(static name => name, StringComparer.Ordinal).ToArray(),
-            additionalProperties = false
-        });
-    }
-
-    private static Dictionary<string, object?> CreateSchema(Type type, bool isNullable = false, ISet<Type>? ancestors = null)
-    {
-        var nullableType = Nullable.GetUnderlyingType(type);
-        var effectiveType = nullableType ?? type;
-        var schema = effectiveType switch
-        {
-            var value when value == typeof(string) || value == typeof(char) || value == typeof(Guid) || value == typeof(DateTime) || value == typeof(DateTimeOffset) => new Dictionary<string, object?> { ["type"] = "string" },
-            var value when value == typeof(bool) => new Dictionary<string, object?> { ["type"] = "boolean" },
-            var value when value == typeof(byte) || value == typeof(short) || value == typeof(int) || value == typeof(long) || value == typeof(sbyte) || value == typeof(ushort) || value == typeof(uint) || value == typeof(ulong) => new Dictionary<string, object?> { ["type"] = "integer" },
-            var value when value == typeof(float) || value == typeof(double) || value == typeof(decimal) => new Dictionary<string, object?> { ["type"] = "number" },
-            var value when value.IsEnum => new Dictionary<string, object?> { ["type"] = "string", ["enum"] = Enum.GetNames(value) },
-            var value when value.IsArray => new Dictionary<string, object?> { ["type"] = "array", ["items"] = CreateSchema(value.GetElementType()!, ancestors: ancestors) },
-            var value when value.IsGenericType && value.GetGenericTypeDefinition() == typeof(IEnumerable<>) => new Dictionary<string, object?> { ["type"] = "array", ["items"] = CreateSchema(value.GetGenericArguments()[0], ancestors: ancestors) },
-            _ => CreateObjectSchema(effectiveType, ancestors)
+            IncludeParameter = parameter => parameter.Name is null || !ambient.Contains(parameter.Name),
         };
 
-        if (nullableType is not null || isNullable)
+        var schema = AIJsonUtilities.CreateFunctionJsonSchema(
+            operation.Method,
+            title: string.Empty,
+            description: string.Empty,
+            serializerOptions: _serializerOptions,
+            inferenceOptions: inference);
+
+        if (JsonNode.Parse(schema.GetRawText()) is JsonObject root
+            && root["properties"] is JsonObject properties)
         {
-            schema["nullable"] = true;
-        }
-
-        return schema;
-    }
-
-    private static Dictionary<string, object?> CreateObjectSchema(Type type, ISet<Type>? ancestors)
-    {
-        if (type == typeof(object) || ancestors?.Contains(type) == true)
-        {
-            return new Dictionary<string, object?> { ["type"] = "object" };
-        }
-
-        var nestedAncestors = new HashSet<Type>(ancestors ?? new HashSet<Type>()) { type };
-        var properties = new SortedDictionary<string, object?>(StringComparer.Ordinal);
-        var required = new List<string>();
-
-        foreach (var property in type.GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
-                     .Where(static property => property.CanRead && property.GetIndexParameters().Length == 0)
-                     .OrderBy(static property => property.Name, StringComparer.Ordinal))
-        {
-            var isNullable = NullabilityReader.IsNullable(property);
-            properties.Add(property.Name, CreateSchema(property.PropertyType, isNullable, nestedAncestors));
-            if (!isNullable)
+            foreach (var parameter in operation.Parameters)
             {
-                required.Add(property.Name);
+                if (!string.IsNullOrWhiteSpace(parameter.Description)
+                    && properties[parameter.Name] is JsonObject property
+                    && !property.ContainsKey("description"))
+                {
+                    property["description"] = parameter.Description;
+                }
             }
+
+            return JsonDocument.Parse(root.ToJsonString());
         }
 
-        return new Dictionary<string, object?>
-        {
-            ["type"] = "object",
-            ["properties"] = properties,
-            ["required"] = required,
-            ["additionalProperties"] = false
-        };
+        return JsonDocument.Parse(schema.GetRawText());
     }
 }

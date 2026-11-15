@@ -8,6 +8,7 @@
     is never picked up by samples/ or tests/).
   -->
   <PropertyGroup>
+    <GitVersionBaseDirectory>$(MSBuildThisFileDirectory)..</GitVersionBaseDirectory>
     <Authors>dotnet-agent-surface contributors</Authors>
     <Company>dotnet-agent-surface contributors</Company>
     <PackageProjectUrl>https://github.com/sommmen/dotnet-agent-surface</PackageProjectUrl>
@@ -19,8 +20,6 @@
     <PackageIcon>icon.png</PackageIcon>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!--
       CS1591 (missing XML doc comment) is intentionally suppressed for now: GenerateDocumentationFile

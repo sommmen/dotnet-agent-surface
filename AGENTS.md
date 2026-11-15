@@ -11,6 +11,19 @@ from the same `OperationCatalog`. This project is a preview: the public API
 is implemented and tested, but still pre-1.0 and may change between preview
 releases.
 
+## Project structure
+
+- `src/` — six libraries: `DotNetAgentSurface.Core`, `.CommandLine`, `.Mcp`,
+  `.AspNetCore`, `.Hangfire` and `.SignalR`.
+- `tests/` — one test project per library (xUnit v3 on Microsoft.Testing.Platform).
+- `samples/` — host applications demonstrating each surface.
+- `docs/development/` — design slices and `tracking.md`; `features/` — feature plans.
+- `DotNetAgentSurface.slnx` — the solution. See
+  [DEVELOPMENT.md](DEVELOPMENT.md#repository-layout) for the full layout.
+
+Build with `dotnet build DotNetAgentSurface.slnx` and test with
+`dotnet test DotNetAgentSurface.slnx`.
+
 ## Commit conventions
 
 Use Conventional Commits for every commit message and pull request title:

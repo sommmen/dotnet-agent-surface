@@ -35,4 +35,4 @@ jobs:
         run: dotnet build DotNetAgentSurface.slnx --no-restore --configuration Release
 
       - name: Run tests
-        run: dotnet test DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --verbosity normal --report-gh

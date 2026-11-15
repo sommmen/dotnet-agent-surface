@@ -2,7 +2,7 @@ using DotNetAgentSurface.Core;
 
 namespace DotNetAgentSurface.CommandLine.Tests;
 
-public sealed class CliE2eFindingsTests
+public sealed class CliE2EFindingsTests
 {
     [Fact]
     public async Task Missing_required_parameters_exit_2_and_name_every_missing_flag()
@@ -135,9 +135,19 @@ public sealed class CliE2eFindingsTests
         Beta,
     }
 
-    private sealed record Paging(int Skip, int Take);
+    private sealed record Paging
+    {
+        public int Skip { get; init; }
 
-    private sealed record Row(string Name, string Other);
+        public int Take { get; init; }
+    }
+
+    private sealed record Row
+    {
+        public string Name { get; init; } = string.Empty;
+
+        public string Other { get; init; } = string.Empty;
+    }
 
     private sealed class Operations
     {
@@ -160,7 +170,7 @@ public sealed class CliE2eFindingsTests
         public string Textile() => "plain";
 
         [AgentOperation("rows", "Returns rows")]
-        public Row[] Rows() => [new("n", "o")];
+        public Row[] Rows() => [new Row { Name = "n", Other = "o" }];
 
         [AgentOperation("format", "Echoes the requested format")]
         public string Format(IOperationContext context) => context.OutputFormat ?? "(none)";

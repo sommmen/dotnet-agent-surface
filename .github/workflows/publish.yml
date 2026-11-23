@@ -57,7 +57,7 @@ jobs:
         run: dotnet pack DotNetAgentSurface.slnx --no-build --no-restore --configuration Release --output ./artifacts
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages
           path: ./artifacts
@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Download packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: packages
           path: ./artifacts

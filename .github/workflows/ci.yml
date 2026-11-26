@@ -26,7 +26,7 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: Restore dependencies
         run: dotnet restore DotNetAgentSurface.slnx
@@ -55,7 +55,7 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       # Swaps the floors declared in Directory.Packages.props (UseLowestSupportedDependencies) for the latest versions.
       - name: Restore at lowest supported versions

@@ -116,6 +116,121 @@ public sealed class AgentSurfaceApplicationTests
     }
 
     [Fact]
+    public async Task Mcp_help_mentions_the_version_flag()
+    {
+        var result = await RunAsync(["--help"], new Probe(), cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains("--version", result.Output);
+    }
+
+    [Theory]
+    [InlineData("--version")]
+    [InlineData("-v")]
+    public async Task Version_flag_routes_to_a_registered_version_verb(string flag)
+    {
+        var probe = new Probe();
+        string[]? received = null;
+        var result = await RunAsync([flag], probe, app => app.AddVerb("version", args =>
+        {
+            received = args;
+            return 5;
+        }), TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, result.ExitCode);
+        Assert.NotNull(received);
+        Assert.Empty(received);
+        Assert.False(probe.PlainHostedServiceStarted);
+    }
+
+    [Theory]
+    [InlineData("--version", AgentSurface.Mcp)]
+    [InlineData("-v", AgentSurface.Mcp)]
+    [InlineData("--version", AgentSurface.Cli)]
+    [InlineData("-v", AgentSurface.Cli)]
+    public async Task Version_flag_prints_the_entry_assembly_version_without_a_version_verb(string flag, AgentSurface surface)
+    {
+        var probe = new Probe();
+        var result = await RunAsync([flag], probe, app => app.DefaultSurface = surface, TestContext.Current.CancellationToken);
+
+        var informational = System.Reflection.Assembly.GetEntryAssembly()!
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .Cast<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .Single().InformationalVersion;
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(informational.Split('+')[0], result.Output.Trim());
+        Assert.Equal(string.Empty, result.Error);
+        Assert.False(probe.PlainHostedServiceStarted);
+        Assert.False(probe.AsyncDisposed);
+    }
+
+    [Theory]
+    [InlineData("--foo")]
+    [InlineData("-x")]
+    [InlineData("-x=1")]
+    [InlineData("verison")]
+    [InlineData("--Setting=a", "--foo")]
+    [InlineData("--")]
+    [InlineData("mcp", "--foo")]
+    [InlineData("mcp", "verison")]
+    public async Task Mcp_surface_rejects_unrecognised_arguments_with_usage_and_exit_2(params string[] args)
+    {
+        var probe = new Probe();
+        var result = await RunAsync(args, probe, app => app.AddVerb("hooks", _ => 0), TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Equal(string.Empty, result.Output);
+        Assert.Contains("Usage:", result.Error);
+        Assert.Contains("hooks", result.Error);
+        Assert.Contains(args.Last(arg => !arg.StartsWith("--Setting", StringComparison.Ordinal)), result.Error);
+        Assert.False(probe.PlainHostedServiceStarted);
+        Assert.False(probe.AsyncDisposed);
+    }
+
+    [Theory]
+    [InlineData("--Setting=fromargs")]
+    [InlineData("--Setting", "fromargs")]
+    [InlineData("/Setting=fromargs")]
+    [InlineData("/Setting", "fromargs")]
+    [InlineData("Setting=fromargs")]
+    [InlineData("mcp", "--Setting=fromargs")]
+    public async Task Mcp_surface_keeps_configuration_style_arguments(params string[] args)
+    {
+        var probe = new Probe();
+        using var cancellation = new CancellationTokenSource();
+        var cancelOnStart = new CancelOnStart(cancellation);
+        string? setting = null;
+        var result = await RunAsync(
+            args,
+            probe,
+            app => app.ConfigureServices(builder =>
+            {
+                setting = builder.Configuration["Setting"];
+                builder.Services.AddHostedService(_ => cancelOnStart);
+            }),
+            cancellation.Token);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("fromargs", setting);
+        Assert.True(probe.PlainHostedServiceStarted);
+    }
+
+    [Fact]
+    public async Task Mcp_surface_without_arguments_starts_the_server()
+    {
+        var probe = new Probe();
+        using var cancellation = new CancellationTokenSource();
+        var cancelOnStart = new CancelOnStart(cancellation);
+        var result = await RunAsync(
+            [],
+            probe,
+            app => app.ConfigureServices(builder => builder.Services.AddHostedService(_ => cancelOnStart)),
+            cancellation.Token);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(probe.PlainHostedServiceStarted);
+    }
+
+    [Fact]
     public async Task Cli_cancellation_token_maps_to_exit_130()
     {
         var probe = new Probe();

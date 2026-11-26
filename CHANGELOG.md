@@ -31,6 +31,11 @@ versioning and removals go through a deprecation cycle.
 
 ## Unreleased
 
+### Fixed (argument routing, dotnet-efcore-mcp#180)
+
+- **Breaking change (behaviour):** with `DefaultSurface = Mcp`, an unknown verb (`verison`) or an unrecognised flag (`--foo`, `-x`) used to start the MCP server. It now prints the usage to stderr and exits 2. Configuration-style arguments (`--Key=Value`, `--Key value`, `/Key=Value`, `Key=Value`) and no arguments still start the server. Migration: a launcher that passes extra non-configuration arguments to the server must stop passing them.
+- `--version` / `-v` (alone) is handled for every host: it runs a registered `version` verb, otherwise prints the entry assembly's informational version and exits 0. The root `--help` mentions it.
+
 ### Fixed
 
 - The `--fields`/`--full` rejection for text results no longer suggests `--output <toon|json>`, which cannot make field selection apply to text output either.

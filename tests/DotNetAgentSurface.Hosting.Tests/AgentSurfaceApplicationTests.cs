@@ -197,6 +197,7 @@ public sealed class AgentSurfaceApplicationTests
     {
         var probe = new Probe();
         using var cancellation = new CancellationTokenSource();
+        var cancelOnStart = new CancelOnStart(cancellation);
         string? setting = null;
         var result = await RunAsync(
             args,
@@ -204,7 +205,7 @@ public sealed class AgentSurfaceApplicationTests
             app => app.ConfigureServices(builder =>
             {
                 setting = builder.Configuration["Setting"];
-                builder.Services.AddHostedService(_ => new CancelOnStart(cancellation));
+                builder.Services.AddHostedService(_ => cancelOnStart);
             }),
             cancellation.Token);
 
@@ -218,10 +219,11 @@ public sealed class AgentSurfaceApplicationTests
     {
         var probe = new Probe();
         using var cancellation = new CancellationTokenSource();
+        var cancelOnStart = new CancelOnStart(cancellation);
         var result = await RunAsync(
             [],
             probe,
-            app => app.ConfigureServices(builder => builder.Services.AddHostedService(_ => new CancelOnStart(cancellation))),
+            app => app.ConfigureServices(builder => builder.Services.AddHostedService(_ => cancelOnStart)),
             cancellation.Token);
 
         Assert.Equal(0, result.ExitCode);

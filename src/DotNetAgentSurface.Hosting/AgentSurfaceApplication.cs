@@ -320,7 +320,7 @@ public sealed class AgentSurfaceApplication
             .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
             .FirstOrDefault()?.InformationalVersion;
         var version = informational?.Split('+')[0];
-        return string.IsNullOrWhiteSpace(version) ? assembly.GetName().Version?.ToString() ?? "unknown" : version!;
+        return string.IsNullOrWhiteSpace(version) ? assembly.GetName().Version?.ToString() ?? "unknown" : version;
     }
 
     // Mirrors what the .NET command-line configuration provider accepts: Key=Value, --Key=Value, --Key value, /Key=Value, /Key value.

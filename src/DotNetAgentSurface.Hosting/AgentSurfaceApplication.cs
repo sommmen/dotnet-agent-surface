@@ -323,7 +323,8 @@ public sealed class AgentSurfaceApplication
         return string.IsNullOrWhiteSpace(version) ? assembly.GetName().Version?.ToString() ?? "unknown" : version;
     }
 
-    // Mirrors what the .NET command-line configuration provider accepts: Key=Value, --Key=Value, --Key value, /Key=Value, /Key value.
+    // Accepts the forms the .NET command-line configuration provider reads (Key=Value, --Key=Value, --Key value, /Key=Value, /Key value),
+    // but is deliberately stricter: bare words and single-dash switches, which the provider ignores, are rejected as typos.
     private static string? FindUnrecognisedMcpArgument(string[] args)
     {
         for (var index = 0; index < args.Length; index++)
@@ -331,16 +332,15 @@ public sealed class AgentSurfaceApplication
             var arg = args[index];
             var keyStart = arg.StartsWith("--", StringComparison.Ordinal) ? 2 : arg.StartsWith('/') ? 1 : 0;
             var separator = arg.IndexOf('=');
-            var hasInlineValue = separator > keyStart;
-            var key = hasInlineValue ? arg[keyStart..separator] : arg[keyStart..];
-            if (key.Length == 0 || (keyStart == 0 && (!hasInlineValue || arg[0] == '-')))
+            var hasInlineValue = separator >= keyStart;
+            if (keyStart == 0 && (!hasInlineValue || arg[0] == '-'))
             {
                 return arg;
             }
 
-            if (keyStart > 0 && !hasInlineValue && ++index >= args.Length)
+            if (keyStart > 0 && !hasInlineValue)
             {
-                return arg;
+                index++;
             }
         }
 

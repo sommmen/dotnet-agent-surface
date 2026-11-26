@@ -19,8 +19,14 @@ namespace DotNetAgentSurface.Hosting;
 /// <b>Mode selection</b> looks at the first argument: a verb registered with <see cref="AddVerb(string, Func{string[], CancellationToken, Task{int}})"/>
 /// runs its handler before any host is built; <see cref="CliVerb"/> (default <c>cli</c>) runs the CLI;
 /// <see cref="McpVerb"/> (default <c>mcp</c>) runs the MCP server; anything else uses <see cref="DefaultSurface"/>
-/// and the arguments are left untouched. In MCP mode configuration-style arguments (<c>--Key=Value</c>) reach the
-/// host builder as usual.
+/// and the arguments are left untouched. In MCP mode configuration-style arguments (<c>--Key=Value</c>,
+/// <c>--Key value</c>, <c>/Key=Value</c>, <c>Key=Value</c>) reach the host builder as usual; anything else, such as an
+/// unknown verb or a <c>-</c>-prefixed flag, prints the usage to standard error and exits with code 2 instead of
+/// starting the server.
+/// </para>
+/// <para>
+/// <b>Version:</b> a lone <c>--version</c> or <c>-v</c> runs the registered <c>version</c> verb when there is one;
+/// otherwise it prints the entry assembly's informational version (without build metadata) and exits 0.
 /// </para>
 /// <para>
 /// <b>CLI mode</b> builds the host from configuration only (never from operation arguments), does not start hosted
@@ -251,10 +257,25 @@ public sealed class AgentSurfaceApplication
         var (surface, handler, modeArgs) = SelectMode(args);
         try
         {
-            if (handler is null && surface == AgentSurface.Mcp && modeArgs is ["--help" or "-h"])
+            if (handler is null && IsVersionRequest(args))
             {
-                (Output ?? Console.Out).WriteLine(RenderUsage());
+                (Output ?? Console.Out).WriteLine(ResolveVersion());
                 return 0;
+            }
+
+            if (handler is null && surface == AgentSurface.Mcp)
+            {
+                if (modeArgs is ["--help" or "-h"])
+                {
+                    (Output ?? Console.Out).WriteLine(RenderUsage());
+                    return 0;
+                }
+
+                if (FindUnrecognisedMcpArgument(modeArgs) is { } unrecognised)
+                {
+                    (Error ?? Console.Error).WriteLine($"Unrecognised argument '{unrecognised}'.\n\n{RenderUsage()}");
+                    return 2;
+                }
             }
 
             if (handler is not null)
@@ -286,7 +307,44 @@ public sealed class AgentSurfaceApplication
 
         lines.Add($"  {CliVerb,-16} Run the command-line interface ('{executable} {CliVerb} --help' lists operations).");
         lines.AddRange(_verbs.Keys.OrderBy(static name => name, StringComparer.Ordinal).Select(name => $"  {name,-16} Host command."));
+        lines.Add($"  {"--version, -v",-16} Print the version.");
         return string.Join("\n", lines);
+    }
+
+    private static bool IsVersionRequest(string[] args) => args is ["--version" or "-v"];
+
+    private static string ResolveVersion()
+    {
+        var assembly = System.Reflection.Assembly.GetEntryAssembly() ?? typeof(AgentSurfaceApplication).Assembly;
+        var informational = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion;
+        var version = informational?.Split('+')[0];
+        return string.IsNullOrWhiteSpace(version) ? assembly.GetName().Version?.ToString() ?? "unknown" : version!;
+    }
+
+    // Mirrors what the .NET command-line configuration provider accepts: Key=Value, --Key=Value, --Key value, /Key=Value, /Key value.
+    private static string? FindUnrecognisedMcpArgument(string[] args)
+    {
+        for (var index = 0; index < args.Length; index++)
+        {
+            var arg = args[index];
+            var keyStart = arg.StartsWith("--", StringComparison.Ordinal) ? 2 : arg.StartsWith('/') ? 1 : 0;
+            var separator = arg.IndexOf('=');
+            var hasInlineValue = separator > keyStart;
+            var key = hasInlineValue ? arg[keyStart..separator] : arg[keyStart..];
+            if (key.Length == 0 || (keyStart == 0 && (!hasInlineValue || arg[0] == '-')))
+            {
+                return arg;
+            }
+
+            if (keyStart > 0 && !hasInlineValue && ++index >= args.Length)
+            {
+                return arg;
+            }
+        }
+
+        return null;
     }
 
     private (AgentSurface Surface, Func<string[], CancellationToken, Task<int>>? Handler, string[] Args) SelectMode(string[] args)
@@ -297,6 +355,11 @@ public sealed class AgentSurfaceApplication
             if (_verbs.TryGetValue(first, out var handler))
             {
                 return (AgentSurface.Unknown, handler, args.Skip(1).ToArray());
+            }
+
+            if (args is ["--version" or "-v"] && _verbs.TryGetValue("version", out var versionHandler))
+            {
+                return (AgentSurface.Unknown, versionHandler, []);
             }
 
             if (string.Equals(first, CliVerb, StringComparison.OrdinalIgnoreCase))

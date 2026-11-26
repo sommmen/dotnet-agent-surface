@@ -87,8 +87,13 @@ return await AgentSurfaceApplication.RunAsync(args, app =>
 
 - **Mode selection:** a registered verb runs its handler before any host is built;
   `CliVerb` (default `cli`) runs the CLI; `McpVerb` (default `mcp`) runs the server;
-  otherwise `DefaultSurface` (default `Mcp`) applies. In MCP mode `--Key=Value`
-  arguments still reach the host builder.
+  otherwise `DefaultSurface` (default `Mcp`) applies. In MCP mode configuration-style
+  arguments (`--Key=Value`, `--Key value`, `/Key=Value`, `Key=Value`) still reach the host
+  builder; anything else (an unknown verb such as `verison`, or a flag such as `--foo`) prints
+  the usage to stderr and exits 2 instead of starting the server. No arguments still starts it.
+- **Version:** a lone `--version` or `-v` runs the registered `version` verb when the host has
+  one; otherwise it prints the entry assembly's informational version (build metadata after `+`
+  dropped) and exits 0, on either default surface. The root `--help` lists it.
 - **CLI mode:** the host is built from configuration only, never from operation
   arguments. Hosted services are not started unless they implement
   `ICliHostedService`. Logging goes to standard error at `Warning`. Ctrl+C cancels
